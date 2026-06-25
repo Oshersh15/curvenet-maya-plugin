@@ -5,11 +5,31 @@
 
 #include <vector>
 
+enum class CurveEndpoint
+{
+    Start,
+    End
+};
+
+struct CurveConnection
+{
+    int firstCurveId;
+    CurveEndpoint firstEndpoint;
+
+    int secondCurveId;
+    CurveEndpoint secondEndpoint;
+
+    MPoint position;
+};
+
 struct ProfileCurveData
 {
     int id;
     MObject curveObject;
     std::vector<MPoint> restCVPositions;
+
+    MPoint startPoint;
+    MPoint endPoint;
 };
 
 class CurvenetData
@@ -25,6 +45,13 @@ public:
 
     const std::vector<ProfileCurveData>& getCurves() const;
 
+    void detectConnections(double tolerance);
+
+    const std::vector<CurveConnection>& getConnections() const;
+
+    std::vector<int> getConnectedCurves(int curveId) const;
+
 private:
     std::vector<ProfileCurveData> m_curves;
+    std::vector<CurveConnection> m_connections;
 };

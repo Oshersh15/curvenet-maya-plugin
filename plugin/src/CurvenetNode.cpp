@@ -139,6 +139,8 @@ public:
             curvenetData.addCurve(curveObject, cvPositions);
         }
 
+        curvenetData.detectConnections(0.001);
+
         MGlobal::displayInfo(
             MString("Curvenet contains ")
             + curvenetData.getCurveCount()
@@ -156,6 +158,60 @@ public:
                 + static_cast<int>(curve.restCVPositions.size())
                 + " CVs."
             );
+
+            MGlobal::displayInfo(
+                MString("    Start: (")
+                + curve.startPoint.x + ", "
+                + curve.startPoint.y + ", "
+                + curve.startPoint.z + ")"
+            );
+
+            MGlobal::displayInfo(
+                MString("    End: (")
+                + curve.endPoint.x + ", "
+                + curve.endPoint.y + ", "
+                + curve.endPoint.z + ")"
+            );
+        }
+
+        const auto& connections = curvenetData.getConnections();
+
+        for (const auto& connection : connections)
+        {
+            auto endpointToString = [](CurveEndpoint endpoint)
+            {
+                return endpoint == CurveEndpoint::Start ? "start" : "end";
+            };
+
+            MGlobal::displayInfo(
+                MString("Connection found: Curve ")
+                + connection.firstCurveId
+                + " "
+                + endpointToString(connection.firstEndpoint)
+                + " -> Curve "
+                + connection.secondCurveId
+                + " "
+                + endpointToString(connection.secondEndpoint)
+            );
+        }
+
+        for (const auto& curve : curves)
+        {
+            std::vector<int> connected =
+                curvenetData.getConnectedCurves(curve.id);
+
+            MString message =
+                MString("Curve ")
+                + curve.id
+                + " connected to: ";
+
+            for (int id : connected)
+            {
+                message += id;
+                message += " ";
+            }
+
+            MGlobal::displayInfo(message);
         }
 
         return MS::kSuccess;
