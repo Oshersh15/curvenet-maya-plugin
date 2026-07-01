@@ -15,6 +15,8 @@
 #include <maya/MString.h>
 #include <maya/MObject.h>
 #include <maya/MMatrix.h>
+#include <maya/MFnMesh.h>
+#include "HalfEdge.h"
 
 #include <vector>
 
@@ -68,6 +70,40 @@ public:
         if (!status)
         {
             status.perror("Failed to set attributeAffects for inputCurves");
+            return status;
+        }
+
+        inputMesh = typedAttr.create(
+            "inputMesh",
+            "im",
+            MFnData::kMesh,
+            &status
+        );
+
+        if (!status)
+        {
+            status.perror("Failed to create inputMesh");
+            return status;
+        }
+
+        typedAttr.setStorable(false);
+        typedAttr.setReadable(false);
+        typedAttr.setWritable(true);
+        typedAttr.setConnectable(true);
+
+        status = addAttribute(inputMesh);
+
+        if (!status)
+        {
+            status.perror("Failed to add inputMesh");
+            return status;
+        }
+
+        status = attributeAffects(inputMesh, outputGeom);
+
+        if (!status)
+        {
+            status.perror("Failed to set attributeAffects for inputMesh");
             return status;
         }
 
@@ -137,6 +173,33 @@ public:
             }
 
             curvenetData.addCurve(curveObject, cvPositions);
+        }
+
+        MDataHandle meshHandle =
+            dataBlock.inputValue(inputMesh, &status);
+
+        if (status)
+        {
+            MObject meshObject = meshHandle.asMesh();
+
+            if (!meshObject.isNull())
+            {
+                MFnMesh meshFn(meshObject);
+
+                int vertexCount =
+                    meshFn.numVertices();
+
+                int faceCount =
+                    meshFn.numPolygons();
+
+                MGlobal::displayInfo(
+                    MString("Mesh vertices: ")
+                    + vertexCount);
+
+                MGlobal::displayInfo(
+                    MString("Mesh faces: ")
+                    + faceCount);
+            }
         }
 
         curvenetData.detectConnections(0.001);
@@ -214,12 +277,31 @@ public:
             MGlobal::displayInfo(message);
         }
 
+        // print Curvenet connections here
+        // print connected curves here
+
+        HalfEdgeMesh mesh;
+        mesh.createTestQuad();
+
+        std::vector<int> traversal = mesh.traverseFace(0);
+
+        MString traversalMessage("Face traversal: ");
+
+        for (int edge : traversal)
+        {
+            traversalMessage += edge;
+            traversalMessage += " ";
+        }
+
+        MGlobal::displayInfo(traversalMessage);
+
         return MS::kSuccess;
     }
 
     static MTypeId id;
     static MString nodeName;
     static MObject inputCurves;
+    static MObject inputMesh;
 
 private:
     CurvenetData curvenetData;
@@ -228,6 +310,7 @@ private:
 MTypeId CurveDeformerNode::id(0x001226C1);
 MString CurveDeformerNode::nodeName("curvenetNode");
 MObject CurveDeformerNode::inputCurves;
+MObject CurveDeformerNode::inputMesh;
 
 MStatus initializePlugin(MObject pluginObject)
 {
