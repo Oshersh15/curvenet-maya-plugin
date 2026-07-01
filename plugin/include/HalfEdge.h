@@ -39,10 +39,11 @@ struct Vertex
 */
 struct HalfEdge
 {
-    int vertex = -1;
-    int next = -1;
-    int twin = -1;
-    int face = -1;
+    int startVertex = -1; /* where the directed edge starts. */
+    int endVertex = -1;   /* where the directed edge points to. */
+    int next = -1;        /* the next half-edge around the face. */
+    int twin = -1;        /* the opposite half-edge. */
+    int face = -1;        /* the face this half-edge belongs to. */
 };
 
 /*
@@ -99,9 +100,14 @@ public:
         return halfEdges[halfEdgeIndex].face;
     }
 
-    int getVertexOfHalfEdge(int halfEdgeIndex) const
+    int getStartVertex(int halfEdgeIndex) const
     {
-        return halfEdges[halfEdgeIndex].vertex;
+        return halfEdges[halfEdgeIndex].startVertex;
+    }
+
+    int getEndVertex(int halfEdgeIndex) const
+    {
+        return halfEdges[halfEdgeIndex].endVertex;
     }
 
     std::vector<int> getAdjacentVertices(int vertexIndex) const
@@ -124,7 +130,7 @@ public:
 
         do
         {
-            int adjacentVertex = halfEdges[currentHalfEdge].vertex;
+            int adjacentVertex = halfEdges[currentHalfEdge].endVertex;
             adjacentVertices.push_back(adjacentVertex);
 
             int twinHalfEdge = halfEdges[currentHalfEdge].twin;
@@ -199,22 +205,26 @@ public:
         vertices[2].outgoingHalfEdge = 2;
         vertices[3].outgoingHalfEdge = 3;
 
-        halfEdges[0].vertex = 1;
+        halfEdges[0].startVertex = 0;
+        halfEdges[0].endVertex = 1;
         halfEdges[0].next = 1;
         halfEdges[0].twin = -1;
         halfEdges[0].face = 0;
 
-        halfEdges[1].vertex = 2;
+        halfEdges[1].startVertex = 1;
+        halfEdges[1].endVertex = 2;
         halfEdges[1].next = 2;
         halfEdges[1].twin = -1;
         halfEdges[1].face = 0;
 
-        halfEdges[2].vertex = 3;
+        halfEdges[2].startVertex = 2;
+        halfEdges[2].endVertex = 3;
         halfEdges[2].next = 3;
         halfEdges[2].twin = -1;
         halfEdges[2].face = 0;
 
-        halfEdges[3].vertex = 0;
+        halfEdges[3].startVertex = 3;
+        halfEdges[3].endVertex = 0;
         halfEdges[3].next = 0;
         halfEdges[3].twin = -1;
         halfEdges[3].face = 0;
