@@ -199,6 +199,41 @@ public:
                 MGlobal::displayInfo(
                     MString("Mesh faces: ")
                     + faceCount);
+
+                HalfEdgeMesh mayaHalfEdgeMesh;
+                mayaHalfEdgeMesh.buildFromMayaMesh(meshFn);
+
+                std::vector<int> faceHalfEdges =
+                    mayaHalfEdgeMesh.getFaceHalfEdges(0);
+
+                MGlobal::displayInfo("Face 0 half-edges:");
+
+                for (int halfEdgeIndex : faceHalfEdges)
+                {
+                    const HalfEdge& halfEdge =
+                        mayaHalfEdgeMesh.halfEdges[halfEdgeIndex];
+
+                    MGlobal::displayInfo(
+                        MString("HE")
+                        + halfEdgeIndex
+                        + ": "
+                        + halfEdge.startVertex
+                        + " -> "
+                        + halfEdge.endVertex
+                    );
+                }
+
+                MGlobal::displayInfo(
+                    MString("HalfEdgeMesh vertices: ")
+                    + static_cast<int>(mayaHalfEdgeMesh.vertices.size()));
+
+                MGlobal::displayInfo(
+                    MString("HalfEdgeMesh faces: ")
+                    + static_cast<int>(mayaHalfEdgeMesh.faces.size()));
+
+                MGlobal::displayInfo(
+                    MString("HalfEdgeMesh halfEdges: ")
+                    + static_cast<int>(mayaHalfEdgeMesh.halfEdges.size()));
             }
         }
 
