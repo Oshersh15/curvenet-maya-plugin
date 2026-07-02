@@ -245,6 +245,7 @@ public:
                 }
             }
         }
+        assignTwins();
     }
 
     /* temporary test. later -> buildFromMayaMesh(MObject mesh) */
@@ -351,5 +352,29 @@ public:
                  currentHalfEdge < static_cast<int>(halfEdges.size()));
 
         return faceHalfEdges;
+    }
+
+    void assignTwins()
+    {
+        for (int firstIndex = 0; firstIndex < static_cast<int>(halfEdges.size()); ++firstIndex)
+        {
+            for (int secondIndex = 0; secondIndex < static_cast<int>(halfEdges.size()); ++secondIndex)
+            {
+                if (firstIndex == secondIndex)
+                {
+                    continue;
+                }
+
+                HalfEdge& firstEdge = halfEdges[firstIndex];
+                const HalfEdge& secondEdge = halfEdges[secondIndex];
+
+                if (firstEdge.startVertex == secondEdge.endVertex &&
+                    firstEdge.endVertex == secondEdge.startVertex)
+                {
+                    firstEdge.twin = secondIndex;
+                    break;
+                }
+            }
+        }
     }
 };

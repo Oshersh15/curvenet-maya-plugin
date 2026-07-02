@@ -223,6 +223,19 @@ public:
                     );
                 }
 
+                if (mayaHalfEdgeMesh.halfEdges.size() > 7)
+                {
+                    MGlobal::displayInfo(
+                        MString("HE1 twin: ")
+                        + mayaHalfEdgeMesh.halfEdges[1].twin
+                    );
+
+                    MGlobal::displayInfo(
+                        MString("HE7 twin: ")
+                        + mayaHalfEdgeMesh.halfEdges[7].twin
+                    );
+                }
+
                 MGlobal::displayInfo(
                     MString("HalfEdgeMesh vertices: ")
                     + static_cast<int>(mayaHalfEdgeMesh.vertices.size()));
