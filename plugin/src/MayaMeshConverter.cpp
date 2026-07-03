@@ -17,7 +17,8 @@ HalfEdgeMesh MayaMeshConverter::buildFromMayaMesh(const MFnMesh& meshFn)
         MPoint position;
         meshFn.getPoint(vertexIndex, position, MSpace::kObject);
 
-        mesh.vertices[vertexIndex].position = position;
+        mesh.vertices[vertexIndex].position =
+            Point3{position.x, position.y, position.z};
         mesh.vertices[vertexIndex].outgoingHalfEdge = -1;
     }
 

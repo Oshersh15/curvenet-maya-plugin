@@ -1,8 +1,17 @@
 #pragma once
 
 #include <vector>
-#include <maya/MPoint.h>
 
+/*
+    This structure stores vertex positions independently from
+    the Maya API to allow unit testing of the HalfEdgeMesh.
+*/
+struct Point3
+{
+    double x = 0.0;
+    double y = 0.0;
+    double z = 0.0;
+};
 
 /*
     Stores one vertex in the half-edge mesh.
@@ -16,7 +25,7 @@
 */
 struct Vertex
 {
-    MPoint position;
+    Point3 position;
     int outgoingHalfEdge = -1;
 };
 
@@ -58,7 +67,6 @@ struct Face
 {
     int halfEdge = -1;
 };
-
 
 /*
     Stores a complete half-edge mesh.
@@ -196,10 +204,10 @@ public:
         halfEdges.resize(4);
         faces.resize(1);
 
-        vertices[0].position = MPoint(0.0, 1.0, 0.0);
-        vertices[1].position = MPoint(1.0, 1.0, 0.0);
-        vertices[2].position = MPoint(1.0, 0.0, 0.0);
-        vertices[3].position = MPoint(0.0, 0.0, 0.0);
+        vertices[0].position = Point3{0.0, 1.0, 0.0};
+        vertices[1].position = Point3{1.0, 1.0, 0.0};
+        vertices[2].position = Point3{1.0, 0.0, 0.0};
+        vertices[3].position = Point3{0.0, 0.0, 0.0};
 
         vertices[0].outgoingHalfEdge = 0;
         vertices[1].outgoingHalfEdge = 1;
@@ -231,6 +239,72 @@ public:
         halfEdges[3].face = 0;
 
         faces[0].halfEdge = 0;
+    }
+
+    void createTwoQuadMesh()
+    {
+        clear();
+
+        vertices.resize(8);
+        faces.resize(2);
+        halfEdges.resize(8);
+
+        vertices[0].position = Point3{0.0, 1.0, 0.0};
+        vertices[1].position = Point3{1.0, 1.0, 0.0};
+        vertices[2].position = Point3{2.0, 1.0, 0.0};
+
+        vertices[5].position = Point3{0.0, 0.0, 0.0};
+        vertices[6].position = Point3{1.0, 0.0, 0.0};
+        vertices[7].position = Point3{2.0, 0.0, 0.0};
+
+        faces[0].halfEdge = 0;
+        faces[1].halfEdge = 4;
+
+        // Face 0
+
+        halfEdges[0].startVertex = 0;
+        halfEdges[0].endVertex = 1;
+        halfEdges[0].next = 1;
+        halfEdges[0].face = 0;
+
+        halfEdges[1].startVertex = 1;
+        halfEdges[1].endVertex = 6;
+        halfEdges[1].next = 2;
+        halfEdges[1].face = 0;
+
+        halfEdges[2].startVertex = 6;
+        halfEdges[2].endVertex = 5;
+        halfEdges[2].next = 3;
+        halfEdges[2].face = 0;
+
+        halfEdges[3].startVertex = 5;
+        halfEdges[3].endVertex = 0;
+        halfEdges[3].next = 0;
+        halfEdges[3].face = 0;
+
+        // Face 1
+
+        halfEdges[4].startVertex = 1;
+        halfEdges[4].endVertex = 2;
+        halfEdges[4].next = 5;
+        halfEdges[4].face = 1;
+
+        halfEdges[5].startVertex = 2;
+        halfEdges[5].endVertex = 7;
+        halfEdges[5].next = 6;
+        halfEdges[5].face = 1;
+
+        halfEdges[6].startVertex = 7;
+        halfEdges[6].endVertex = 6;
+        halfEdges[6].next = 7;
+        halfEdges[6].face = 1;
+
+        halfEdges[7].startVertex = 6;
+        halfEdges[7].endVertex = 1;
+        halfEdges[7].next = 4;
+        halfEdges[7].face = 1;
+
+        assignTwins();
     }
 
     std::vector<int> traverseFace(int faceIndex) const
