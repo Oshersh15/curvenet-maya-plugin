@@ -10,6 +10,7 @@ set(MAYA_LOCATION "/Applications/Autodesk/maya2025")
 add_library(CurvenetPlugin SHARED
     src/CurvenetNode.cpp
     src/CurvenetData.cpp
+    src/MayaMeshConverter.cpp
 )
 
 target_include_directories(CurvenetPlugin PRIVATE

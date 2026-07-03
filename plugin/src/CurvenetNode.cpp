@@ -17,6 +17,7 @@
 #include <maya/MMatrix.h>
 #include <maya/MFnMesh.h>
 #include "HalfEdge.h"
+#include "MayaMeshConverter.h"
 
 #include <vector>
 
@@ -200,8 +201,8 @@ public:
                     MString("Mesh faces: ")
                     + faceCount);
 
-                HalfEdgeMesh mayaHalfEdgeMesh;
-                mayaHalfEdgeMesh.buildFromMayaMesh(meshFn);
+                HalfEdgeMesh mayaHalfEdgeMesh =
+                    MayaMeshConverter::buildFromMayaMesh(meshFn);
 
                 std::vector<int> faceHalfEdges =
                     mayaHalfEdgeMesh.getFaceHalfEdges(0);
