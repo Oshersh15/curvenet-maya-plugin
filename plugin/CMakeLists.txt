@@ -35,3 +35,26 @@ set_target_properties(CurvenetPlugin PROPERTIES
     PREFIX ""
     SUFFIX ".bundle"
 )
+
+enable_testing()
+
+find_package(GTest REQUIRED)
+
+add_executable(HalfEdgeTests
+    tests/test_halfedge.cpp
+)
+
+target_include_directories(HalfEdgeTests PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+)
+
+target_link_directories(HalfEdgeTests PRIVATE
+    "${MAYA_LOCATION}/Maya.app/Contents/MacOS"
+)
+
+target_link_libraries(HalfEdgeTests
+    GTest::gtest_main
+)
+
+include(GoogleTest)
+gtest_discover_tests(HalfEdgeTests)
