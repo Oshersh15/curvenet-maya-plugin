@@ -86,3 +86,18 @@ TEST(HalfEdgeMesh, TwoQuadMeshOnlySharedEdgeHasTwins)
     EXPECT_EQ(mesh.halfEdges[5].twin, -1);
     EXPECT_EQ(mesh.halfEdges[6].twin, -1);
 }
+
+TEST(HalfEdgeMesh, GetAdjacentFacesInTwoQuadMesh)
+{
+    HalfEdgeMesh mesh;
+    mesh.createTwoQuadMesh();
+
+    std::vector<int> face0Adjacent = mesh.getAdjacentFaces(0);
+    std::vector<int> face1Adjacent = mesh.getAdjacentFaces(1);
+
+    ASSERT_EQ(face0Adjacent.size(), 1);
+    ASSERT_EQ(face1Adjacent.size(), 1);
+
+    EXPECT_EQ(face0Adjacent[0], 1);
+    EXPECT_EQ(face1Adjacent[0], 0);
+}
