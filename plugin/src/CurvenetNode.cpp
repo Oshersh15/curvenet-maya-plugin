@@ -18,8 +18,163 @@
 #include <maya/MFnMesh.h>
 #include "HalfEdge.h"
 #include "MayaMeshConverter.h"
+#include "ProfileCurveSampler.h"
+#include <maya/MPxCommand.h>
+#include <maya/MSelectionList.h>
+#include <maya/MItSelectionList.h>
+#include <maya/MDagPath.h>
+#include <maya/MFnDagNode.h>
+#include "ProfileCurveSampler.h"
 
 #include <vector>
+
+namespace
+{
+    bool getSelectedNurbsCurvePath(MDagPath& curvePath)
+    {
+        MStatus status;
+
+        MSelectionList selection;
+        status = MGlobal::getActiveSelectionList(selection);
+
+        if (!status || selection.length() == 0)
+        {
+            MGlobal::displayError("Please select a NURBS curve.");
+            return false;
+        }
+
+        MItSelectionList iterator(selection, MFn::kDagNode, &status);
+
+        for (; !iterator.isDone(); iterator.next())
+        {
+            MDagPath selectedPath;
+            status = iterator.getDagPath(selectedPath);
+
+            if (!status)
+            {
+                continue;
+            }
+
+            if (selectedPath.hasFn(MFn::kNurbsCurve))
+            {
+                curvePath = selectedPath;
+                return true;
+            }
+
+            if (selectedPath.hasFn(MFn::kTransform))
+            {
+                MFnDagNode dagNode(selectedPath, &status);
+
+                if (!status)
+                {
+                    continue;
+                }
+
+                for (unsigned int childIndex = 0; childIndex < dagNode.childCount(); ++childIndex)
+                {
+                    MObject child = dagNode.child(childIndex, &status);
+
+                    if (!status)
+                    {
+                        continue;
+                    }
+
+                    if (child.hasFn(MFn::kNurbsCurve))
+                    {
+                        curvePath = selectedPath;
+                        curvePath.push(child);
+                        return true;
+                    }
+                }
+            }
+        }
+
+        MGlobal::displayError("Selection does not contain a NURBS curve.");
+        return false;
+    }
+
+
+    void deleteExistingSampleLocators()
+    {
+        MGlobal::executeCommand(
+            "string $sampleLocators[] = `ls \"profileCurveSample_*\"`; "
+            "if (size($sampleLocators) > 0) delete $sampleLocators;",
+            false,
+            false
+        );
+    }
+
+    void createLocatorAtPoint(const Point3& point, int index)
+    {
+        MString command;
+
+        command += "spaceLocator -name \"profileCurveSample_";
+        command += index;
+        command += "\" -position ";
+        command += point.x;
+        command += " ";
+        command += point.y;
+        command += " ";
+        command += point.z;
+        command += ";";
+
+        MGlobal::executeCommand(command, false, false);
+    }
+}
+
+std::vector<Point3> buildDenseCurvePoints(
+    MFnNurbsCurve& curveFn,
+    int sampleCount
+)
+{
+    std::vector<Point3> densePoints;
+
+    if (sampleCount < 2)
+    {
+        return densePoints;
+    }
+
+    double minParam = 0.0;
+    double maxParam = 0.0;
+
+    MStatus status = curveFn.getKnotDomain(minParam, maxParam);
+
+    if (!status)
+    {
+        return densePoints;
+    }
+
+    for (int sampleIndex = 0; sampleIndex < sampleCount; ++sampleIndex)
+    {
+        double ratio =
+            static_cast<double>(sampleIndex) /
+            static_cast<double>(sampleCount - 1);
+
+        double parameter =
+            minParam + (maxParam - minParam) * ratio;
+
+        MPoint mayaPoint;
+
+        status = curveFn.getPointAtParam(
+            parameter,
+            mayaPoint,
+            MSpace::kWorld
+        );
+
+        if (!status)
+        {
+            continue;
+        }
+
+        densePoints.push_back(Point3{
+            mayaPoint.x,
+            mayaPoint.y,
+            mayaPoint.z
+        });
+    }
+
+    return densePoints;
+}
 
 class CurveDeformerNode : public MPxDeformerNode
 {
@@ -122,6 +277,32 @@ public:
 
         curvenetData.clear();
 
+        double meanMeshEdgeLength = 0.0;
+
+        MDataHandle meshHandle =
+            dataBlock.inputValue(inputMesh, &status);
+
+        if (status)
+        {
+            MObject meshObject = meshHandle.asMesh();
+
+            if (!meshObject.isNull())
+            {
+                MFnMesh meshFn(meshObject);
+
+                HalfEdgeMesh mayaHalfEdgeMesh =
+                    MayaMeshConverter::buildFromMayaMesh(meshFn);
+
+                meanMeshEdgeLength =
+                    mayaHalfEdgeMesh.computeMeanEdgeLength();
+
+                MGlobal::displayInfo(
+                    MString("Mean mesh edge length: ")
+                    + meanMeshEdgeLength
+                );
+            }
+        }
+
         MArrayDataHandle curveArrayHandle =
             dataBlock.inputArrayValue(inputCurves, &status);
 
@@ -163,6 +344,7 @@ public:
             }
 
             std::vector<MPoint> cvPositions;
+            std::vector<Point3> controlPoints;
 
             unsigned int numCVs = curveFn.numCVs();
 
@@ -171,85 +353,79 @@ public:
                 MPoint cvPosition;
                 curveFn.getCV(cvIndex, cvPosition);
                 cvPositions.push_back(cvPosition);
+
+                controlPoints.push_back(Point3{
+                    cvPosition.x,
+                    cvPosition.y,
+                    cvPosition.z
+                });
             }
 
             curvenetData.addCurve(curveObject, cvPositions);
-        }
 
-        MDataHandle meshHandle =
-            dataBlock.inputValue(inputMesh, &status);
+            std::vector<Point3> densePoints =
+                buildDenseCurvePoints(curveFn, 200);
 
-        if (status)
-        {
-            MObject meshObject = meshHandle.asMesh();
+            const double controlPolygonLength =
+                ProfileCurveSampler::computeControlPolygonLength(controlPoints);
 
-            if (!meshObject.isNull())
+            const int densityMultiplier = 5;
+
+            const int adaptiveSampleCount =
+                ProfileCurveSampler::computeAdaptiveSampleCount(
+                    controlPolygonLength,
+                    meanMeshEdgeLength,
+                    densityMultiplier
+                );
+
+            MGlobal::displayInfo(
+                MString("Control polygon length: ")
+                + controlPolygonLength
+            );
+
+            MGlobal::displayInfo(
+                MString("Adaptive sample count: ")
+                + adaptiveSampleCount
+            );
+
+            std::vector<Point3> sampledPoints =
+                ProfileCurveSampler::sampleByArcLength(
+                    densePoints,
+                    adaptiveSampleCount
+                );
+
+            for (int segmentIndex = 0;
+                 segmentIndex < static_cast<int>(sampledPoints.size()) - 1;
+                 ++segmentIndex)
             {
-                MFnMesh meshFn(meshObject);
-
-                int vertexCount =
-                    meshFn.numVertices();
-
-                int faceCount =
-                    meshFn.numPolygons();
+                const Point3& startPoint = sampledPoints[segmentIndex];
+                const Point3& endPoint = sampledPoints[segmentIndex + 1];
 
                 MGlobal::displayInfo(
-                    MString("Mesh vertices: ")
-                    + vertexCount);
-
-                MGlobal::displayInfo(
-                    MString("Mesh faces: ")
-                    + faceCount);
-
-                HalfEdgeMesh mayaHalfEdgeMesh =
-                    MayaMeshConverter::buildFromMayaMesh(meshFn);
-
-                std::vector<int> faceHalfEdges =
-                    mayaHalfEdgeMesh.getFaceHalfEdges(0);
-
-                MGlobal::displayInfo("Face 0 half-edges:");
-
-                for (int halfEdgeIndex : faceHalfEdges)
-                {
-                    const HalfEdge& halfEdge =
-                        mayaHalfEdgeMesh.halfEdges[halfEdgeIndex];
-
-                    MGlobal::displayInfo(
-                        MString("HE")
-                        + halfEdgeIndex
-                        + ": "
-                        + halfEdge.startVertex
-                        + " -> "
-                        + halfEdge.endVertex
-                    );
-                }
-
-                if (mayaHalfEdgeMesh.halfEdges.size() > 7)
-                {
-                    MGlobal::displayInfo(
-                        MString("HE1 twin: ")
-                        + mayaHalfEdgeMesh.halfEdges[1].twin
-                    );
-
-                    MGlobal::displayInfo(
-                        MString("HE7 twin: ")
-                        + mayaHalfEdgeMesh.halfEdges[7].twin
-                    );
-                }
-
-                MGlobal::displayInfo(
-                    MString("HalfEdgeMesh vertices: ")
-                    + static_cast<int>(mayaHalfEdgeMesh.vertices.size()));
-
-                MGlobal::displayInfo(
-                    MString("HalfEdgeMesh faces: ")
-                    + static_cast<int>(mayaHalfEdgeMesh.faces.size()));
-
-                MGlobal::displayInfo(
-                    MString("HalfEdgeMesh halfEdges: ")
-                    + static_cast<int>(mayaHalfEdgeMesh.halfEdges.size()));
+                    MString("Segment ")
+                    + segmentIndex
+                    + ": ("
+                    + startPoint.x + ", "
+                    + startPoint.y + ", "
+                    + startPoint.z + ") -> ("
+                    + endPoint.x + ", "
+                    + endPoint.y + ", "
+                    + endPoint.z + ")"
+                );
             }
+
+            MGlobal::displayInfo(
+                MString("Dense curve points: ")
+                + static_cast<int>(densePoints.size())
+            );
+
+            MGlobal::displayInfo(
+                MString("Arc-length sampled points: ")
+                + static_cast<int>(sampledPoints.size())
+            );
         }
+
+
 
         curvenetData.detectConnections(0.001);
 
@@ -386,6 +562,11 @@ MStatus uninitializePlugin(MObject pluginObject)
 {
     MStatus status;
     MFnPlugin plugin(pluginObject);
+
+    if (!status)
+    {
+        status.perror("Failed to deregister sampleProfileCurve command");
+    }
 
     status = plugin.deregisterNode(CurveDeformerNode::id);
 

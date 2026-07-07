@@ -1,6 +1,7 @@
 #pragma once
 
 #include <vector>
+#include <cmath>
 
 /*
     This structure stores vertex positions independently from
@@ -365,6 +366,55 @@ public:
                  currentHalfEdge < static_cast<int>(halfEdges.size()));
 
         return faceHalfEdges;
+    }
+
+    double computeMeanEdgeLength() const
+    {
+        double totalLength = 0.0;
+        int edgeCount = 0;
+
+        for (int halfEdgeIndex = 0;
+             halfEdgeIndex < static_cast<int>(halfEdges.size());
+             ++halfEdgeIndex)
+        {
+            const HalfEdge& halfEdge = halfEdges[halfEdgeIndex];
+
+            if (halfEdge.startVertex < 0 ||
+                halfEdge.startVertex >= static_cast<int>(vertices.size()) ||
+                halfEdge.endVertex < 0 ||
+                halfEdge.endVertex >= static_cast<int>(vertices.size()))
+            {
+                continue;
+            }
+
+            if (halfEdge.twin >= 0 && halfEdgeIndex > halfEdge.twin)
+            {
+                continue;
+            }
+
+            const Point3& startPoint =
+                vertices[halfEdge.startVertex].position;
+
+            const Point3& endPoint =
+                vertices[halfEdge.endVertex].position;
+
+            const double dx = endPoint.x - startPoint.x;
+            const double dy = endPoint.y - startPoint.y;
+            const double dz = endPoint.z - startPoint.z;
+
+            const double edgeLength =
+                std::sqrt(dx * dx + dy * dy + dz * dz);
+
+            totalLength += edgeLength;
+            ++edgeCount;
+        }
+
+        if (edgeCount == 0)
+        {
+            return 0.0;
+        }
+
+        return totalLength / static_cast<double>(edgeCount);
     }
 
     void assignTwins()

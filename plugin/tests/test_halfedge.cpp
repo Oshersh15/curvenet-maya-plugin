@@ -101,3 +101,22 @@ TEST(HalfEdgeMesh, GetAdjacentFacesInTwoQuadMesh)
     EXPECT_EQ(face0Adjacent[0], 1);
     EXPECT_EQ(face1Adjacent[0], 0);
 }
+
+TEST(HalfEdgeMesh, SingleQuadMeanEdgeLengthIsOne)
+{
+    HalfEdgeMesh mesh;
+    mesh.createTestQuad();
+
+    double meanEdgeLength = mesh.computeMeanEdgeLength();
+
+    EXPECT_DOUBLE_EQ(meanEdgeLength, 1.0);
+}
+
+TEST(HalfEdgeMesh, EmptyMeshMeanEdgeLengthIsZero)
+{
+    HalfEdgeMesh mesh;
+
+    double meanEdgeLength = mesh.computeMeanEdgeLength();
+
+    EXPECT_DOUBLE_EQ(meanEdgeLength, 0.0);
+}
