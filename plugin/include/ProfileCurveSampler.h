@@ -1,8 +1,13 @@
 #pragma once
 
 #include "HalfEdge.h"
-
 #include <vector>
+
+struct PolylineSegment
+{
+    Point3 start;
+    Point3 end;
+};
 
 /*
     Converts a dense profile curve polyline into evenly spaced sample points.
@@ -24,6 +29,10 @@ public:
         double controlPolygonLength,
         double meanMeshEdgeLength,
         int densityMultiplier = 5 /* later can be exposed as a Maya attribute or UI control */
+    );
+
+    static std::vector<PolylineSegment> buildPolylineSegments(
+        const std::vector<Point3>& sampledPoints
     );
 
     /*

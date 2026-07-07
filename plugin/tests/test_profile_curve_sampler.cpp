@@ -146,3 +146,33 @@ TEST(ProfileCurveSampler, AdaptiveSampleCountNeverReturnsLessThanTwo)
 
     EXPECT_EQ(sampleCount, 2);
 }
+
+TEST(ProfileCurveSampler, BuildsPolylineSegmentsFromSampledPoints)
+{
+    std::vector<Point3> sampledPoints;
+    sampledPoints.push_back(Point3{0.0, 0.0, 0.0});
+    sampledPoints.push_back(Point3{1.0, 0.0, 0.0});
+    sampledPoints.push_back(Point3{2.0, 0.0, 0.0});
+
+    std::vector<PolylineSegment> segments =
+        ProfileCurveSampler::buildPolylineSegments(sampledPoints);
+
+    ASSERT_EQ(segments.size(), 2);
+
+    EXPECT_DOUBLE_EQ(segments[0].start.x, 0.0);
+    EXPECT_DOUBLE_EQ(segments[0].end.x, 1.0);
+
+    EXPECT_DOUBLE_EQ(segments[1].start.x, 1.0);
+    EXPECT_DOUBLE_EQ(segments[1].end.x, 2.0);
+}
+
+TEST(ProfileCurveSampler, BuildsNoPolylineSegmentsForTooFewPoints)
+{
+    std::vector<Point3> sampledPoints;
+    sampledPoints.push_back(Point3{0.0, 0.0, 0.0});
+
+    std::vector<PolylineSegment> segments =
+        ProfileCurveSampler::buildPolylineSegments(sampledPoints);
+
+    EXPECT_TRUE(segments.empty());
+}

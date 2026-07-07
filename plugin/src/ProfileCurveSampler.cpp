@@ -81,6 +81,31 @@ int ProfileCurveSampler::computeAdaptiveSampleCount(
     );
 }
 
+std::vector<PolylineSegment> ProfileCurveSampler::buildPolylineSegments(
+    const std::vector<Point3>& sampledPoints
+)
+{
+    std::vector<PolylineSegment> segments;
+
+    if (sampledPoints.size() < 2)
+    {
+        return segments;
+    }
+
+    for (size_t pointIndex = 0;
+         pointIndex < sampledPoints.size() - 1;
+         ++pointIndex)
+    {
+        PolylineSegment segment;
+        segment.start = sampledPoints[pointIndex];
+        segment.end = sampledPoints[pointIndex + 1];
+
+        segments.push_back(segment);
+    }
+
+    return segments;
+}
+
 std::vector<Point3> ProfileCurveSampler::sampleByArcLength(
     const std::vector<Point3>& points,
     int sampleCount
