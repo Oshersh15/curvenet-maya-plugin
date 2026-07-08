@@ -41,4 +41,12 @@ namespace GeometryUtils
     double length(
         const Point3& vector
     );
+
+    /*
+        Returns the Euclidean distance between two 3D points.
+    */
+    double pointToPointDistance(
+        const Point3& a,
+        const Point3& b
+    );
 }

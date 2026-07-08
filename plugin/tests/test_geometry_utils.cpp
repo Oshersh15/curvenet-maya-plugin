@@ -41,3 +41,25 @@ TEST(GeometryUtils, LengthOfZeroVectorIsZero)
 
     EXPECT_DOUBLE_EQ(result, 0.0);
 }
+
+TEST(GeometryUtils, PointToPointDistanceComputesDistance)
+{
+    Point3 a{0.0, 0.0, 0.0};
+    Point3 b{3.0, 4.0, 0.0};
+
+    double result =
+        GeometryUtils::pointToPointDistance(a, b);
+
+    EXPECT_DOUBLE_EQ(result, 5.0);
+}
+
+TEST(GeometryUtils, PointToPointDistanceIsZeroForSamePoint)
+{
+    Point3 a{1.0, 2.0, 3.0};
+    Point3 b{1.0, 2.0, 3.0};
+
+    double result =
+        GeometryUtils::pointToPointDistance(a, b);
+
+    EXPECT_DOUBLE_EQ(result, 0.0);
+}

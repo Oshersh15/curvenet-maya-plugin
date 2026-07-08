@@ -34,4 +34,15 @@ namespace GeometryUtils
             dot(vector, vector)
         );
     }
+
+    double GeometryUtils::pointToPointDistance(
+        const Point3& a,
+        const Point3& b
+    )
+    {
+        Point3 direction =
+            subtract(a, b);
+
+        return length(direction);
+    }
 }
