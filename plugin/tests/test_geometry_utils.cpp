@@ -13,3 +13,13 @@ TEST(GeometryUtils, SubtractReturnsVectorFromSecondPointToFirstPoint)
     EXPECT_DOUBLE_EQ(result.y, 3.0);
     EXPECT_DOUBLE_EQ(result.z, 0.0);
 }
+
+TEST(GeometryUtils, DotComputesDotProduct)
+{
+    Point3 a{1.0, 2.0, 3.0};
+    Point3 b{4.0, 5.0, 6.0};
+
+    double result = GeometryUtils::dot(a, b);
+
+    EXPECT_DOUBLE_EQ(result, 32.0);
+}

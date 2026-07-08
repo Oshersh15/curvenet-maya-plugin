@@ -23,4 +23,15 @@ namespace GeometryUtils
         const Point3& a,
         const Point3& b
     );
+
+    /*
+        Computes the dot product between two 3D vectors.
+
+        The dot product measures how much two vectors point in the same
+        direction. It is used by closest-point and intersection algorithms.
+    */
+    double dot(
+        const Point3& a,
+        const Point3& b
+    );
 }
