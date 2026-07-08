@@ -34,4 +34,11 @@ namespace GeometryUtils
         const Point3& a,
         const Point3& b
     );
+
+    /*
+        Returns the Euclidean length (magnitude) of a 3D vector.
+    */
+    double length(
+        const Point3& vector
+    );
 }

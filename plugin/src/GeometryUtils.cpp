@@ -1,4 +1,5 @@
 #include "GeometryUtils.h"
+#include <cmath>
 
 namespace GeometryUtils
 {
@@ -23,5 +24,14 @@ namespace GeometryUtils
             a.x * b.x +
             a.y * b.y +
             a.z * b.z;
+    }
+
+    double GeometryUtils::length(
+        const Point3& vector
+    )
+    {
+        return std::sqrt(
+            dot(vector, vector)
+        );
     }
 }

@@ -23,3 +23,21 @@ TEST(GeometryUtils, DotComputesDotProduct)
 
     EXPECT_DOUBLE_EQ(result, 32.0);
 }
+
+TEST(GeometryUtils, LengthComputesVectorMagnitude)
+{
+    Point3 vector{3.0, 4.0, 0.0};
+
+    double result = GeometryUtils::length(vector);
+
+    EXPECT_DOUBLE_EQ(result, 5.0);
+}
+
+TEST(GeometryUtils, LengthOfZeroVectorIsZero)
+{
+    Point3 vector{0.0, 0.0, 0.0};
+
+    double result = GeometryUtils::length(vector);
+
+    EXPECT_DOUBLE_EQ(result, 0.0);
+}
