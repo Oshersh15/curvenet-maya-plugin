@@ -63,3 +63,24 @@ TEST(GeometryUtils, PointToPointDistanceIsZeroForSamePoint)
 
     EXPECT_DOUBLE_EQ(result, 0.0);
 }
+
+TEST(GeometryUtils, ClampReturnsValueInsideRange)
+{
+    double result = GeometryUtils::clamp(0.5, 0.0, 1.0);
+
+    EXPECT_DOUBLE_EQ(result, 0.5);
+}
+
+TEST(GeometryUtils, ClampReturnsMinimumWhenValueIsTooSmall)
+{
+    double result = GeometryUtils::clamp(-0.2, 0.0, 1.0);
+
+    EXPECT_DOUBLE_EQ(result, 0.0);
+}
+
+TEST(GeometryUtils, ClampReturnsMaximumWhenValueIsTooLarge)
+{
+    double result = GeometryUtils::clamp(1.4, 0.0, 1.0);
+
+    EXPECT_DOUBLE_EQ(result, 1.0);
+}

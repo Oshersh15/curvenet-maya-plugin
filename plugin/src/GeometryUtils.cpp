@@ -45,4 +45,23 @@ namespace GeometryUtils
 
         return length(direction);
     }
+
+    double GeometryUtils::clamp(
+        double value,
+        double minimum,
+        double maximum
+    )
+    {
+        if (value < minimum)
+        {
+            return minimum;
+        }
+
+        if (value > maximum)
+        {
+            return maximum;
+        }
+
+        return value;
+    }
 }

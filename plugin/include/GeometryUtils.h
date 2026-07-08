@@ -49,4 +49,16 @@ namespace GeometryUtils
         const Point3& a,
         const Point3& b
     );
+
+    /*
+        Restricts a value to the range [minimum, maximum].
+
+        If the value is smaller than the minimum, the minimum is returned.
+        If the value is larger than the maximum, the maximum is returned.
+    */
+    double clamp(
+        double value,
+        double minimum,
+        double maximum
+    );
 }
