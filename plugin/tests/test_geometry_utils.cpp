@@ -1,0 +1,15 @@
+#include "GeometryUtils.h"
+
+#include <gtest/gtest.h>
+
+TEST(GeometryUtils, SubtractReturnsVectorFromSecondPointToFirstPoint)
+{
+    Point3 a{5.0, 7.0, 2.0};
+    Point3 b{1.0, 4.0, 2.0};
+
+    Point3 result = GeometryUtils::subtract(a, b);
+
+    EXPECT_DOUBLE_EQ(result.x, 4.0);
+    EXPECT_DOUBLE_EQ(result.y, 3.0);
+    EXPECT_DOUBLE_EQ(result.z, 0.0);
+}

@@ -12,6 +12,7 @@ add_library(CurvenetPlugin SHARED
     src/CurvenetData.cpp
     src/MayaMeshConverter.cpp
     src/ProfileCurveSampler.cpp
+    src/GeometryUtils.cpp
 )
 
 target_include_directories(CurvenetPlugin PRIVATE
@@ -45,6 +46,8 @@ add_executable(HalfEdgeTests
     tests/test_halfedge.cpp
     tests/test_profile_curve_sampler.cpp
     src/ProfileCurveSampler.cpp
+    tests/test_geometry_utils.cpp
+    src/GeometryUtils.cpp
 )
 
 target_include_directories(HalfEdgeTests PRIVATE
