@@ -20,6 +20,21 @@ struct ClosestPointResult
 };
 
 /*
+    Stores the result of the shortest distance query between two
+    finite line segments.
+*/
+struct SegmentDistanceResult
+{
+    Point3 closestPointOnFirstSegment;
+    Point3 closestPointOnSecondSegment;
+
+    double firstSegmentT = 0.0;
+    double secondSegmentT = 0.0;
+
+    double distance = 0.0;
+};
+
+/*
     Utility functions for simple 3D geometry operations.
 
     These functions are independent from the Maya API so they can be
@@ -104,5 +119,15 @@ namespace GeometryUtils
         const Point3& point,
         const Point3& segmentStart,
         const Point3& segmentEnd
+    );
+
+    /*
+        Computes the shortest distance between two finite 3D segments.
+    */
+    SegmentDistanceResult segmentToSegmentDistance(
+        const Point3& firstSegmentStart,
+        const Point3& firstSegmentEnd,
+        const Point3& secondSegmentStart,
+        const Point3& secondSegmentEnd
     );
 }

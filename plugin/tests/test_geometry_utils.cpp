@@ -1,6 +1,7 @@
 #include "GeometryUtils.h"
 
 #include <gtest/gtest.h>
+#include <cmath>
 
 TEST(GeometryUtils, SubtractReturnsVectorFromSecondPointToFirstPoint)
 {
@@ -172,4 +173,103 @@ TEST(GeometryUtils, ClosestPointOnZeroLengthSegmentReturnsStart)
     EXPECT_DOUBLE_EQ(result.point.y, 2.0);
     EXPECT_DOUBLE_EQ(result.point.z, 2.0);
     EXPECT_DOUBLE_EQ(result.t, 0.0);
+}
+
+TEST(GeometryUtils, SegmentToSegmentDistanceIsZeroForIntersectingSegments)
+{
+    Point3 firstSegmentStart{0.0, 0.0, 0.0};
+    Point3 firstSegmentEnd{10.0, 0.0, 0.0};
+    Point3 secondSegmentStart{5.0, -5.0, 0.0};
+    Point3 secondSegmentEnd{5.0, 5.0, 0.0};
+
+    SegmentDistanceResult result =
+            GeometryUtils::segmentToSegmentDistance(
+                firstSegmentStart,
+                firstSegmentEnd,
+                secondSegmentStart,
+                secondSegmentEnd
+            );
+
+    EXPECT_DOUBLE_EQ(result.distance, 0.0);
+
+    EXPECT_DOUBLE_EQ(result.closestPointOnFirstSegment.x, 5.0);
+    EXPECT_DOUBLE_EQ(result.closestPointOnFirstSegment.y, 0.0);
+    EXPECT_DOUBLE_EQ(result.closestPointOnFirstSegment.z, 0.0);
+
+    EXPECT_DOUBLE_EQ(result.closestPointOnSecondSegment.x, 5.0);
+    EXPECT_DOUBLE_EQ(result.closestPointOnSecondSegment.y, 0.0);
+    EXPECT_DOUBLE_EQ(result.closestPointOnSecondSegment.z, 0.0);
+
+    EXPECT_DOUBLE_EQ(result.firstSegmentT, 0.5);
+    EXPECT_DOUBLE_EQ(result.secondSegmentT, 0.5);
+}
+
+TEST(GeometryUtils, SegmentToSegmentDistanceHandlesParallelSeparatedSegments)
+{
+    Point3 firstSegmentStart{0.0, 0.0, 0.0};
+    Point3 firstSegmentEnd{10.0, 0.0, 0.0};
+    Point3 secondSegmentStart{0.0, 2.0, 0.0};
+    Point3 secondSegmentEnd{10.0, 2.0, 0.0};
+
+    SegmentDistanceResult result =
+        GeometryUtils::segmentToSegmentDistance(
+            firstSegmentStart,
+            firstSegmentEnd,
+            secondSegmentStart,
+            secondSegmentEnd
+        );
+
+    EXPECT_DOUBLE_EQ(result.distance, 2.0);
+}
+
+TEST(GeometryUtils, SegmentToSegmentDistanceClampsToEndpoint)
+{
+    Point3 firstSegmentStart{0.0, 0.0, 0.0};
+    Point3 firstSegmentEnd{10.0, 0.0, 0.0};
+    Point3 secondSegmentStart{12.0, 2.0, 0.0};
+    Point3 secondSegmentEnd{12.0, 6.0, 0.0};
+
+    SegmentDistanceResult result =
+        GeometryUtils::segmentToSegmentDistance(
+            firstSegmentStart,
+            firstSegmentEnd,
+            secondSegmentStart,
+            secondSegmentEnd
+        );
+
+    EXPECT_DOUBLE_EQ(result.closestPointOnFirstSegment.x, 10.0);
+    EXPECT_DOUBLE_EQ(result.closestPointOnFirstSegment.y, 0.0);
+    EXPECT_DOUBLE_EQ(result.closestPointOnFirstSegment.z, 0.0);
+
+    EXPECT_DOUBLE_EQ(result.closestPointOnSecondSegment.x, 12.0);
+    EXPECT_DOUBLE_EQ(result.closestPointOnSecondSegment.y, 2.0);
+    EXPECT_DOUBLE_EQ(result.closestPointOnSecondSegment.z, 0.0);
+
+    EXPECT_DOUBLE_EQ(result.distance, std::sqrt(8.0));
+}
+
+TEST(GeometryUtils, SegmentToSegmentDistanceHandlesZeroLengthFirstSegment)
+{
+    Point3 firstSegmentStart{3.0, 0.0, 0.0};
+    Point3 firstSegmentEnd{3.0, 0.0, 0.0};
+    Point3 secondSegmentStart{0.0, 0.0, 0.0};
+    Point3 secondSegmentEnd{10.0, 0.0, 0.0};
+
+    SegmentDistanceResult result =
+        GeometryUtils::segmentToSegmentDistance(
+            firstSegmentStart,
+            firstSegmentEnd,
+            secondSegmentStart,
+            secondSegmentEnd
+        );
+
+    EXPECT_DOUBLE_EQ(result.distance, 0.0);
+
+    EXPECT_DOUBLE_EQ(result.closestPointOnFirstSegment.x, 3.0);
+    EXPECT_DOUBLE_EQ(result.closestPointOnFirstSegment.y, 0.0);
+    EXPECT_DOUBLE_EQ(result.closestPointOnFirstSegment.z, 0.0);
+
+    EXPECT_DOUBLE_EQ(result.closestPointOnSecondSegment.x, 3.0);
+    EXPECT_DOUBLE_EQ(result.closestPointOnSecondSegment.y, 0.0);
+    EXPECT_DOUBLE_EQ(result.closestPointOnSecondSegment.z, 0.0);
 }

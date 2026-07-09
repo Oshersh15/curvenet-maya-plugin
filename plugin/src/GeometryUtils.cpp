@@ -115,4 +115,94 @@ namespace GeometryUtils
             t
         };
     }
+
+    SegmentDistanceResult GeometryUtils::segmentToSegmentDistance(
+        const Point3& firstSegmentStart,
+        const Point3& firstSegmentEnd,
+        const Point3& secondSegmentStart,
+        const Point3& secondSegmentEnd
+    )
+    {
+        const Point3 firstDirection =
+            subtract(firstSegmentEnd, firstSegmentStart);
+
+        const Point3 secondDirection =
+            subtract(secondSegmentEnd, secondSegmentStart);
+
+        const Point3 startDifference =
+            subtract(firstSegmentStart, secondSegmentStart);
+
+        const double a = dot(firstDirection, firstDirection);
+        const double b = dot(firstDirection, secondDirection);
+        const double c = dot(secondDirection, secondDirection);
+        const double d = dot(firstDirection, startDifference);
+        const double e = dot(secondDirection, startDifference);
+
+        double firstT = 0.0;
+        double secondT = 0.0;
+
+        const double epsilon = 1e-8;
+
+        if (a <= epsilon && c <= epsilon)
+        {
+            firstT = 0.0;
+            secondT = 0.0;
+        }
+        else if (a <= epsilon)
+        {
+            firstT = 0.0;
+            secondT = clamp(e / c, 0.0, 1.0);
+        }
+        else if (c <= epsilon)
+        {
+            secondT = 0.0;
+            firstT = clamp(-d / a, 0.0, 1.0);
+        }
+        else
+        {
+            const double denominator = a * c - b * b;
+
+            if (denominator != 0.0)
+            {
+                firstT = clamp((b * e - c * d) / denominator, 0.0, 1.0);
+            }
+            else
+            {
+                firstT = 0.0;
+            }
+
+            secondT = (b * firstT + e) / c;
+
+            if (secondT < 0.0)
+            {
+                secondT = 0.0;
+                firstT = clamp(-d / a, 0.0, 1.0);
+            }
+            else if (secondT > 1.0)
+            {
+                secondT = 1.0;
+                firstT = clamp((b - d) / a, 0.0, 1.0);
+            }
+        }
+
+        const Point3 closestPointOnFirstSegment =
+            addScaled(firstSegmentStart, firstDirection, firstT);
+
+        const Point3 closestPointOnSecondSegment =
+            addScaled(secondSegmentStart, secondDirection, secondT);
+
+        const double distance =
+            pointToPointDistance(
+                closestPointOnFirstSegment,
+                closestPointOnSecondSegment
+            );
+
+        return SegmentDistanceResult{
+            closestPointOnFirstSegment,
+            closestPointOnSecondSegment,
+            firstT,
+            secondT,
+            distance
+        };
+    }
 }
