@@ -3,6 +3,23 @@
 #include "HalfEdge.h"
 
 /*
+    Stores the result of projecting a point onto a segment.
+
+    point:
+    - the closest point on the segment
+
+    t:
+    - the position along the segment
+    - 0 means the segment start
+    - 1 means the segment end
+*/
+struct ClosestPointResult
+{
+    Point3 point;
+    double t = 0.0;
+};
+
+/*
     Utility functions for simple 3D geometry operations.
 
     These functions are independent from the Maya API so they can be
@@ -73,5 +90,19 @@ namespace GeometryUtils
         const Point3& start,
         const Point3& direction,
         double scale
+    );
+
+    /*
+        Finds the closest point on a finite segment to a given point.
+
+        The returned t value describes where the closest point lies along
+        the segment:
+        - t = 0 at segmentStart
+        - t = 1 at segmentEnd
+    */
+    ClosestPointResult closestPointOnSegment(
+        const Point3& point,
+        const Point3& segmentStart,
+        const Point3& segmentEnd
     );
 }

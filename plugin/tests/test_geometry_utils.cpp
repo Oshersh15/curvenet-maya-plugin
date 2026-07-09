@@ -97,3 +97,79 @@ TEST(GeometryUtils, AddScaledAddsScaledDirectionToStartPoint)
     EXPECT_DOUBLE_EQ(result.y, 2.0);
     EXPECT_DOUBLE_EQ(result.z, 1.0);
 }
+
+TEST(GeometryUtils, ClosestPointOnSegmentReturnsPointInMiddle)
+{
+    Point3 point{5.0, 3.0, 0.0};
+    Point3 segmentStart{0.0, 0.0, 0.0};
+    Point3 segmentEnd{10.0, 0.0, 0.0};
+
+    ClosestPointResult result =
+        GeometryUtils::closestPointOnSegment(
+            point,
+            segmentStart,
+            segmentEnd
+        );
+
+    EXPECT_DOUBLE_EQ(result.point.x, 5.0);
+    EXPECT_DOUBLE_EQ(result.point.y, 0.0);
+    EXPECT_DOUBLE_EQ(result.point.z, 0.0);
+    EXPECT_DOUBLE_EQ(result.t, 0.5);
+}
+
+TEST(GeometryUtils, ClosestPointOnSegmentClampsToStart)
+{
+    Point3 point{-3.0, 2.0, 0.0};
+    Point3 segmentStart{0.0, 0.0, 0.0};
+    Point3 segmentEnd{10.0, 0.0, 0.0};
+
+    ClosestPointResult result =
+        GeometryUtils::closestPointOnSegment(
+            point,
+            segmentStart,
+            segmentEnd
+        );
+
+    EXPECT_DOUBLE_EQ(result.point.x, 0.0);
+    EXPECT_DOUBLE_EQ(result.point.y, 0.0);
+    EXPECT_DOUBLE_EQ(result.point.z, 0.0);
+    EXPECT_DOUBLE_EQ(result.t, 0.0);
+}
+
+TEST(GeometryUtils, ClosestPointOnSegmentClampsToEnd)
+{
+    Point3 point{13.0, 2.0, 0.0};
+    Point3 segmentStart{0.0, 0.0, 0.0};
+    Point3 segmentEnd{10.0, 0.0, 0.0};
+
+    ClosestPointResult result =
+        GeometryUtils::closestPointOnSegment(
+            point,
+            segmentStart,
+            segmentEnd
+        );
+
+    EXPECT_DOUBLE_EQ(result.point.x, 10.0);
+    EXPECT_DOUBLE_EQ(result.point.y, 0.0);
+    EXPECT_DOUBLE_EQ(result.point.z, 0.0);
+    EXPECT_DOUBLE_EQ(result.t, 1.0);
+}
+
+TEST(GeometryUtils, ClosestPointOnZeroLengthSegmentReturnsStart)
+{
+    Point3 point{5.0, 3.0, 0.0};
+    Point3 segmentStart{2.0, 2.0, 2.0};
+    Point3 segmentEnd{2.0, 2.0, 2.0};
+
+    ClosestPointResult result =
+        GeometryUtils::closestPointOnSegment(
+            point,
+            segmentStart,
+            segmentEnd
+        );
+
+    EXPECT_DOUBLE_EQ(result.point.x, 2.0);
+    EXPECT_DOUBLE_EQ(result.point.y, 2.0);
+    EXPECT_DOUBLE_EQ(result.point.z, 2.0);
+    EXPECT_DOUBLE_EQ(result.t, 0.0);
+}

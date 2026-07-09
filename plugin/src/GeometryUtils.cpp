@@ -77,4 +77,42 @@ namespace GeometryUtils
             start.z + direction.z * scale
         };
     }
+
+    ClosestPointResult GeometryUtils::closestPointOnSegment(
+        const Point3& point,
+        const Point3& segmentStart,
+        const Point3& segmentEnd
+    )
+    {
+        Point3 segmentDirection =
+            subtract(segmentEnd, segmentStart);
+
+        Point3 startToPoint =
+            subtract(point, segmentStart);
+
+        double segmentLengthSquared =
+            dot(segmentDirection, segmentDirection);
+
+        if (segmentLengthSquared <= 0.0)
+        {
+            return ClosestPointResult{
+                segmentStart,
+                0.0
+            };
+        }
+
+        double t =
+            dot(startToPoint, segmentDirection) /
+            segmentLengthSquared;
+
+        t = clamp(t, 0.0, 1.0);
+
+        Point3 closestPoint =
+            addScaled(segmentStart, segmentDirection, t);
+
+        return ClosestPointResult{
+            closestPoint,
+            t
+        };
+    }
 }
