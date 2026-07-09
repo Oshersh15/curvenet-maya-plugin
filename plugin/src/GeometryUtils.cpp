@@ -64,4 +64,17 @@ namespace GeometryUtils
 
         return value;
     }
+
+    Point3 GeometryUtils::addScaled(
+        const Point3& start,
+        const Point3& direction,
+        double scale
+    )
+    {
+        return Point3{
+            start.x + direction.x * scale,
+            start.y + direction.y * scale,
+            start.z + direction.z * scale
+        };
+    }
 }

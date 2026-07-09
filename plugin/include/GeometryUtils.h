@@ -61,4 +61,17 @@ namespace GeometryUtils
         double minimum,
         double maximum
     );
+
+    /*
+        Adds a scaled direction vector to a start point.
+
+        This is useful for evaluating a point along a segment:
+
+        result = start + direction * scale
+    */
+    Point3 addScaled(
+        const Point3& start,
+        const Point3& direction,
+        double scale
+    );
 }

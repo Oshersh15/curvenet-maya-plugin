@@ -84,3 +84,16 @@ TEST(GeometryUtils, ClampReturnsMaximumWhenValueIsTooLarge)
 
     EXPECT_DOUBLE_EQ(result, 1.0);
 }
+
+TEST(GeometryUtils, AddScaledAddsScaledDirectionToStartPoint)
+{
+    Point3 start{1.0, 2.0, 3.0};
+    Point3 direction{10.0, 0.0, -4.0};
+
+    Point3 result =
+        GeometryUtils::addScaled(start, direction, 0.5);
+
+    EXPECT_DOUBLE_EQ(result.x, 6.0);
+    EXPECT_DOUBLE_EQ(result.y, 2.0);
+    EXPECT_DOUBLE_EQ(result.z, 1.0);
+}
