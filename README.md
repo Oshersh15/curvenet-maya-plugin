@@ -41,6 +41,10 @@ The current implementation focuses on constructing the Curvenet and its relation
 - Multiple profile curves.
 - Curve connectivity detection.
 - Curve adjacency graph.
+- Dense profile curve sampling.
+- Uniform arc-length polyline generation.
+- Adaptive curve sampling based on mesh resolution.
+- Initial curve–mesh crossing detection.
 
 ### Half-Edge Topology
 
@@ -52,6 +56,17 @@ The current implementation focuses on constructing the Curvenet and its relation
 - Adjacent vertex traversal.
 - Twin edge detection.
 
+### Geometry Utilities
+
+- Point subtraction
+- Dot product
+- Vector length
+- Point-to-point distance
+- Value clamping
+- Point evaluation along a segment
+- Closest point on a segment
+- Segment-to-segment distance
+
 ### Maya Integration
 
 - Custom Maya deformer node.
@@ -59,12 +74,15 @@ The current implementation focuses on constructing the Curvenet and its relation
 - Mesh input attributes.
 - Automatic mesh conversion.
 - HalfEdgeMesh generation from Maya meshes.
+- Maya NURBS curve evaluation.
+- Adaptive sampling using mesh edge resolution.
 
 ### Testing
 
 - GoogleTest unit tests.
 - Face traversal tests.
 - Twin assignment tests.
+- Profile curve sampling tests.
 - Invalid input tests.
 
 ---
@@ -105,15 +123,21 @@ ctest --output-on-failure
 ### Implemented
 
 - Curvenet representation
+- Uniform arc-length curve sampling
+- Adaptive sampling density
 - Curve connectivity
 - Half-edge topology
 - Maya mesh conversion
+- Geometry utility library
+- Closest point on a segment
+- Segment-to-segment distance
+- Initial curve-mesh crossing detection
 - Twin detection
 - Unit testing
 
 ### In Progress
 
-- Curve-mesh intersection detection
+- Crossing record generation
 - Cut-point generation
 - Cut-path construction
 
