@@ -25,6 +25,7 @@
 #include <maya/MDagPath.h>
 #include <maya/MFnDagNode.h>
 #include "ProfileCurveSampler.h"
+#include "GeometryUtils.h"
 
 #include <vector>
 
@@ -278,6 +279,7 @@ public:
         curvenetData.clear();
 
         double meanMeshEdgeLength = 0.0;
+        HalfEdgeMesh mayaHalfEdgeMesh;
 
         MDataHandle meshHandle =
             dataBlock.inputValue(inputMesh, &status);
@@ -290,7 +292,7 @@ public:
             {
                 MFnMesh meshFn(meshObject);
 
-                HalfEdgeMesh mayaHalfEdgeMesh =
+                mayaHalfEdgeMesh =
                     MayaMeshConverter::buildFromMayaMesh(meshFn);
 
                 meanMeshEdgeLength =
@@ -393,6 +395,67 @@ public:
                     densePoints,
                     adaptiveSampleCount
                 );
+
+            std::vector<PolylineSegment> sampledSegments =
+                ProfileCurveSampler::buildPolylineSegments(sampledPoints);
+
+            const double crossingTolerance = 0.05;
+
+            for (int segmentIndex = 0;
+                 segmentIndex < static_cast<int>(sampledSegments.size());
+                 ++segmentIndex)
+            {
+                const PolylineSegment& curveSegment =
+                    sampledSegments[segmentIndex];
+
+                for (int halfEdgeIndex = 0;
+                     halfEdgeIndex < static_cast<int>(mayaHalfEdgeMesh.halfEdges.size());
+                     ++halfEdgeIndex)
+                {
+                    const HalfEdge& halfEdge =
+                        mayaHalfEdgeMesh.halfEdges[halfEdgeIndex];
+
+                    if (halfEdge.twin >= 0 &&
+                        halfEdgeIndex > halfEdge.twin)
+                    {
+                        continue;
+                    }
+
+                    if (halfEdge.startVertex < 0 ||
+                        halfEdge.startVertex >= static_cast<int>(mayaHalfEdgeMesh.vertices.size()) ||
+                        halfEdge.endVertex < 0 ||
+                        halfEdge.endVertex >= static_cast<int>(mayaHalfEdgeMesh.vertices.size()))
+                    {
+                        continue;
+                    }
+
+                    const Point3& meshEdgeStart =
+                        mayaHalfEdgeMesh.vertices[halfEdge.startVertex].position;
+
+                    const Point3& meshEdgeEnd =
+                        mayaHalfEdgeMesh.vertices[halfEdge.endVertex].position;
+
+                    SegmentDistanceResult distanceResult =
+                        GeometryUtils::segmentToSegmentDistance(
+                            curveSegment.start,
+                            curveSegment.end,
+                            meshEdgeStart,
+                            meshEdgeEnd
+                        );
+
+                    if (distanceResult.distance <= crossingTolerance)
+                    {
+                        MGlobal::displayInfo(
+                            MString("Potential crossing: curve segment ")
+                            + segmentIndex
+                            + " with half-edge "
+                            + halfEdgeIndex
+                            + ", distance = "
+                            + distanceResult.distance
+                        );
+                    }
+                }
+            }
 
             for (int segmentIndex = 0;
                  segmentIndex < static_cast<int>(sampledPoints.size()) - 1;
