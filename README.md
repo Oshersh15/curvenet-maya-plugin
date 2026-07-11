@@ -135,6 +135,8 @@ ctest --output-on-failure
 - Twin detection
 - Unit testing
 - First curve-mesh crossing detection
+- CutCrossing data representation
+- First crossing record storage
 
 ### In Progress
 

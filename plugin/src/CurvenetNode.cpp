@@ -404,6 +404,7 @@ public:
 
             FirstCrossingResult firstCrossing =
                 CurveMeshIntersector::findFirstCrossing(
+                    static_cast<int>(curveIndex),
                     sampledSegments,
                     mayaHalfEdgeMesh,
                     crossingTolerance
@@ -413,14 +414,18 @@ public:
             {
                 MGlobal::displayInfo(
                     MString("First crossing found:")
-                    + " curve segment "
-                    + firstCrossing.curveSegmentIndex
+                    + " curve "
+                    + firstCrossing.crossing.curveId
+                    + ", curve segment "
+                    + firstCrossing.crossing.curveSegmentId
+                    + ", face "
+                    + firstCrossing.crossing.faceId
                     + ", half-edge "
-                    + firstCrossing.halfEdgeIndex
+                    + firstCrossing.crossing.halfEdgeId
                     + ", position ("
-                    + firstCrossing.position.x + ", "
-                    + firstCrossing.position.y + ", "
-                    + firstCrossing.position.z + ")"
+                    + firstCrossing.crossing.position.x + ", "
+                    + firstCrossing.crossing.position.y + ", "
+                    + firstCrossing.crossing.position.z + ")"
                     + ", distance "
                     + firstCrossing.distance
                 );

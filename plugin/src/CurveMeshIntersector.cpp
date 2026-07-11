@@ -3,10 +3,12 @@
 #include "GeometryUtils.h"
 
 FirstCrossingResult CurveMeshIntersector::findFirstCrossing(
+    int curveId,
     const std::vector<PolylineSegment>& curveSegments,
     const HalfEdgeMesh& mesh,
     double tolerance
 )
+
 {
     FirstCrossingResult result;
 
@@ -55,10 +57,14 @@ FirstCrossingResult CurveMeshIntersector::findFirstCrossing(
             if (distanceResult.distance <= tolerance)
             {
                 result.found = true;
-                result.curveSegmentIndex = curveSegmentIndex;
-                result.halfEdgeIndex = halfEdgeIndex;
-                result.position =
+
+                result.crossing.curveId = curveId;
+                result.crossing.curveSegmentId = curveSegmentIndex;
+                result.crossing.faceId = halfEdge.face;
+                result.crossing.halfEdgeId = halfEdgeIndex;
+                result.crossing.position =
                     distanceResult.closestPointOnSecondSegment;
+
                 result.distance = distanceResult.distance;
 
                 return result;

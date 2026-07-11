@@ -2,6 +2,7 @@
 
 #include "HalfEdge.h"
 #include "ProfileCurveSampler.h"
+#include "CutCrossing.h"
 
 /*
     Stores the result of searching for the first crossing between
@@ -14,9 +15,9 @@
 struct FirstCrossingResult
 {
     bool found = false;
-    int curveSegmentIndex = -1;
-    int halfEdgeIndex = -1;
-    Point3 position;
+
+    CutCrossing crossing;
+
     double distance = 0.0;
 };
 
@@ -33,6 +34,7 @@ public:
         tolerance of a unique mesh edge is found.
     */
     static FirstCrossingResult findFirstCrossing(
+        int curveId,
         const std::vector<PolylineSegment>& curveSegments,
         const HalfEdgeMesh& mesh,
         double tolerance
