@@ -26,6 +26,7 @@
 #include <maya/MFnDagNode.h>
 #include "ProfileCurveSampler.h"
 #include "GeometryUtils.h"
+#include "CurveMeshIntersector.h"
 
 #include <vector>
 
@@ -401,80 +402,32 @@ public:
 
             const double crossingTolerance = 0.05;
 
-            for (int segmentIndex = 0;
-                 segmentIndex < static_cast<int>(sampledSegments.size());
-                 ++segmentIndex)
-            {
-                const PolylineSegment& curveSegment =
-                    sampledSegments[segmentIndex];
-
-                for (int halfEdgeIndex = 0;
-                     halfEdgeIndex < static_cast<int>(mayaHalfEdgeMesh.halfEdges.size());
-                     ++halfEdgeIndex)
-                {
-                    const HalfEdge& halfEdge =
-                        mayaHalfEdgeMesh.halfEdges[halfEdgeIndex];
-
-                    if (halfEdge.twin >= 0 &&
-                        halfEdgeIndex > halfEdge.twin)
-                    {
-                        continue;
-                    }
-
-                    if (halfEdge.startVertex < 0 ||
-                        halfEdge.startVertex >= static_cast<int>(mayaHalfEdgeMesh.vertices.size()) ||
-                        halfEdge.endVertex < 0 ||
-                        halfEdge.endVertex >= static_cast<int>(mayaHalfEdgeMesh.vertices.size()))
-                    {
-                        continue;
-                    }
-
-                    const Point3& meshEdgeStart =
-                        mayaHalfEdgeMesh.vertices[halfEdge.startVertex].position;
-
-                    const Point3& meshEdgeEnd =
-                        mayaHalfEdgeMesh.vertices[halfEdge.endVertex].position;
-
-                    SegmentDistanceResult distanceResult =
-                        GeometryUtils::segmentToSegmentDistance(
-                            curveSegment.start,
-                            curveSegment.end,
-                            meshEdgeStart,
-                            meshEdgeEnd
-                        );
-
-                    if (distanceResult.distance <= crossingTolerance)
-                    {
-                        MGlobal::displayInfo(
-                            MString("Potential crossing: curve segment ")
-                            + segmentIndex
-                            + " with half-edge "
-                            + halfEdgeIndex
-                            + ", distance = "
-                            + distanceResult.distance
-                        );
-                    }
-                }
-            }
-
-            for (int segmentIndex = 0;
-                 segmentIndex < static_cast<int>(sampledPoints.size()) - 1;
-                 ++segmentIndex)
-            {
-                const Point3& startPoint = sampledPoints[segmentIndex];
-                const Point3& endPoint = sampledPoints[segmentIndex + 1];
-
-                MGlobal::displayInfo(
-                    MString("Segment ")
-                    + segmentIndex
-                    + ": ("
-                    + startPoint.x + ", "
-                    + startPoint.y + ", "
-                    + startPoint.z + ") -> ("
-                    + endPoint.x + ", "
-                    + endPoint.y + ", "
-                    + endPoint.z + ")"
+            FirstCrossingResult firstCrossing =
+                CurveMeshIntersector::findFirstCrossing(
+                    sampledSegments,
+                    mayaHalfEdgeMesh,
+                    crossingTolerance
                 );
+
+            if (firstCrossing.found)
+            {
+                MGlobal::displayInfo(
+                    MString("First crossing found:")
+                    + " curve segment "
+                    + firstCrossing.curveSegmentIndex
+                    + ", half-edge "
+                    + firstCrossing.halfEdgeIndex
+                    + ", position ("
+                    + firstCrossing.position.x + ", "
+                    + firstCrossing.position.y + ", "
+                    + firstCrossing.position.z + ")"
+                    + ", distance "
+                    + firstCrossing.distance
+                );
+            }
+            else
+            {
+                MGlobal::displayInfo("No curve-mesh crossing found.");
             }
 
             MGlobal::displayInfo(

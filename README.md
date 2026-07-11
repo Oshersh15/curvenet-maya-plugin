@@ -134,6 +134,7 @@ ctest --output-on-failure
 - Initial curve-mesh crossing detection
 - Twin detection
 - Unit testing
+- First curve-mesh crossing detection
 
 ### In Progress
 
