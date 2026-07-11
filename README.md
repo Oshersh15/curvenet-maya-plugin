@@ -137,6 +137,9 @@ ctest --output-on-failure
 - First curve-mesh crossing detection
 - CutCrossing data representation
 - First crossing record storage
+- Multiple curve-mesh crossing detection
+- Duplicate crossing filtering
+- Ordered CutCrossing storage
 
 ### In Progress
 

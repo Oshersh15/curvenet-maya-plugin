@@ -39,4 +39,18 @@ public:
         const HalfEdgeMesh& mesh,
         double tolerance
     );
+
+    /*
+        Finds all distinct crossings between a sampled profile curve
+        and a half-edge mesh.
+
+        Crossings are returned in curve-segment order.
+    */
+    static std::vector<CutCrossing> findAllCrossings(
+        int curveId,
+        const std::vector<PolylineSegment>& curveSegments,
+        const HalfEdgeMesh& mesh,
+        double crossingTolerance,
+        double duplicateTolerance
+    );
 };

@@ -400,39 +400,61 @@ public:
             std::vector<PolylineSegment> sampledSegments =
                 ProfileCurveSampler::buildPolylineSegments(sampledPoints);
 
-            const double crossingTolerance = 0.05;
+            for (int segmentIndex = 0;
+                 segmentIndex < static_cast<int>(sampledSegments.size());
+                 ++segmentIndex)
+            {
+                const PolylineSegment& segment =
+                    sampledSegments[segmentIndex];
 
-            FirstCrossingResult firstCrossing =
-                CurveMeshIntersector::findFirstCrossing(
+                MGlobal::displayInfo(
+                    MString("Segment ")
+                    + segmentIndex
+                    + ": ("
+                    + segment.start.x + ", "
+                    + segment.start.y + ", "
+                    + segment.start.z + ") -> ("
+                    + segment.end.x + ", "
+                    + segment.end.y + ", "
+                    + segment.end.z + ")"
+                );
+            }
+
+            const double crossingTolerance = 0.0501;
+
+            const double duplicateTolerance = 0.0001;
+
+            std::vector<CutCrossing> crossings =
+                CurveMeshIntersector::findAllCrossings(
                     static_cast<int>(curveIndex),
                     sampledSegments,
                     mayaHalfEdgeMesh,
-                    crossingTolerance
+                    crossingTolerance,
+                    duplicateTolerance
                 );
 
-            if (firstCrossing.found)
+            MGlobal::displayInfo(
+                MString("Crossings found: ")
+                + static_cast<int>(crossings.size())
+            );
+
+            for (const CutCrossing& crossing : crossings)
             {
                 MGlobal::displayInfo(
-                    MString("First crossing found:")
+                    MString("Crossing:")
                     + " curve "
-                    + firstCrossing.crossing.curveId
+                    + crossing.curveId
                     + ", curve segment "
-                    + firstCrossing.crossing.curveSegmentId
+                    + crossing.curveSegmentId
                     + ", face "
-                    + firstCrossing.crossing.faceId
+                    + crossing.faceId
                     + ", half-edge "
-                    + firstCrossing.crossing.halfEdgeId
+                    + crossing.halfEdgeId
                     + ", position ("
-                    + firstCrossing.crossing.position.x + ", "
-                    + firstCrossing.crossing.position.y + ", "
-                    + firstCrossing.crossing.position.z + ")"
-                    + ", distance "
-                    + firstCrossing.distance
+                    + crossing.position.x + ", "
+                    + crossing.position.y + ", "
+                    + crossing.position.z + ")"
                 );
-            }
-            else
-            {
-                MGlobal::displayInfo("No curve-mesh crossing found.");
             }
 
             MGlobal::displayInfo(
