@@ -85,6 +85,13 @@ The current implementation focuses on constructing the Curvenet and its relation
 - Profile curve sampling tests.
 - Invalid input tests.
 
+### Debug Visualisation
+
+- Maya command for generating Curvenet debug geometry.
+- Degree-1 visualisation of sampled profile-curve polylines.
+- Locator markers for detected curve-mesh crossings.
+- Automatic replacement of existing debug objects.
+
 ---
 
 ## Technologies
@@ -140,6 +147,9 @@ ctest --output-on-failure
 - Multiple curve-mesh crossing detection
 - Duplicate crossing filtering
 - Ordered CutCrossing storage
+- Curvenet debug visualiser
+- Sampled polyline viewport display
+- Curve-mesh crossing markers
 
 ### In Progress
 

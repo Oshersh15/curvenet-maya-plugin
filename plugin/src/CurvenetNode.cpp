@@ -28,6 +28,7 @@
 #include "ProfileCurveSampler.h"
 #include "GeometryUtils.h"
 #include "CurveMeshIntersector.h"
+#include "CurvenetDebugCommand.h"
 
 #include <vector>
 
@@ -602,6 +603,20 @@ MStatus initializePlugin(MObject pluginObject)
         MPxNode::kDeformerNode
     );
 
+    status = plugin.registerCommand(
+        CurvenetDebugCommand::commandName,
+        CurvenetDebugCommand::creator
+    );
+
+    if (!status)
+    {
+        status.perror(
+            "Failed to register visualizeCurvenetDebug command"
+        );
+
+        return status;
+    }
+
     if (!status)
     {
         status.perror("Failed to register curvenetNode");
@@ -614,6 +629,19 @@ MStatus uninitializePlugin(MObject pluginObject)
 {
     MStatus status;
     MFnPlugin plugin(pluginObject);
+
+    status = plugin.deregisterCommand(
+        CurvenetDebugCommand::commandName
+    );
+
+    if (!status)
+    {
+        status.perror(
+            "Failed to deregister visualizeCurvenetDebug command"
+        );
+
+        return status;
+    }
 
     if (!status)
     {

@@ -14,6 +14,7 @@ add_library(CurvenetPlugin SHARED
     src/ProfileCurveSampler.cpp
     src/GeometryUtils.cpp
     src/CurveMeshIntersector.cpp
+    src/CurvenetDebugCommand.cpp
 )
 
 target_include_directories(CurvenetPlugin PRIVATE
