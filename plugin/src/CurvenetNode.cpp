@@ -1,3 +1,4 @@
+#include "CurvenetNode.h"
 #include "CurvenetData.h"
 
 #include <maya/MFnPlugin.h>
@@ -178,402 +179,410 @@ std::vector<Point3> buildDenseCurvePoints(
     return densePoints;
 }
 
-class CurveDeformerNode : public MPxDeformerNode
+void* CurveDeformerNode::creator()
 {
-public:
-    CurveDeformerNode() = default;
-    ~CurveDeformerNode() override = default;
+    return new CurveDeformerNode();
+}
 
-    static void* creator()
+MStatus CurveDeformerNode::initialize()
+{
+    MStatus status;
+
+    MFnTypedAttribute typedAttr;
+
+    inputCurves = typedAttr.create(
+        "inputCurves",
+        "ics",
+        MFnData::kNurbsCurve,
+        &status
+    );
+
+    if (!status)
     {
-        return new CurveDeformerNode();
+        status.perror("Failed to create inputCurves attribute");
+        return status;
     }
 
-    static MStatus initialize()
+    typedAttr.setStorable(false);
+    typedAttr.setReadable(false);
+    typedAttr.setWritable(true);
+    typedAttr.setConnectable(true);
+    typedAttr.setArray(true);
+    typedAttr.setUsesArrayDataBuilder(true);
+
+    status = addAttribute(inputCurves);
+
+    if (!status)
     {
-        MStatus status;
+        status.perror("Failed to add inputCurves attribute");
+        return status;
+    }
 
-        MFnTypedAttribute typedAttr;
+    status = attributeAffects(inputCurves, outputGeom);
 
-        inputCurves = typedAttr.create(
-            "inputCurves",
-            "ics",
-            MFnData::kNurbsCurve,
-            &status
-        );
+    if (!status)
+    {
+        status.perror("Failed to set attributeAffects for inputCurves");
+        return status;
+    }
 
-        if (!status)
+    inputMesh = typedAttr.create(
+        "inputMesh",
+        "im",
+        MFnData::kMesh,
+        &status
+    );
+
+    if (!status)
+    {
+        status.perror("Failed to create inputMesh");
+        return status;
+    }
+
+    typedAttr.setStorable(false);
+    typedAttr.setReadable(false);
+    typedAttr.setWritable(true);
+    typedAttr.setConnectable(true);
+
+    status = addAttribute(inputMesh);
+
+    if (!status)
+    {
+        status.perror("Failed to add inputMesh");
+        return status;
+    }
+
+    status = attributeAffects(inputMesh, outputGeom);
+
+    if (!status)
+    {
+        status.perror("Failed to set attributeAffects for inputMesh");
+        return status;
+    }
+
+    return MS::kSuccess;
+}
+
+MStatus CurveDeformerNode::deform(
+MDataBlock& dataBlock,
+MItGeometry& geoIterator,
+const MMatrix& localToWorldMatrix,
+unsigned int geometryIndex
+)
+{
+    MStatus status;
+
+    curvenetData.clear();
+    debugSampledCurves.clear();
+    debugCrossings.clear();
+
+    double meanMeshEdgeLength = 0.0;
+    HalfEdgeMesh mayaHalfEdgeMesh;
+
+    MDataHandle meshHandle =
+        dataBlock.inputValue(inputMesh, &status);
+
+    if (status)
+    {
+        MObject meshObject = meshHandle.asMesh();
+
+        if (!meshObject.isNull())
         {
-            status.perror("Failed to create inputCurves attribute");
-            return status;
+            MFnMesh meshFn(meshObject);
+
+            mayaHalfEdgeMesh =
+                MayaMeshConverter::buildFromMayaMesh(meshFn);
+
+            meanMeshEdgeLength =
+                mayaHalfEdgeMesh.computeMeanEdgeLength();
+
+            MGlobal::displayInfo(
+                MString("Mean mesh edge length: ")
+                + meanMeshEdgeLength
+            );
         }
+    }
 
-        typedAttr.setStorable(false);
-        typedAttr.setReadable(false);
-        typedAttr.setWritable(true);
-        typedAttr.setConnectable(true);
-        typedAttr.setArray(true);
-        typedAttr.setUsesArrayDataBuilder(true);
+    MArrayDataHandle curveArrayHandle =
+        dataBlock.inputArrayValue(inputCurves, &status);
 
-        status = addAttribute(inputCurves);
-
-        if (!status)
-        {
-            status.perror("Failed to add inputCurves attribute");
-            return status;
-        }
-
-        status = attributeAffects(inputCurves, outputGeom);
-
-        if (!status)
-        {
-            status.perror("Failed to set attributeAffects for inputCurves");
-            return status;
-        }
-
-        inputMesh = typedAttr.create(
-            "inputMesh",
-            "im",
-            MFnData::kMesh,
-            &status
-        );
-
-        if (!status)
-        {
-            status.perror("Failed to create inputMesh");
-            return status;
-        }
-
-        typedAttr.setStorable(false);
-        typedAttr.setReadable(false);
-        typedAttr.setWritable(true);
-        typedAttr.setConnectable(true);
-
-        status = addAttribute(inputMesh);
-
-        if (!status)
-        {
-            status.perror("Failed to add inputMesh");
-            return status;
-        }
-
-        status = attributeAffects(inputMesh, outputGeom);
-
-        if (!status)
-        {
-            status.perror("Failed to set attributeAffects for inputMesh");
-            return status;
-        }
-
+    if (!status)
+    {
         return MS::kSuccess;
     }
 
-    MStatus deform(
-        MDataBlock& dataBlock,
-        MItGeometry& geoIterator,
-        const MMatrix& localToWorldMatrix,
-        unsigned int geometryIndex
-    ) override
+    unsigned int numConnectedCurves = curveArrayHandle.elementCount();
+
+    for (unsigned int curveIndex = 0; curveIndex < numConnectedCurves; ++curveIndex)
     {
-        MStatus status;
-
-        curvenetData.clear();
-
-        double meanMeshEdgeLength = 0.0;
-        HalfEdgeMesh mayaHalfEdgeMesh;
-
-        MDataHandle meshHandle =
-            dataBlock.inputValue(inputMesh, &status);
-
-        if (status)
-        {
-            MObject meshObject = meshHandle.asMesh();
-
-            if (!meshObject.isNull())
-            {
-                MFnMesh meshFn(meshObject);
-
-                mayaHalfEdgeMesh =
-                    MayaMeshConverter::buildFromMayaMesh(meshFn);
-
-                meanMeshEdgeLength =
-                    mayaHalfEdgeMesh.computeMeanEdgeLength();
-
-                MGlobal::displayInfo(
-                    MString("Mean mesh edge length: ")
-                    + meanMeshEdgeLength
-                );
-            }
-        }
-
-        MArrayDataHandle curveArrayHandle =
-            dataBlock.inputArrayValue(inputCurves, &status);
+        status = curveArrayHandle.jumpToArrayElement(curveIndex);
 
         if (!status)
         {
-            return MS::kSuccess;
+            continue;
         }
 
-        unsigned int numConnectedCurves = curveArrayHandle.elementCount();
+        MDataHandle curveHandle = curveArrayHandle.inputValue(&status);
 
-        for (unsigned int curveIndex = 0; curveIndex < numConnectedCurves; ++curveIndex)
+        if (!status)
         {
-            status = curveArrayHandle.jumpToArrayElement(curveIndex);
-
-            if (!status)
-            {
-                continue;
-            }
-
-            MDataHandle curveHandle = curveArrayHandle.inputValue(&status);
-
-            if (!status)
-            {
-                continue;
-            }
-
-            MObject curveObject = curveHandle.asNurbsCurve();
-
-            if (curveObject.isNull())
-            {
-                continue;
-            }
-
-            MFnNurbsCurve curveFn(curveObject, &status);
-
-            if (!status)
-            {
-                continue;
-            }
-
-            std::vector<MPoint> cvPositions;
-            std::vector<Point3> controlPoints;
-
-            unsigned int numCVs = curveFn.numCVs();
-
-            for (unsigned int cvIndex = 0; cvIndex < numCVs; ++cvIndex)
-            {
-                MPoint cvPosition;
-                curveFn.getCV(cvIndex, cvPosition);
-                cvPositions.push_back(cvPosition);
-
-                controlPoints.push_back(Point3{
-                    cvPosition.x,
-                    cvPosition.y,
-                    cvPosition.z
-                });
-            }
-
-            curvenetData.addCurve(curveObject, cvPositions);
-
-            std::vector<Point3> densePoints =
-                buildDenseCurvePoints(curveFn, 200);
-
-            const double controlPolygonLength =
-                ProfileCurveSampler::computeControlPolygonLength(controlPoints);
-
-            const int densityMultiplier = 5;
-
-            const int adaptiveSampleCount =
-                ProfileCurveSampler::computeAdaptiveSampleCount(
-                    controlPolygonLength,
-                    meanMeshEdgeLength,
-                    densityMultiplier
-                );
-
-            MGlobal::displayInfo(
-                MString("Control polygon length: ")
-                + controlPolygonLength
-            );
-
-            MGlobal::displayInfo(
-                MString("Adaptive sample count: ")
-                + adaptiveSampleCount
-            );
-
-            std::vector<Point3> sampledPoints =
-                ProfileCurveSampler::sampleByArcLength(
-                    densePoints,
-                    adaptiveSampleCount
-                );
-
-            std::vector<PolylineSegment> sampledSegments =
-                ProfileCurveSampler::buildPolylineSegments(sampledPoints);
-
-            for (int segmentIndex = 0;
-                 segmentIndex < static_cast<int>(sampledSegments.size());
-                 ++segmentIndex)
-            {
-                const PolylineSegment& segment =
-                    sampledSegments[segmentIndex];
-
-                MGlobal::displayInfo(
-                    MString("Segment ")
-                    + segmentIndex
-                    + ": ("
-                    + segment.start.x + ", "
-                    + segment.start.y + ", "
-                    + segment.start.z + ") -> ("
-                    + segment.end.x + ", "
-                    + segment.end.y + ", "
-                    + segment.end.z + ")"
-                );
-            }
-
-            const double crossingTolerance = 0.0501;
-
-            const double duplicateTolerance = 0.0001;
-
-            std::vector<CutCrossing> crossings =
-                CurveMeshIntersector::findAllCrossings(
-                    static_cast<int>(curveIndex),
-                    sampledSegments,
-                    mayaHalfEdgeMesh,
-                    crossingTolerance,
-                    duplicateTolerance
-                );
-
-            MGlobal::displayInfo(
-                MString("Crossings found: ")
-                + static_cast<int>(crossings.size())
-            );
-
-            for (const CutCrossing& crossing : crossings)
-            {
-                MGlobal::displayInfo(
-                    MString("Crossing:")
-                    + " curve "
-                    + crossing.curveId
-                    + ", curve segment "
-                    + crossing.curveSegmentId
-                    + ", face "
-                    + crossing.faceId
-                    + ", half-edge "
-                    + crossing.halfEdgeId
-                    + ", position ("
-                    + crossing.position.x + ", "
-                    + crossing.position.y + ", "
-                    + crossing.position.z + ")"
-                );
-            }
-
-            MGlobal::displayInfo(
-                MString("Dense curve points: ")
-                + static_cast<int>(densePoints.size())
-            );
-
-            MGlobal::displayInfo(
-                MString("Arc-length sampled points: ")
-                + static_cast<int>(sampledPoints.size())
-            );
+            continue;
         }
 
+        MObject curveObject = curveHandle.asNurbsCurve();
 
+        if (curveObject.isNull())
+        {
+            continue;
+        }
 
-        curvenetData.detectConnections(0.001);
+        MFnNurbsCurve curveFn(curveObject, &status);
+
+        if (!status)
+        {
+            continue;
+        }
+
+        std::vector<MPoint> cvPositions;
+        std::vector<Point3> controlPoints;
+
+        unsigned int numCVs = curveFn.numCVs();
+
+        for (unsigned int cvIndex = 0; cvIndex < numCVs; ++cvIndex)
+        {
+            MPoint cvPosition;
+            curveFn.getCV(cvIndex, cvPosition);
+            cvPositions.push_back(cvPosition);
+
+            controlPoints.push_back(Point3{
+                cvPosition.x,
+                cvPosition.y,
+                cvPosition.z
+            });
+        }
+
+        curvenetData.addCurve(curveObject, cvPositions);
+
+        std::vector<Point3> densePoints =
+            buildDenseCurvePoints(curveFn, 200);
+
+        const double controlPolygonLength =
+            ProfileCurveSampler::computeControlPolygonLength(controlPoints);
+
+        const int densityMultiplier = 5;
+
+        const int adaptiveSampleCount =
+            ProfileCurveSampler::computeAdaptiveSampleCount(
+                controlPolygonLength,
+                meanMeshEdgeLength,
+                densityMultiplier
+            );
 
         MGlobal::displayInfo(
-            MString("Curvenet contains ")
-            + curvenetData.getCurveCount()
-            + " profile curves."
+            MString("Control polygon length: ")
+            + controlPolygonLength
         );
 
-        const auto& curves = curvenetData.getCurves();
+        MGlobal::displayInfo(
+            MString("Adaptive sample count: ")
+            + adaptiveSampleCount
+        );
 
-        for (const auto& curve : curves)
+        std::vector<Point3> sampledPoints =
+            ProfileCurveSampler::sampleByArcLength(
+                densePoints,
+                adaptiveSampleCount
+            );
+
+        debugSampledCurves.push_back(sampledPoints);
+
+        std::vector<PolylineSegment> sampledSegments =
+            ProfileCurveSampler::buildPolylineSegments(sampledPoints);
+
+        for (int segmentIndex = 0;
+             segmentIndex < static_cast<int>(sampledSegments.size());
+             ++segmentIndex)
         {
-            MGlobal::displayInfo(
-                MString("Curve ")
-                + curve.id
-                + " has "
-                + static_cast<int>(curve.restCVPositions.size())
-                + " CVs."
-            );
+            const PolylineSegment& segment =
+                sampledSegments[segmentIndex];
 
             MGlobal::displayInfo(
-                MString("    Start: (")
-                + curve.startPoint.x + ", "
-                + curve.startPoint.y + ", "
-                + curve.startPoint.z + ")"
-            );
-
-            MGlobal::displayInfo(
-                MString("    End: (")
-                + curve.endPoint.x + ", "
-                + curve.endPoint.y + ", "
-                + curve.endPoint.z + ")"
-            );
-        }
-
-        const auto& connections = curvenetData.getConnections();
-
-        for (const auto& connection : connections)
-        {
-            auto endpointToString = [](CurveEndpoint endpoint)
-            {
-                return endpoint == CurveEndpoint::Start ? "start" : "end";
-            };
-
-            MGlobal::displayInfo(
-                MString("Connection found: Curve ")
-                + connection.firstCurveId
-                + " "
-                + endpointToString(connection.firstEndpoint)
-                + " -> Curve "
-                + connection.secondCurveId
-                + " "
-                + endpointToString(connection.secondEndpoint)
+                MString("Segment ")
+                + segmentIndex
+                + ": ("
+                + segment.start.x + ", "
+                + segment.start.y + ", "
+                + segment.start.z + ") -> ("
+                + segment.end.x + ", "
+                + segment.end.y + ", "
+                + segment.end.z + ")"
             );
         }
 
-        for (const auto& curve : curves)
+        const double crossingTolerance = 0.0501;
+
+        const double duplicateTolerance = 0.0001;
+
+        std::vector<CutCrossing> crossings =
+            CurveMeshIntersector::findAllCrossings(
+                static_cast<int>(curveIndex),
+                sampledSegments,
+                mayaHalfEdgeMesh,
+                crossingTolerance,
+                duplicateTolerance
+            );
+
+        debugCrossings.insert(
+            debugCrossings.end(),
+            crossings.begin(),
+            crossings.end()
+        );
+
+        MGlobal::displayInfo(
+            MString("Crossings found: ")
+            + static_cast<int>(crossings.size())
+        );
+
+        for (const CutCrossing& crossing : crossings)
         {
-            std::vector<int> connected =
-                curvenetData.getConnectedCurves(curve.id);
-
-            MString message =
-                MString("Curve ")
-                + curve.id
-                + " connected to: ";
-
-            for (int id : connected)
-            {
-                message += id;
-                message += " ";
-            }
-
-            MGlobal::displayInfo(message);
+            MGlobal::displayInfo(
+                MString("Crossing:")
+                + " curve "
+                + crossing.curveId
+                + ", curve segment "
+                + crossing.curveSegmentId
+                + ", face "
+                + crossing.faceId
+                + ", half-edge "
+                + crossing.halfEdgeId
+                + ", position ("
+                + crossing.position.x + ", "
+                + crossing.position.y + ", "
+                + crossing.position.z + ")"
+            );
         }
 
-        // print Curvenet connections here
-        // print connected curves here
+        MGlobal::displayInfo(
+            MString("Dense curve points: ")
+            + static_cast<int>(densePoints.size())
+        );
 
-        HalfEdgeMesh mesh;
-        mesh.createTestQuad();
-
-        std::vector<int> traversal = mesh.traverseFace(0);
-
-        MString traversalMessage("Face traversal: ");
-
-        for (int edge : traversal)
-        {
-            traversalMessage += edge;
-            traversalMessage += " ";
-        }
-
-        MGlobal::displayInfo(traversalMessage);
-
-        return MS::kSuccess;
+        MGlobal::displayInfo(
+            MString("Arc-length sampled points: ")
+            + static_cast<int>(sampledPoints.size())
+        );
     }
 
-    static MTypeId id;
-    static MString nodeName;
-    static MObject inputCurves;
-    static MObject inputMesh;
 
-private:
-    CurvenetData curvenetData;
-};
+
+    curvenetData.detectConnections(0.001);
+
+    MGlobal::displayInfo(
+        MString("Curvenet contains ")
+        + curvenetData.getCurveCount()
+        + " profile curves."
+    );
+
+    const auto& curves = curvenetData.getCurves();
+
+    for (const auto& curve : curves)
+    {
+        MGlobal::displayInfo(
+            MString("Curve ")
+            + curve.id
+            + " has "
+            + static_cast<int>(curve.restCVPositions.size())
+            + " CVs."
+        );
+
+        MGlobal::displayInfo(
+            MString("    Start: (")
+            + curve.startPoint.x + ", "
+            + curve.startPoint.y + ", "
+            + curve.startPoint.z + ")"
+        );
+
+        MGlobal::displayInfo(
+            MString("    End: (")
+            + curve.endPoint.x + ", "
+            + curve.endPoint.y + ", "
+            + curve.endPoint.z + ")"
+        );
+    }
+
+    const auto& connections = curvenetData.getConnections();
+
+    for (const auto& connection : connections)
+    {
+        auto endpointToString = [](CurveEndpoint endpoint)
+        {
+            return endpoint == CurveEndpoint::Start ? "start" : "end";
+        };
+
+        MGlobal::displayInfo(
+            MString("Connection found: Curve ")
+            + connection.firstCurveId
+            + " "
+            + endpointToString(connection.firstEndpoint)
+            + " -> Curve "
+            + connection.secondCurveId
+            + " "
+            + endpointToString(connection.secondEndpoint)
+        );
+    }
+
+    for (const auto& curve : curves)
+    {
+        std::vector<int> connected =
+            curvenetData.getConnectedCurves(curve.id);
+
+        MString message =
+            MString("Curve ")
+            + curve.id
+            + " connected to: ";
+
+        for (int id : connected)
+        {
+            message += id;
+            message += " ";
+        }
+
+        MGlobal::displayInfo(message);
+    }
+
+    // print Curvenet connections here
+    // print connected curves here
+
+    HalfEdgeMesh mesh;
+    mesh.createTestQuad();
+
+    std::vector<int> traversal = mesh.traverseFace(0);
+
+    MString traversalMessage("Face traversal: ");
+
+    for (int edge : traversal)
+    {
+        traversalMessage += edge;
+        traversalMessage += " ";
+    }
+
+    MGlobal::displayInfo(traversalMessage);
+
+    return MS::kSuccess;
+}
+
+const std::vector<std::vector<Point3>>&
+CurveDeformerNode::getDebugSampledCurves() const
+{
+    return debugSampledCurves;
+}
+
+const std::vector<CutCrossing>&
+CurveDeformerNode::getDebugCrossings() const
+{
+    return debugCrossings;
+}
+
 
 MTypeId CurveDeformerNode::id(0x001226C1);
 MString CurveDeformerNode::nodeName("curvenetNode");
