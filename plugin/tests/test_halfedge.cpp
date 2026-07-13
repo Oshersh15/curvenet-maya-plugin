@@ -120,3 +120,28 @@ TEST(HalfEdgeMesh, EmptyMeshMeanEdgeLengthIsZero)
 
     EXPECT_DOUBLE_EQ(meanEdgeLength, 0.0);
 }
+
+TEST(HalfEdgeMesh, CollectUniqueVerticesFromFaces)
+{
+    HalfEdgeMesh mesh;
+    mesh.createTwoQuadMesh();
+
+    std::vector<int> faceIds{
+        0,
+        1
+    };
+
+    std::vector<int> vertexIds =
+        mesh.collectUniqueVerticesFromFaces(
+            faceIds
+        );
+
+    ASSERT_EQ(vertexIds.size(), 6);
+
+    EXPECT_EQ(vertexIds[0], 0);
+    EXPECT_EQ(vertexIds[1], 1);
+    EXPECT_EQ(vertexIds[2], 6);
+    EXPECT_EQ(vertexIds[3], 5);
+    EXPECT_EQ(vertexIds[4], 2);
+    EXPECT_EQ(vertexIds[5], 7);
+}

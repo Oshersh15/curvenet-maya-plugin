@@ -100,6 +100,8 @@ The current implementation focuses on constructing the Curvenet and its relation
 - Stable crossing ordering using curve segment parameterisation.
 - Derives traversed face intervals between consecutive crossings.
 - Stores unique influenced mesh faces in traversal order.
+- Collects the unique mesh vertices belonging to influenced faces.
+- Stores the influenced vertex set for each CutPath.
 
 ---
 

@@ -464,6 +464,18 @@ unsigned int geometryIndex
             )
         );
 
+        cutPath.influencedVertexIds =
+            mayaHalfEdgeMesh.collectUniqueVerticesFromFaces(
+                cutPath.influencedFaceIds
+            );
+
+        MGlobal::displayInfo(
+            MString("Influenced vertices: ")
+            + static_cast<int>(
+                cutPath.influencedVertexIds.size()
+            )
+        );
+
         for (int faceId : cutPath.influencedFaceIds)
         {
             MGlobal::displayInfo(

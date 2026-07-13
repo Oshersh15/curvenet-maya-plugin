@@ -15,6 +15,7 @@ add_library(CurvenetPlugin SHARED
     src/GeometryUtils.cpp
     src/CurveMeshIntersector.cpp
     src/CurvenetDebugCommand.cpp
+    src/HalfEdge.cpp
 )
 
 target_include_directories(CurvenetPlugin PRIVATE
@@ -52,6 +53,7 @@ add_executable(HalfEdgeTests
     src/GeometryUtils.cpp
     src/CurveMeshIntersector.cpp
     tests/test_curve_mesh_intersector.cpp
+    src/HalfEdge.cpp
 )
 
 target_include_directories(HalfEdgeTests PRIVATE

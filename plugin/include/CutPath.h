@@ -10,4 +10,5 @@ struct CutPath
 
     std::vector<CutCrossing> crossings;
     std::vector<int> influencedFaceIds;
+    std::vector<int> influencedVertexIds;
 };
