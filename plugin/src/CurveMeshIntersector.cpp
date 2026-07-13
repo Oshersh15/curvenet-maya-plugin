@@ -1,6 +1,7 @@
 #include "CurveMeshIntersector.h"
 
 #include "GeometryUtils.h"
+#include <algorithm>
 
 FirstCrossingResult CurveMeshIntersector::findFirstCrossing(
     int curveId,
@@ -136,6 +137,8 @@ std::vector<CutCrossing> CurveMeshIntersector::findAllCrossings(
 
             candidate.curveId = curveId;
             candidate.curveSegmentId = curveSegmentIndex;
+            candidate.curveSegmentT =
+                distanceResult.firstSegmentT;
             candidate.faceId = halfEdge.face;
             candidate.halfEdgeId = halfEdgeIndex;
             candidate.position =
@@ -164,5 +167,23 @@ std::vector<CutCrossing> CurveMeshIntersector::findAllCrossings(
             }
         }
     }
+    std::sort(
+        crossings.begin(),
+        crossings.end(),
+        [](const CutCrossing& first,
+           const CutCrossing& second)
+        {
+            if (first.curveSegmentId !=
+                second.curveSegmentId)
+            {
+                return first.curveSegmentId <
+                       second.curveSegmentId;
+            }
+
+            return first.curveSegmentT <
+                   second.curveSegmentT;
+        }
+    );
+
     return crossings;
 }

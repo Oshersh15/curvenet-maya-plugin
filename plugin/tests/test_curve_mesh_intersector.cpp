@@ -194,3 +194,72 @@ TEST(CutPath, BuildsPathForCurveCrossingSingleFace)
         cutPath.crossings[1].curveSegmentId
     );
 }
+
+TEST(CutPath, BuildsPathForCurveCrossingMultipleFaces)
+{
+    HalfEdgeMesh mesh;
+
+    mesh.vertices = {
+        Vertex{Point3{0.0, 0.0, 0.0}},
+        Vertex{Point3{1.0, 0.0, 0.0}},
+        Vertex{Point3{2.0, 0.0, 0.0}},
+        Vertex{Point3{0.0, 1.0, 0.0}},
+        Vertex{Point3{1.0, 1.0, 0.0}},
+        Vertex{Point3{2.0, 1.0, 0.0}}
+    };
+
+    mesh.faces = {
+        Face{0},
+        Face{4}
+    };
+
+    mesh.halfEdges = {
+        HalfEdge{0, 1, 1, -1, 0},
+        HalfEdge{1, 4, 2, 7, 0},
+        HalfEdge{4, 3, 3, -1, 0},
+        HalfEdge{3, 0, 0, -1, 0},
+
+        HalfEdge{1, 2, 5, -1, 1},
+        HalfEdge{2, 5, 6, -1, 1},
+        HalfEdge{5, 4, 7, -1, 1},
+        HalfEdge{4, 1, 4, 1, 1}
+    };
+
+    std::vector<PolylineSegment> curveSegments;
+
+    curveSegments.push_back(PolylineSegment{
+        Point3{-0.5, 0.5, 0.0},
+        Point3{2.5, 0.5, 0.0}
+    });
+
+    std::vector<CutCrossing> crossings =
+        CurveMeshIntersector::findAllCrossings(
+            0,
+            curveSegments,
+            mesh,
+            0.0001,
+            0.0001
+        );
+
+    CutPath cutPath;
+    cutPath.curveId = 0;
+    cutPath.crossings = crossings;
+
+    EXPECT_EQ(cutPath.curveId, 0);
+    ASSERT_EQ(cutPath.crossings.size(), 3);
+
+    EXPECT_DOUBLE_EQ(
+        cutPath.crossings[0].position.x,
+        0.0
+    );
+
+    EXPECT_DOUBLE_EQ(
+        cutPath.crossings[1].position.x,
+        1.0
+    );
+
+    EXPECT_DOUBLE_EQ(
+        cutPath.crossings[2].position.x,
+        2.0
+    );
+}

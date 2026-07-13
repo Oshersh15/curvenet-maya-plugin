@@ -16,6 +16,7 @@ struct CutCrossing
 {
     int curveId = -1;
     int curveSegmentId = -1;
+    double curveSegmentT = 0.0;
     int faceId = -1;
     int halfEdgeId = -1;
 
