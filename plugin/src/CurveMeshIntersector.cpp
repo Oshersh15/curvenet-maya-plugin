@@ -83,6 +83,7 @@ std::vector<CutCrossing> CurveMeshIntersector::findAllCrossings(
     double crossingTolerance,
     double duplicateTolerance
 )
+
 {
     std::vector<CutCrossing> crossings;
 
@@ -186,4 +187,145 @@ std::vector<CutCrossing> CurveMeshIntersector::findAllCrossings(
     );
 
     return crossings;
+}
+
+std::vector<int> CurveMeshIntersector::deriveFaceIntervals(
+    const CutPath& cutPath,
+    const HalfEdgeMesh& mesh
+)
+{
+    std::vector<int> intervalFaceIds;
+
+    if (cutPath.crossings.size() < 2)
+    {
+        return intervalFaceIds;
+    }
+
+    for (int crossingIndex = 0;
+         crossingIndex <
+             static_cast<int>(cutPath.crossings.size()) - 1;
+         ++crossingIndex)
+    {
+        const CutCrossing& firstCrossing =
+            cutPath.crossings[crossingIndex];
+
+        const CutCrossing& secondCrossing =
+            cutPath.crossings[crossingIndex + 1];
+
+        if (firstCrossing.halfEdgeId < 0 ||
+            firstCrossing.halfEdgeId >=
+                static_cast<int>(mesh.halfEdges.size()) ||
+            secondCrossing.halfEdgeId < 0 ||
+            secondCrossing.halfEdgeId >=
+                static_cast<int>(mesh.halfEdges.size()))
+        {
+            intervalFaceIds.push_back(-1);
+            continue;
+        }
+
+        const HalfEdge& firstHalfEdge =
+            mesh.halfEdges[firstCrossing.halfEdgeId];
+
+        const HalfEdge& secondHalfEdge =
+            mesh.halfEdges[secondCrossing.halfEdgeId];
+
+        std::vector<int> firstAdjacentFaces;
+        std::vector<int> secondAdjacentFaces;
+
+        if (firstHalfEdge.face >= 0)
+        {
+            firstAdjacentFaces.push_back(
+                firstHalfEdge.face
+            );
+        }
+
+        if (firstHalfEdge.twin >= 0 &&
+            firstHalfEdge.twin <
+                static_cast<int>(mesh.halfEdges.size()))
+        {
+            const int twinFace =
+                mesh.halfEdges[firstHalfEdge.twin].face;
+
+            if (twinFace >= 0)
+            {
+                firstAdjacentFaces.push_back(twinFace);
+            }
+        }
+
+        if (secondHalfEdge.face >= 0)
+        {
+            secondAdjacentFaces.push_back(
+                secondHalfEdge.face
+            );
+        }
+
+        if (secondHalfEdge.twin >= 0 &&
+            secondHalfEdge.twin <
+                static_cast<int>(mesh.halfEdges.size()))
+        {
+            const int twinFace =
+                mesh.halfEdges[secondHalfEdge.twin].face;
+
+            if (twinFace >= 0)
+            {
+                secondAdjacentFaces.push_back(twinFace);
+            }
+        }
+
+        int sharedFaceId = -1;
+
+        for (int firstFaceId : firstAdjacentFaces)
+        {
+            for (int secondFaceId : secondAdjacentFaces)
+            {
+                if (firstFaceId == secondFaceId)
+                {
+                    sharedFaceId = firstFaceId;
+                    break;
+                }
+            }
+
+            if (sharedFaceId >= 0)
+            {
+                break;
+            }
+        }
+
+        intervalFaceIds.push_back(sharedFaceId);
+    }
+
+    return intervalFaceIds;
+}
+
+std::vector<int> CurveMeshIntersector::collectUniqueFaces(
+    const std::vector<int>& faceIntervals
+)
+{
+    std::vector<int> collectedFaceIds;
+
+    for (int faceId : faceIntervals)
+    {
+        if (faceId == -1)
+        {
+            continue;
+        }
+
+        bool alreadyCollected = false;
+
+        for (int collectedFaceId : collectedFaceIds)
+        {
+            if (collectedFaceId == faceId)
+            {
+                alreadyCollected = true;
+                break;
+            }
+        }
+
+        if (!alreadyCollected)
+        {
+            collectedFaceIds.push_back(faceId);
+        }
+    }
+
+    return collectedFaceIds;
 }

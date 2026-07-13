@@ -263,3 +263,98 @@ TEST(CutPath, BuildsPathForCurveCrossingMultipleFaces)
         2.0
     );
 }
+
+TEST(CurveMeshIntersector, DerivesFaceIntervalBetweenTwoCrossings)
+{
+    HalfEdgeMesh mesh;
+    mesh.createTestQuad();
+
+    CutPath cutPath;
+
+    CutCrossing firstCrossing;
+    firstCrossing.halfEdgeId = 0;
+
+    CutCrossing secondCrossing;
+    secondCrossing.halfEdgeId = 2;
+
+    cutPath.crossings.push_back(firstCrossing);
+    cutPath.crossings.push_back(secondCrossing);
+
+    std::vector<int> faceIntervals =
+        CurveMeshIntersector::deriveFaceIntervals(
+            cutPath,
+            mesh
+        );
+
+    ASSERT_EQ(faceIntervals.size(), 1);
+
+    EXPECT_EQ(faceIntervals[0], 0);
+}
+
+TEST(CurveMeshIntersector, CollectUniqueFacesIgnoresUnresolvedIntervals)
+{
+    std::vector<int> faceIntervals{
+        8,
+        -1,
+        5,
+        -1,
+        6
+    };
+
+    std::vector<int> collectedFaceIds =
+        CurveMeshIntersector::collectUniqueFaces(
+            faceIntervals
+        );
+
+    ASSERT_EQ(collectedFaceIds.size(), 3);
+
+    EXPECT_EQ(collectedFaceIds[0], 8);
+    EXPECT_EQ(collectedFaceIds[1], 5);
+    EXPECT_EQ(collectedFaceIds[2], 6);
+}
+
+TEST(CurveMeshIntersector, CollectUniqueFacesRemovesDuplicates)
+{
+    std::vector<int> faceIntervals{
+        8,
+        8,
+        5,
+        6,
+        5
+    };
+
+    std::vector<int> collectedFaceIds =
+        CurveMeshIntersector::collectUniqueFaces(
+            faceIntervals
+        );
+
+    ASSERT_EQ(collectedFaceIds.size(), 3);
+
+    EXPECT_EQ(collectedFaceIds[0], 8);
+    EXPECT_EQ(collectedFaceIds[1], 5);
+    EXPECT_EQ(collectedFaceIds[2], 6);
+}
+
+TEST(CurveMeshIntersector, CollectUniqueFacesPreservesFirstTraversalOrder)
+{
+    std::vector<int> faceIntervals{
+        6,
+        8,
+        6,
+        5,
+        8,
+        3
+    };
+
+    std::vector<int> collectedFaceIds =
+        CurveMeshIntersector::collectUniqueFaces(
+            faceIntervals
+        );
+
+    ASSERT_EQ(collectedFaceIds.size(), 4);
+
+    EXPECT_EQ(collectedFaceIds[0], 6);
+    EXPECT_EQ(collectedFaceIds[1], 8);
+    EXPECT_EQ(collectedFaceIds[2], 5);
+    EXPECT_EQ(collectedFaceIds[3], 3);
+}

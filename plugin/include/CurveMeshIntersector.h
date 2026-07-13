@@ -3,6 +3,7 @@
 #include "HalfEdge.h"
 #include "ProfileCurveSampler.h"
 #include "CutCrossing.h"
+#include "CutPath.h"
 
 /*
     Stores the result of searching for the first crossing between
@@ -52,5 +53,25 @@ public:
         const HalfEdgeMesh& mesh,
         double crossingTolerance,
         double duplicateTolerance
+    );
+
+    /*
+        Derives one traversed face ID for each interval between
+        consecutive crossings in a CutPath.
+
+        The returned vector has cutPath.crossings.size() - 1 entries.
+        An entry is -1 when no shared adjacent face can be resolved.
+    */
+    static std::vector<int> deriveFaceIntervals(
+        const CutPath& cutPath,
+        const HalfEdgeMesh& mesh
+    );
+
+    /*
+        Removes unresolved face intervals (-1) while
+        preserving the remaining traversal order.
+    */
+    static std::vector<int> collectUniqueFaces(
+        const std::vector<int>& faceIntervals
     );
 };

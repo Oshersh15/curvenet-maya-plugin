@@ -92,6 +92,15 @@ The current implementation focuses on constructing the Curvenet and its relation
 - Locator markers for detected curve-mesh crossings.
 - Automatic replacement of existing debug objects.
 
+### Cut Path Representation
+
+- CutPath structure representing one complete cut per profile curve.
+- Stores ordered CutCrossing records.
+- Supports multiple CutPaths for multiple profile curves.
+- Stable crossing ordering using curve segment parameterisation.
+- Derives traversed face intervals between consecutive crossings.
+- Stores unique influenced mesh faces in traversal order.
+
 ---
 
 ## Technologies
@@ -150,6 +159,9 @@ ctest --output-on-failure
 - Curvenet debug visualiser
 - Sampled polyline viewport display
 - Curve-mesh crossing markers
+- CutPath representation
+- Ordered CutCrossing storage
+- Multiple CutPath support
 
 ### In Progress
 

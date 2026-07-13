@@ -443,6 +443,35 @@ unsigned int geometryIndex
 
         cutPath.crossings = crossings;
 
+        std::vector<int> faceIntervals =
+            CurveMeshIntersector::deriveFaceIntervals(
+                cutPath,
+                mayaHalfEdgeMesh
+            );
+
+        std::vector<int> influencedFaceIds =
+            CurveMeshIntersector::collectUniqueFaces(
+                faceIntervals
+            );
+
+        cutPath.influencedFaceIds =
+            influencedFaceIds;
+
+        MGlobal::displayInfo(
+            MString("Influenced faces: ")
+            + static_cast<int>(
+                cutPath.influencedFaceIds.size()
+            )
+        );
+
+        for (int faceId : cutPath.influencedFaceIds)
+        {
+            MGlobal::displayInfo(
+                MString("  Face ")
+                + faceId
+            );
+        }
+
         cutPaths.push_back(cutPath);
 
         MGlobal::displayInfo(
