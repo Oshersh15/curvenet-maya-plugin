@@ -1,6 +1,7 @@
 #include "CurveMeshIntersector.h"
 
 #include <gtest/gtest.h>
+#include "CutPath.h"
 
 TEST(CurveMeshIntersector, FindsFirstCrossingInCurveSegmentOrder)
 {
@@ -155,4 +156,41 @@ TEST(CurveMeshIntersector, ReturnsEmptyWhenNoCrossingsExist)
         );
 
     EXPECT_TRUE(crossings.empty());
+}
+
+TEST(CutPath, BuildsPathForCurveCrossingSingleFace)
+{
+    HalfEdgeMesh mesh;
+    mesh.createTestQuad();
+
+    std::vector<PolylineSegment> curveSegments;
+
+    curveSegments.push_back(PolylineSegment{
+        Point3{-1.0, 0.5, 0.0},
+        Point3{2.0, 0.5, 0.0}
+    });
+
+    std::vector<CutCrossing> crossings =
+        CurveMeshIntersector::findAllCrossings(
+            0,
+            curveSegments,
+            mesh,
+            0.0001,
+            0.0001
+        );
+
+    CutPath cutPath;
+    cutPath.curveId = 0;
+    cutPath.crossings = crossings;
+
+    EXPECT_EQ(cutPath.curveId, 0);
+    ASSERT_EQ(cutPath.crossings.size(), 2);
+
+    EXPECT_EQ(cutPath.crossings[0].curveId, 0);
+    EXPECT_EQ(cutPath.crossings[1].curveId, 0);
+
+    EXPECT_LE(
+        cutPath.crossings[0].curveSegmentId,
+        cutPath.crossings[1].curveSegmentId
+    );
 }

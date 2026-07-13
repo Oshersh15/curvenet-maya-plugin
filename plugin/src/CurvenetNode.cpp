@@ -29,6 +29,7 @@
 #include "GeometryUtils.h"
 #include "CurveMeshIntersector.h"
 #include "CurvenetDebugCommand.h"
+#include "CutPath.h"
 
 #include <vector>
 
@@ -314,6 +315,8 @@ unsigned int geometryIndex
 
     unsigned int numConnectedCurves = curveArrayHandle.elementCount();
 
+    std::vector<CutPath> cutPaths;
+
     for (unsigned int curveIndex = 0; curveIndex < numConnectedCurves; ++curveIndex)
     {
         status = curveArrayHandle.jumpToArrayElement(curveIndex);
@@ -433,6 +436,25 @@ unsigned int geometryIndex
                 duplicateTolerance
             );
 
+        CutPath cutPath;
+
+        cutPath.curveId =
+            static_cast<int>(curveIndex);
+
+        cutPath.crossings = crossings;
+
+        cutPaths.push_back(cutPath);
+
+        MGlobal::displayInfo(
+            MString("CutPath curve ID: ")
+            + cutPath.curveId
+        );
+
+        MGlobal::displayInfo(
+            MString("CutPath crossings: ")
+            + static_cast<int>(cutPath.crossings.size())
+        );
+
         debugCrossings.insert(
             debugCrossings.end(),
             crossings.begin(),
@@ -462,6 +484,11 @@ unsigned int geometryIndex
                 + crossing.position.z + ")"
             );
         }
+
+        MGlobal::displayInfo(
+            MString("CutPaths created: ")
+            + static_cast<int>(cutPaths.size())
+        );
 
         MGlobal::displayInfo(
             MString("Dense curve points: ")
