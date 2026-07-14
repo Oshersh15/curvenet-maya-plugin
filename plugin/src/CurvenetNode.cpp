@@ -298,11 +298,6 @@ unsigned int geometryIndex
 
             meanMeshEdgeLength =
                 mayaHalfEdgeMesh.computeMeanEdgeLength();
-
-            MGlobal::displayInfo(
-                MString("Mean mesh edge length: ")
-                + meanMeshEdgeLength
-            );
         }
     }
 
@@ -317,6 +312,8 @@ unsigned int geometryIndex
     unsigned int numConnectedCurves = curveArrayHandle.elementCount();
 
     std::vector<CutPath> cutPaths;
+
+    currentSampledCurves.clear();
 
     for (unsigned int curveIndex = 0; curveIndex < numConnectedCurves; ++curveIndex)
     {
@@ -376,53 +373,42 @@ unsigned int geometryIndex
 
         const int densityMultiplier = 5;
 
-        const int adaptiveSampleCount =
-            ProfileCurveSampler::computeAdaptiveSampleCount(
-                controlPolygonLength,
-                meanMeshEdgeLength,
-                densityMultiplier
-            );
+        int sampleCount = 0;
 
-        MGlobal::displayInfo(
-            MString("Control polygon length: ")
-            + controlPolygonLength
-        );
-
-        MGlobal::displayInfo(
-            MString("Adaptive sample count: ")
-            + adaptiveSampleCount
-        );
+        if (!neutralSamplesCaptured)
+        {
+            sampleCount =
+                ProfileCurveSampler::computeAdaptiveSampleCount(
+                    controlPolygonLength,
+                    meanMeshEdgeLength,
+                    densityMultiplier
+                );
+        }
+        else if (curveIndex < neutralSampledCurves.size())
+        {
+            sampleCount =
+                static_cast<int>(
+                    neutralSampledCurves[curveIndex].size()
+                );
+        }
 
         std::vector<Point3> sampledPoints =
             ProfileCurveSampler::sampleByArcLength(
                 densePoints,
-                adaptiveSampleCount
+                sampleCount
             );
+
+        currentSampledCurves.push_back(sampledPoints);
+
+        if (!neutralSamplesCaptured)
+        {
+            neutralSampledCurves.push_back(sampledPoints);
+        }
 
         debugSampledCurves.push_back(sampledPoints);
 
         std::vector<PolylineSegment> sampledSegments =
             ProfileCurveSampler::buildPolylineSegments(sampledPoints);
-
-        for (int segmentIndex = 0;
-             segmentIndex < static_cast<int>(sampledSegments.size());
-             ++segmentIndex)
-        {
-            const PolylineSegment& segment =
-                sampledSegments[segmentIndex];
-
-            MGlobal::displayInfo(
-                MString("Segment ")
-                + segmentIndex
-                + ": ("
-                + segment.start.x + ", "
-                + segment.start.y + ", "
-                + segment.start.z + ") -> ("
-                + segment.end.x + ", "
-                + segment.end.y + ", "
-                + segment.end.z + ")"
-            );
-        }
 
         const double crossingTolerance = 0.0501;
 
@@ -458,242 +444,167 @@ unsigned int geometryIndex
         cutPath.influencedFaceIds =
             influencedFaceIds;
 
-        MGlobal::displayInfo(
-            MString("Influenced faces: ")
-            + static_cast<int>(
-                cutPath.influencedFaceIds.size()
-            )
-        );
-
         cutPath.influencedVertexIds =
             mayaHalfEdgeMesh.collectUniqueVerticesFromFaces(
                 cutPath.influencedFaceIds
             );
 
-        MGlobal::displayInfo(
-            MString("Influenced vertices: ")
-            + static_cast<int>(
-                cutPath.influencedVertexIds.size()
-            )
-        );
-
-        std::vector<VertexCurveBinding> vertexBindings;
-
-        for (int vertexId : cutPath.influencedVertexIds)
+        if (!vertexBindingsCaptured)
         {
-            if (vertexId < 0 ||
-                vertexId >= static_cast<int>(
-                    mayaHalfEdgeMesh.vertices.size()
-                ))
+            for (int vertexId : cutPath.influencedVertexIds)
             {
-                continue;
+                if (vertexId < 0 ||
+                    vertexId >= static_cast<int>(
+                        mayaHalfEdgeMesh.vertices.size()
+                    ))
+                {
+                    continue;
+                }
+
+                const Point3& vertexPosition =
+                    mayaHalfEdgeMesh.vertices[vertexId].position;
+
+                ClosestCurveSegmentResult closestSegment =
+                    GeometryUtils::findClosestPolylineSegment(
+                        vertexPosition,
+                        sampledSegments
+                    );
+
+                if (!closestSegment.found)
+                {
+                    continue;
+                }
+
+                VertexCurveBinding binding;
+
+                binding.vertexId = vertexId;
+                binding.curveId =
+                    static_cast<int>(curveIndex);
+                binding.segmentId =
+                    closestSegment.segmentId;
+                binding.segmentT =
+                    closestSegment.segmentT;
+
+                binding.neutralOffset =
+                    GeometryUtils::subtract(
+                        vertexPosition,
+                        closestSegment.closestPoint
+                    );
+
+                vertexBindings.push_back(binding);
             }
-
-            const Point3& vertexPosition =
-                mayaHalfEdgeMesh.vertices[vertexId].position;
-
-            ClosestCurveSegmentResult closestSegment =
-                GeometryUtils::findClosestPolylineSegment(
-                    vertexPosition,
-                    sampledSegments
-                );
-
-            if (!closestSegment.found)
-            {
-                continue;
-            }
-
-            VertexCurveBinding binding;
-
-            binding.vertexId = vertexId;
-            binding.curveId =
-                static_cast<int>(curveIndex);
-            binding.segmentId =
-                closestSegment.segmentId;
-            binding.segmentT =
-                closestSegment.segmentT;
-
-            binding.neutralOffset =
-                GeometryUtils::subtract(
-                    vertexPosition,
-                    closestSegment.closestPoint
-                );
-
-            vertexBindings.push_back(binding);
-
-            MGlobal::displayInfo(
-                MString("Offset length: ")
-                + GeometryUtils::length(
-                    binding.neutralOffset
-                )
-            );
-        }
-
-        MGlobal::displayInfo(
-            MString("Vertex bindings: ")
-            + static_cast<int>(vertexBindings.size())
-        );
-
-        for (int faceId : cutPath.influencedFaceIds)
-        {
-            MGlobal::displayInfo(
-                MString("  Face ")
-                + faceId
-            );
         }
 
         cutPaths.push_back(cutPath);
-
-        MGlobal::displayInfo(
-            MString("CutPath curve ID: ")
-            + cutPath.curveId
-        );
-
-        MGlobal::displayInfo(
-            MString("CutPath crossings: ")
-            + static_cast<int>(cutPath.crossings.size())
-        );
 
         debugCrossings.insert(
             debugCrossings.end(),
             crossings.begin(),
             crossings.end()
         );
+    }
+
+    if (!vertexBindingsCaptured)
+    {
+        vertexBindingsCaptured = true;
 
         MGlobal::displayInfo(
-            MString("Crossings found: ")
-            + static_cast<int>(crossings.size())
-        );
-
-        for (const CutCrossing& crossing : crossings)
-        {
-            MGlobal::displayInfo(
-                MString("Crossing:")
-                + " curve "
-                + crossing.curveId
-                + ", curve segment "
-                + crossing.curveSegmentId
-                + ", face "
-                + crossing.faceId
-                + ", half-edge "
-                + crossing.halfEdgeId
-                + ", position ("
-                + crossing.position.x + ", "
-                + crossing.position.y + ", "
-                + crossing.position.z + ")"
-            );
-        }
-
-        MGlobal::displayInfo(
-            MString("CutPaths created: ")
-            + static_cast<int>(cutPaths.size())
-        );
-
-        MGlobal::displayInfo(
-            MString("Dense curve points: ")
-            + static_cast<int>(densePoints.size())
-        );
-
-        MGlobal::displayInfo(
-            MString("Arc-length sampled points: ")
-            + static_cast<int>(sampledPoints.size())
+            MString("Vertex bindings captured: ")
+            + static_cast<int>(vertexBindings.size())
         );
     }
 
+    if (!neutralSamplesCaptured)
+    {
+        neutralSamplesCaptured = true;
 
+        MGlobal::displayInfo(
+            "Neutral sampled curves captured."
+        );
+    }
+
+    geoIterator.reset();
+
+    while (!geoIterator.isDone())
+    {
+        const int vertexId =
+            static_cast<int>(geoIterator.index());
+
+        const VertexCurveBinding* matchingBinding =
+            nullptr;
+
+        for (const VertexCurveBinding& binding : vertexBindings)
+        {
+            if (binding.vertexId == vertexId)
+            {
+                matchingBinding = &binding;
+                break;
+            }
+        }
+
+        if (matchingBinding == nullptr)
+        {
+            geoIterator.next();
+            continue;
+        }
+
+        const int curveId =
+            matchingBinding->curveId;
+
+        const int segmentId =
+            matchingBinding->segmentId;
+
+        if (curveId < 0 ||
+            curveId >= static_cast<int>(
+                neutralSampledCurves.size()
+            ) ||
+            curveId >= static_cast<int>(
+                currentSampledCurves.size()
+            ))
+        {
+            geoIterator.next();
+            continue;
+        }
+
+        const std::vector<Point3>& neutralPoints =
+            neutralSampledCurves[curveId];
+
+        const std::vector<Point3>& currentPoints =
+            currentSampledCurves[curveId];
+
+        if (segmentId < 0 ||
+            segmentId + 1 >= static_cast<int>(
+                neutralPoints.size()
+            ) ||
+            segmentId + 1 >= static_cast<int>(
+                currentPoints.size()
+            ))
+        {
+            geoIterator.next();
+            continue;
+        }
+
+        const Point3 displacement =
+            GeometryUtils::interpolateSegmentDisplacement(
+                neutralPoints[segmentId],
+                neutralPoints[segmentId + 1],
+                currentPoints[segmentId],
+                currentPoints[segmentId + 1],
+                matchingBinding->segmentT
+            );
+
+        MPoint vertexPosition =
+            geoIterator.position();
+
+        vertexPosition.x += displacement.x;
+        vertexPosition.y += displacement.y;
+        vertexPosition.z += displacement.z;
+
+        geoIterator.setPosition(vertexPosition);
+        geoIterator.next();
+    }
 
     curvenetData.detectConnections(0.001);
-
-    MGlobal::displayInfo(
-        MString("Curvenet contains ")
-        + curvenetData.getCurveCount()
-        + " profile curves."
-    );
-
-    const auto& curves = curvenetData.getCurves();
-
-    for (const auto& curve : curves)
-    {
-        MGlobal::displayInfo(
-            MString("Curve ")
-            + curve.id
-            + " has "
-            + static_cast<int>(curve.restCVPositions.size())
-            + " CVs."
-        );
-
-        MGlobal::displayInfo(
-            MString("    Start: (")
-            + curve.startPoint.x + ", "
-            + curve.startPoint.y + ", "
-            + curve.startPoint.z + ")"
-        );
-
-        MGlobal::displayInfo(
-            MString("    End: (")
-            + curve.endPoint.x + ", "
-            + curve.endPoint.y + ", "
-            + curve.endPoint.z + ")"
-        );
-    }
-
-    const auto& connections = curvenetData.getConnections();
-
-    for (const auto& connection : connections)
-    {
-        auto endpointToString = [](CurveEndpoint endpoint)
-        {
-            return endpoint == CurveEndpoint::Start ? "start" : "end";
-        };
-
-        MGlobal::displayInfo(
-            MString("Connection found: Curve ")
-            + connection.firstCurveId
-            + " "
-            + endpointToString(connection.firstEndpoint)
-            + " -> Curve "
-            + connection.secondCurveId
-            + " "
-            + endpointToString(connection.secondEndpoint)
-        );
-    }
-
-    for (const auto& curve : curves)
-    {
-        std::vector<int> connected =
-            curvenetData.getConnectedCurves(curve.id);
-
-        MString message =
-            MString("Curve ")
-            + curve.id
-            + " connected to: ";
-
-        for (int id : connected)
-        {
-            message += id;
-            message += " ";
-        }
-
-        MGlobal::displayInfo(message);
-    }
-
-    // print Curvenet connections here
-    // print connected curves here
-
-    HalfEdgeMesh mesh;
-    mesh.createTestQuad();
-
-    std::vector<int> traversal = mesh.traverseFace(0);
-
-    MString traversalMessage("Face traversal: ");
-
-    for (int edge : traversal)
-    {
-        traversalMessage += edge;
-        traversalMessage += " ";
-    }
-
-    MGlobal::displayInfo(traversalMessage);
 
     return MS::kSuccess;
 }

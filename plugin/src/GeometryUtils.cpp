@@ -163,6 +163,43 @@ namespace GeometryUtils
         return result;
     }
 
+    Point3 GeometryUtils::interpolateSegmentDisplacement(
+        const Point3& neutralStart,
+        const Point3& neutralEnd,
+        const Point3& posedStart,
+        const Point3& posedEnd,
+        double t
+    )
+    {
+        Point3 startDisplacement =
+            subtract(
+                posedStart,
+                neutralStart
+            );
+
+        Point3 endDisplacement =
+            subtract(
+                posedEnd,
+                neutralEnd
+            );
+
+        Point3 displacement;
+
+        displacement.x =
+            startDisplacement.x +
+            (endDisplacement.x - startDisplacement.x) * t;
+
+        displacement.y =
+            startDisplacement.y +
+            (endDisplacement.y - startDisplacement.y) * t;
+
+        displacement.z =
+            startDisplacement.z +
+            (endDisplacement.z - startDisplacement.z) * t;
+
+        return displacement;
+    }
+
     SegmentDistanceResult GeometryUtils::segmentToSegmentDistance(
         const Point3& firstSegmentStart,
         const Point3& firstSegmentEnd,

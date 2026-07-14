@@ -339,3 +339,43 @@ TEST(GeometryUtils, ComputesNeutralOffset)
     EXPECT_DOUBLE_EQ(offset.y, 1.0);
     EXPECT_DOUBLE_EQ(offset.z, 0.0);
 }
+
+TEST(GeometryUtils, InterpolatesSegmentDisplacement)
+{
+    Point3 neutralStart{
+        0.0,
+        0.0,
+        0.0
+    };
+
+    Point3 neutralEnd{
+        1.0,
+        0.0,
+        0.0
+    };
+
+    Point3 posedStart{
+        0.0,
+        2.0,
+        0.0
+    };
+
+    Point3 posedEnd{
+        1.0,
+        6.0,
+        0.0
+    };
+
+    Point3 displacement =
+        GeometryUtils::interpolateSegmentDisplacement(
+            neutralStart,
+            neutralEnd,
+            posedStart,
+            posedEnd,
+            0.5
+        );
+
+    EXPECT_DOUBLE_EQ(displacement.x, 0.0);
+    EXPECT_DOUBLE_EQ(displacement.y, 4.0);
+    EXPECT_DOUBLE_EQ(displacement.z, 0.0);
+}

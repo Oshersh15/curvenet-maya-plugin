@@ -12,6 +12,7 @@
 #include <maya/MStatus.h>
 #include <maya/MString.h>
 #include <maya/MTypeId.h>
+#include "VertexCurveBinding.h"
 
 #include <vector>
 
@@ -57,4 +58,12 @@ private:
 
     std::vector<std::vector<Point3>> debugSampledCurves;
     std::vector<CutCrossing> debugCrossings;
+
+    std::vector<std::vector<Point3>> neutralSampledCurves;
+    bool neutralSamplesCaptured = false;
+
+    std::vector<std::vector<Point3>> currentSampledCurves;
+
+    std::vector<VertexCurveBinding> vertexBindings;
+    bool vertexBindingsCaptured = false;
 };

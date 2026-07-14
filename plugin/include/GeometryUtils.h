@@ -148,4 +148,18 @@ namespace GeometryUtils
         const Point3& point,
         const std::vector<PolylineSegment>& segments
     );
+
+    /*
+        Interpolates the displacement of a point along a sampled curve segment.
+
+        t = 0 uses the start-point displacement.
+        t = 1 uses the end-point displacement.
+    */
+    Point3 interpolateSegmentDisplacement(
+        const Point3& neutralStart,
+        const Point3& neutralEnd,
+        const Point3& posedStart,
+        const Point3& posedEnd,
+        double t
+    );
 }
