@@ -1,6 +1,7 @@
 #pragma once
 
 #include "HalfEdge.h"
+#include "ProfileCurveSampler.h"
 
 /*
     Stores the result of projecting a point onto a segment.
@@ -17,6 +18,15 @@ struct ClosestPointResult
 {
     Point3 point;
     double t = 0.0;
+};
+
+struct ClosestCurveSegmentResult
+{
+    bool found = false;
+    int segmentId = -1;
+    double segmentT = 0.0;
+    Point3 closestPoint;
+    double distance = 0.0;
 };
 
 /*
@@ -129,5 +139,13 @@ namespace GeometryUtils
         const Point3& firstSegmentEnd,
         const Point3& secondSegmentStart,
         const Point3& secondSegmentEnd
+    );
+
+    /*
+        Finds the sampled polyline segment closest to a 3D point.
+    */
+    ClosestCurveSegmentResult findClosestPolylineSegment(
+        const Point3& point,
+        const std::vector<PolylineSegment>& segments
     );
 }

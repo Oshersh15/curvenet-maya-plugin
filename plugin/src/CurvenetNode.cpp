@@ -30,6 +30,7 @@
 #include "CurveMeshIntersector.h"
 #include "CurvenetDebugCommand.h"
 #include "CutPath.h"
+#include "VertexCurveBinding.h"
 
 #include <vector>
 
@@ -474,6 +475,63 @@ unsigned int geometryIndex
             + static_cast<int>(
                 cutPath.influencedVertexIds.size()
             )
+        );
+
+        std::vector<VertexCurveBinding> vertexBindings;
+
+        for (int vertexId : cutPath.influencedVertexIds)
+        {
+            if (vertexId < 0 ||
+                vertexId >= static_cast<int>(
+                    mayaHalfEdgeMesh.vertices.size()
+                ))
+            {
+                continue;
+            }
+
+            const Point3& vertexPosition =
+                mayaHalfEdgeMesh.vertices[vertexId].position;
+
+            ClosestCurveSegmentResult closestSegment =
+                GeometryUtils::findClosestPolylineSegment(
+                    vertexPosition,
+                    sampledSegments
+                );
+
+            if (!closestSegment.found)
+            {
+                continue;
+            }
+
+            VertexCurveBinding binding;
+
+            binding.vertexId = vertexId;
+            binding.curveId =
+                static_cast<int>(curveIndex);
+            binding.segmentId =
+                closestSegment.segmentId;
+            binding.segmentT =
+                closestSegment.segmentT;
+
+            binding.neutralOffset =
+                GeometryUtils::subtract(
+                    vertexPosition,
+                    closestSegment.closestPoint
+                );
+
+            vertexBindings.push_back(binding);
+
+            MGlobal::displayInfo(
+                MString("Offset length: ")
+                + GeometryUtils::length(
+                    binding.neutralOffset
+                )
+            );
+        }
+
+        MGlobal::displayInfo(
+            MString("Vertex bindings: ")
+            + static_cast<int>(vertexBindings.size())
         );
 
         for (int faceId : cutPath.influencedFaceIds)

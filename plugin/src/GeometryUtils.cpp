@@ -116,6 +116,53 @@ namespace GeometryUtils
         };
     }
 
+    ClosestCurveSegmentResult GeometryUtils::findClosestPolylineSegment(
+        const Point3& point,
+        const std::vector<PolylineSegment>& segments
+    )
+    {
+        ClosestCurveSegmentResult result;
+
+        if (segments.empty())
+        {
+            return result;
+        }
+
+        for (int segmentId = 0;
+             segmentId < static_cast<int>(segments.size());
+             ++segmentId)
+        {
+            const PolylineSegment& segment =
+                segments[segmentId];
+
+            const ClosestPointResult closestPointResult =
+                closestPointOnSegment(
+                    point,
+                    segment.start,
+                    segment.end
+                );
+
+            const double distance =
+                pointToPointDistance(
+                    point,
+                    closestPointResult.point
+                );
+
+            if (!result.found ||
+                distance < result.distance)
+            {
+                result.found = true;
+                result.segmentId = segmentId;
+                result.segmentT = closestPointResult.t;
+                result.closestPoint =
+                    closestPointResult.point;
+                result.distance = distance;
+            }
+        }
+
+        return result;
+    }
+
     SegmentDistanceResult GeometryUtils::segmentToSegmentDistance(
         const Point3& firstSegmentStart,
         const Point3& firstSegmentEnd,

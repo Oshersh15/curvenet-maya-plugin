@@ -273,3 +273,44 @@ TEST(GeometryUtils, SegmentToSegmentDistanceHandlesZeroLengthFirstSegment)
     EXPECT_DOUBLE_EQ(result.closestPointOnSecondSegment.y, 0.0);
     EXPECT_DOUBLE_EQ(result.closestPointOnSecondSegment.z, 0.0);
 }
+
+TEST(GeometryUtils, FindsClosestPolylineSegment)
+{
+    std::vector<PolylineSegment> segments{
+        PolylineSegment{
+            Point3{0.0, 0.0, 0.0},
+            Point3{1.0, 0.0, 0.0}
+        },
+        PolylineSegment{
+            Point3{1.0, 0.0, 0.0},
+            Point3{2.0, 0.0, 0.0}
+        },
+        PolylineSegment{
+            Point3{2.0, 0.0, 0.0},
+            Point3{3.0, 0.0, 0.0}
+        }
+    };
+
+    Point3 point{
+        1.5,
+        1.0,
+        0.0
+    };
+
+    ClosestCurveSegmentResult result =
+        GeometryUtils::findClosestPolylineSegment(
+            point,
+            segments
+        );
+
+    ASSERT_TRUE(result.found);
+
+    EXPECT_EQ(result.segmentId, 1);
+    EXPECT_DOUBLE_EQ(result.segmentT, 0.5);
+
+    EXPECT_DOUBLE_EQ(result.closestPoint.x, 1.5);
+    EXPECT_DOUBLE_EQ(result.closestPoint.y, 0.0);
+    EXPECT_DOUBLE_EQ(result.closestPoint.z, 0.0);
+
+    EXPECT_DOUBLE_EQ(result.distance, 1.0);
+}

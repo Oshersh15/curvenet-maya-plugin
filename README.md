@@ -103,6 +103,12 @@ The current implementation focuses on constructing the Curvenet and its relation
 - Collects the unique mesh vertices belonging to influenced faces.
 - Stores the influenced vertex set for each CutPath.
 
+### Vertex-to-Curve Binding
+
+- Binds influenced mesh vertices to their closest sampled profile-curve segment.
+- Stores the controlling segment ID and parameter along the segment.
+- Stores the neutral vertex offset from the sampled curve.
+
 ---
 
 ## Technologies
@@ -164,6 +170,8 @@ ctest --output-on-failure
 - CutPath representation
 - Ordered CutCrossing storage
 - Multiple CutPath support
+- Vertex-to-curve binding
+- Neutral curve-offset storage
 
 ### In Progress
 
