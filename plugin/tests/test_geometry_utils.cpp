@@ -314,3 +314,28 @@ TEST(GeometryUtils, FindsClosestPolylineSegment)
 
     EXPECT_DOUBLE_EQ(result.distance, 1.0);
 }
+
+TEST(GeometryUtils, ComputesNeutralOffset)
+{
+    Point3 vertexPosition{
+        3.0,
+        5.0,
+        2.0
+    };
+
+    Point3 closestCurvePoint{
+        2.0,
+        4.0,
+        2.0
+    };
+
+    Point3 offset =
+        GeometryUtils::subtract(
+            vertexPosition,
+            closestCurvePoint
+        );
+
+    EXPECT_DOUBLE_EQ(offset.x, 1.0);
+    EXPECT_DOUBLE_EQ(offset.y, 1.0);
+    EXPECT_DOUBLE_EQ(offset.z, 0.0);
+}
