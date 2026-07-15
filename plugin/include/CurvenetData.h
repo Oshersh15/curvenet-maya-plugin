@@ -2,6 +2,7 @@
 
 #include <maya/MObject.h>
 #include <maya/MPoint.h>
+#include "HalfEdge.h"
 
 #include <vector>
 
@@ -13,11 +14,13 @@ enum class CurveEndpoint
 
 struct CurveConnection
 {
-    int firstCurveId;
-    CurveEndpoint firstEndpoint;
+    int endpointCurveId = -1;
+    CurveEndpoint endpoint =
+        CurveEndpoint::Start;
 
-    int secondCurveId;
-    CurveEndpoint secondEndpoint;
+    int targetCurveId = -1;
+    int targetSegmentId = -1;
+    double targetSegmentT = 0.0;
 
     MPoint position;
 };
@@ -27,6 +30,7 @@ struct ProfileCurveData
     int id;
     MObject curveObject;
     std::vector<MPoint> restCVPositions;
+    std::vector<Point3> sampledPoints;
 
     MPoint startPoint;
     MPoint endPoint;
@@ -39,7 +43,9 @@ public:
 
     void addCurve(
         const MObject& curveObject,
-        const std::vector<MPoint>& cvPositions);
+        const std::vector<MPoint>& cvPositions,
+        const std::vector<Point3>& sampledPoints
+    );
 
     int getCurveCount() const;
 

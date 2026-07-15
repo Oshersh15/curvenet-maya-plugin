@@ -1,4 +1,69 @@
 #include "CurvenetData.h"
+#include "GeometryUtils.h"
+#include "ProfileCurveSampler.h"
+
+namespace
+{
+    ClosestCurveSegmentResult findClosestPointOnCurve(
+        const MPoint& endpointPosition,
+        const ProfileCurveData& targetCurve
+    )
+    {
+        const Point3 endpoint{
+            endpointPosition.x,
+            endpointPosition.y,
+            endpointPosition.z
+        };
+
+        const std::vector<PolylineSegment> segments =
+            ProfileCurveSampler::buildPolylineSegments(
+                targetCurve.sampledPoints
+            );
+
+        return GeometryUtils::findClosestPolylineSegment(
+            endpoint,
+            segments
+        );
+    }
+
+    bool connectionAlreadyExists(
+        const std::vector<CurveConnection>& connections,
+        const CurveConnection& candidate,
+        double tolerance
+    )
+    {
+        for (const CurveConnection& existing : connections)
+        {
+            const bool sameCurvePair =
+                (
+                    existing.endpointCurveId ==
+                        candidate.endpointCurveId &&
+                    existing.targetCurveId ==
+                        candidate.targetCurveId
+                ) ||
+                (
+                    existing.endpointCurveId ==
+                        candidate.targetCurveId &&
+                    existing.targetCurveId ==
+                        candidate.endpointCurveId
+                );
+
+            if (!sameCurvePair)
+            {
+                continue;
+            }
+
+            if (existing.position.distanceTo(
+                    candidate.position
+                ) <= tolerance)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+}
 
 void CurvenetData::clear()
 {
@@ -8,15 +73,32 @@ void CurvenetData::clear()
 
 void CurvenetData::addCurve(
     const MObject& curveObject,
-    const std::vector<MPoint>& cvPositions)
+    const std::vector<MPoint>& cvPositions,
+    const std::vector<Point3>& sampledPoints
+)
 {
     ProfileCurveData curve;
+    curve.sampledPoints = sampledPoints;
 
-    curve.id = static_cast<int>(m_curves.size());
     curve.curveObject = curveObject;
     curve.restCVPositions = cvPositions;
+    curve.sampledPoints = sampledPoints;
 
-    if (!cvPositions.empty())
+    if (!sampledPoints.empty())
+    {
+        curve.startPoint = MPoint(
+            sampledPoints.front().x,
+            sampledPoints.front().y,
+            sampledPoints.front().z
+        );
+
+        curve.endPoint = MPoint(
+            sampledPoints.back().x,
+            sampledPoints.back().y,
+            sampledPoints.back().z
+        );
+    }
+    else if (!cvPositions.empty())
     {
         curve.startPoint = cvPositions.front();
         curve.endPoint = cvPositions.back();
@@ -25,50 +107,101 @@ void CurvenetData::addCurve(
     m_curves.push_back(curve);
 }
 
-void CurvenetData::detectConnections(double tolerance)
+void CurvenetData::detectConnections(
+    double tolerance
+)
 {
     m_connections.clear();
 
-    for (size_t i = 0; i < m_curves.size(); ++i)
+    for (size_t i = 0;
+         i < m_curves.size();
+         ++i)
     {
-        for (size_t j = i + 1; j < m_curves.size(); ++j)
+        const ProfileCurveData& endpointCurve =
+            m_curves[i];
+
+        struct EndpointInfo
         {
-            const ProfileCurveData& firstCurve = m_curves[i];
-            const ProfileCurveData& secondCurve = m_curves[j];
+            CurveEndpoint endpoint;
+            MPoint position;
+        };
 
-            struct EndpointInfo
+        EndpointInfo endpoints[2] =
+        {
             {
-                CurveEndpoint endpoint;
-                MPoint position;
-            };
-
-            EndpointInfo firstEndpoints[2] = {
-                { CurveEndpoint::Start, firstCurve.startPoint },
-                { CurveEndpoint::End, firstCurve.endPoint }
-            };
-
-            EndpointInfo secondEndpoints[2] = {
-                { CurveEndpoint::Start, secondCurve.startPoint },
-                { CurveEndpoint::End, secondCurve.endPoint }
-            };
-
-            for (const EndpointInfo& firstEndpoint : firstEndpoints)
+                CurveEndpoint::Start,
+                endpointCurve.startPoint
+            },
             {
-                for (const EndpointInfo& secondEndpoint : secondEndpoints)
+                CurveEndpoint::End,
+                endpointCurve.endPoint
+            }
+        };
+
+        for (const EndpointInfo& endpointInfo :
+             endpoints)
+        {
+            for (size_t j = 0;
+                 j < m_curves.size();
+                 ++j)
+            {
+                if (i == j)
                 {
-                    double distance = firstEndpoint.position.distanceTo(secondEndpoint.position);
+                    continue;
+                }
 
-                    if (distance <= tolerance)
-                    {
-                        CurveConnection connection;
-                        connection.firstCurveId = firstCurve.id;
-                        connection.firstEndpoint = firstEndpoint.endpoint;
-                        connection.secondCurveId = secondCurve.id;
-                        connection.secondEndpoint = secondEndpoint.endpoint;
-                        connection.position = firstEndpoint.position;
+                const ProfileCurveData& targetCurve =
+                    m_curves[j];
 
-                        m_connections.push_back(connection);
-                    }
+                const ClosestCurveSegmentResult result =
+                    findClosestPointOnCurve(
+                        endpointInfo.position,
+                        targetCurve
+                    );
+
+                if (!result.found)
+                {
+                    continue;
+                }
+
+                if (result.distance > tolerance)
+                {
+                    continue;
+                }
+
+                CurveConnection connection;
+
+                connection.endpointCurveId =
+                    endpointCurve.id;
+
+                connection.endpoint =
+                    endpointInfo.endpoint;
+
+                connection.targetCurveId =
+                    targetCurve.id;
+
+                connection.targetSegmentId =
+                    result.segmentId;
+
+                connection.targetSegmentT =
+                    result.segmentT;
+
+                connection.position =
+                    MPoint(
+                        result.closestPoint.x,
+                        result.closestPoint.y,
+                        result.closestPoint.z
+                    );
+
+                if (!connectionAlreadyExists(
+                        m_connections,
+                        connection,
+                        tolerance
+                    ))
+                {
+                    m_connections.push_back(
+                        connection
+                    );
                 }
             }
         }
@@ -90,20 +223,49 @@ const std::vector<ProfileCurveData>& CurvenetData::getCurves() const
     return m_curves;
 }
 
-std::vector<int> CurvenetData::getConnectedCurves(int curveId) const
+std::vector<int> CurvenetData::getConnectedCurves(
+    int curveId
+) const
 {
     std::vector<int> connectedCurves;
 
-    for (const auto& connection : m_connections)
+    for (const CurveConnection& connection :
+         m_connections)
     {
-        if (connection.firstCurveId == curveId)
+        int connectedCurveId = -1;
+
+        if (connection.endpointCurveId == curveId)
         {
-            connectedCurves.push_back(connection.secondCurveId);
+            connectedCurveId =
+                connection.targetCurveId;
+        }
+        else if (connection.targetCurveId == curveId)
+        {
+            connectedCurveId =
+                connection.endpointCurveId;
         }
 
-        if (connection.secondCurveId == curveId)
+        if (connectedCurveId < 0)
         {
-            connectedCurves.push_back(connection.firstCurveId);
+            continue;
+        }
+
+        bool alreadyStored = false;
+
+        for (int existingCurveId : connectedCurves)
+        {
+            if (existingCurveId == connectedCurveId)
+            {
+                alreadyStored = true;
+                break;
+            }
+        }
+
+        if (!alreadyStored)
+        {
+            connectedCurves.push_back(
+                connectedCurveId
+            );
         }
     }
 

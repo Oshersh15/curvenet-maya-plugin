@@ -363,8 +363,6 @@ unsigned int geometryIndex
             });
         }
 
-        curvenetData.addCurve(curveObject, cvPositions);
-
         std::vector<Point3> densePoints =
             buildDenseCurvePoints(curveFn, 200);
 
@@ -397,6 +395,12 @@ unsigned int geometryIndex
                 densePoints,
                 sampleCount
             );
+
+        curvenetData.addCurve(
+            curveObject,
+            cvPositions,
+            sampledPoints
+        );
 
         currentSampledCurves.push_back(sampledPoints);
 
