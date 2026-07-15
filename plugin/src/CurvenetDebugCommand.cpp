@@ -7,6 +7,7 @@
 #include <maya/MItDependencyNodes.h>
 #include <maya/MObject.h>
 #include <maya/MPxNode.h>
+#include <maya/MStringArray.h>
 
 MString CurvenetDebugCommand::commandName(
     "visualizeCurvenetDebug"
@@ -74,8 +75,12 @@ MStatus CurvenetDebugCommand::doIt(
     const std::vector<CutCrossing>& crossings =
         curvenetNode->getDebugCrossings();
 
+    const std::vector<CurveConnection>& connections =
+        curvenetNode->getDebugConnections();
+
     if (sampledCurves.empty() &&
-        crossings.empty())
+        crossings.empty() &&
+        connections.empty())
     {
         MGlobal::displayError(
             "The curvenetNode has no cached debug data. "
@@ -187,6 +192,59 @@ MStatus CurvenetDebugCommand::doIt(
 
             return status;
         }
+
+        MStringArray shapeNames;
+
+        status = MGlobal::executeCommand(
+            MString("listRelatives -shapes -fullPath \"")
+            + curveName
+            + "\";",
+            shapeNames,
+            false,
+            false
+        );
+
+        if (!status || shapeNames.length() == 0)
+        {
+            MGlobal::displayError(
+                MString("Failed to find the shape for debug curve ")
+                + curveIndex
+            );
+
+            return MS::kFailure;
+        }
+
+        const MString shapeName =
+            shapeNames[0];
+
+        const int colourIndex =
+            (curveIndex % 7) + 1;
+
+        MString colourCommand =
+            MString("setAttr \"")
+            + shapeName
+            + ".overrideEnabled\" 1; "
+            + "setAttr \""
+            + shapeName
+            + ".overrideColor\" "
+            + colourIndex
+            + ";";
+
+        status = MGlobal::executeCommand(
+            colourCommand,
+            false,
+            false
+        );
+
+        if (!status)
+        {
+            MGlobal::displayError(
+                MString("Failed to colour debug curve ")
+                + curveIndex
+            );
+
+            return status;
+        }
     }
 
     for (int crossingIndex = 0;
@@ -276,12 +334,107 @@ MStatus CurvenetDebugCommand::doIt(
         }
     }
 
+    for (int connectionIndex = 0;
+         connectionIndex < static_cast<int>(connections.size());
+         ++connectionIndex)
+    {
+        const CurveConnection& connection =
+            connections[connectionIndex];
+
+        MString locatorName =
+            MString("curvenetDebug_connection_")
+            + connectionIndex;
+
+        MString locatorCommand =
+            MString("spaceLocator -name \"")
+            + locatorName
+            + "\" -position "
+            + connection.position.x
+            + " "
+            + connection.position.y
+            + " "
+            + connection.position.z
+            + ";";
+
+        status = MGlobal::executeCommand(
+            locatorCommand,
+            false,
+            false
+        );
+
+        if (!status)
+        {
+            MGlobal::displayError(
+                MString("Failed to create connection locator ")
+                + connectionIndex
+            );
+
+            return status;
+        }
+
+        MString scaleCommand =
+            MString("setAttr \"")
+            + locatorName
+            + "Shape.localScaleX\" 0.16; "
+            + "setAttr \""
+            + locatorName
+            + "Shape.localScaleY\" 0.16; "
+            + "setAttr \""
+            + locatorName
+            + "Shape.localScaleZ\" 0.16; "
+            + "setAttr \""
+            + locatorName
+            + "Shape.overrideEnabled\" 1; "
+            + "setAttr \""
+            + locatorName
+            + "Shape.overrideColor\" 17;";
+
+        status = MGlobal::executeCommand(
+            scaleCommand,
+            false,
+            false
+        );
+
+        if (!status)
+        {
+            MGlobal::displayError(
+                MString("Failed to style connection locator ")
+                + connectionIndex
+            );
+
+            return status;
+        }
+
+        MString parentCommand =
+            MString("parent \"")
+            + locatorName
+            + "\" \"curvenetDebug_group\";";
+
+        status = MGlobal::executeCommand(
+            parentCommand,
+            false,
+            false
+        );
+
+        if (!status)
+        {
+            MGlobal::displayError(
+                MString("Failed to parent connection locator ")
+                + connectionIndex
+            );
+
+            return status;
+        }
+    }
+
     MGlobal::displayInfo(
         MString("Created Curvenet debug visualiser with ")
         + static_cast<int>(sampledCurves.size())
-        + " sampled curve(s) and "
+        + " sampled curve(s), "
         + static_cast<int>(crossings.size())
-        + " crossing marker(s)."
+        + " crossing marker(s), and "
+        + static_cast<int>(connections.size())
+        + " connection marker(s)."
     );
 
     return MS::kSuccess;

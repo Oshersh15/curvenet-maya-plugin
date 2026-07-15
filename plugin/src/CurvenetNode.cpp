@@ -621,6 +621,11 @@ CurveDeformerNode::getDebugCrossings() const
     return debugCrossings;
 }
 
+const std::vector<CurveConnection>&
+CurveDeformerNode::getDebugConnections() const
+{
+    return curvenetData.getConnections();
+}
 
 MTypeId CurveDeformerNode::id(0x001226C1);
 MString CurveDeformerNode::nodeName("curvenetNode");

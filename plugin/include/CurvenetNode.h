@@ -48,6 +48,10 @@ public:
     const std::vector<CutCrossing>&
     getDebugCrossings() const;
 
+    /* Returns the endpoint connections detected between profile curves. */
+    const std::vector<CurveConnection>&
+    getDebugConnections() const;
+
     static MTypeId id;
     static MString nodeName;
     static MObject inputCurves;
