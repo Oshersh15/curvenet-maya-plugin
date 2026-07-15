@@ -109,6 +109,13 @@ The current implementation focuses on constructing the Curvenet and its relation
 - Stores the controlling segment ID and parameter along the segment.
 - Stores the neutral vertex offset from the sampled curve.
 
+### Curve-Driven Deformation
+
+- Captures neutral and posed sampled profile-curve positions.
+- Maintains a fixed neutral sample count during posing.
+- Interpolates curve displacement using each vertex binding parameter.
+- Applies deformation only to vertices influenced by the CutPath.
+
 ---
 
 ## Technologies
