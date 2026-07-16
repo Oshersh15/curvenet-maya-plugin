@@ -3,14 +3,9 @@
 #include <maya/MObject.h>
 #include <maya/MPoint.h>
 #include "HalfEdge.h"
+#include "CurveConnectionDetector.h"
 
 #include <vector>
-
-enum class CurveEndpoint
-{
-    Start,
-    End
-};
 
 struct CurveConnection
 {

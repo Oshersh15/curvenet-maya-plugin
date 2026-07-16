@@ -5,69 +5,6 @@
 #include <maya/MGlobal.h>
 #include <maya/MString.h>
 
-namespace
-{
-    ClosestCurveSegmentResult findClosestPointOnCurve(
-        const MPoint& endpointPosition,
-        const ProfileCurveData& targetCurve
-    )
-    {
-        const Point3 endpoint{
-            endpointPosition.x,
-            endpointPosition.y,
-            endpointPosition.z
-        };
-
-        const std::vector<PolylineSegment> segments =
-            ProfileCurveSampler::buildPolylineSegments(
-                targetCurve.sampledPoints
-            );
-
-        return GeometryUtils::findClosestPolylineSegment(
-            endpoint,
-            segments
-        );
-    }
-
-    bool connectionAlreadyExists(
-        const std::vector<CurveConnection>& connections,
-        const CurveConnection& candidate,
-        double tolerance
-    )
-    {
-        for (const CurveConnection& existing : connections)
-        {
-            const bool sameCurvePair =
-                (
-                    existing.endpointCurveId ==
-                        candidate.endpointCurveId &&
-                    existing.targetCurveId ==
-                        candidate.targetCurveId
-                ) ||
-                (
-                    existing.endpointCurveId ==
-                        candidate.targetCurveId &&
-                    existing.targetCurveId ==
-                        candidate.endpointCurveId
-                );
-
-            if (!sameCurvePair)
-            {
-                continue;
-            }
-
-            if (existing.position.distanceTo(
-                    candidate.position
-                ) <= tolerance)
-            {
-                return true;
-            }
-        }
-
-        return false;
-    }
-}
-
 void CurvenetData::clear()
 {
     m_curves.clear();
@@ -114,100 +51,57 @@ void CurvenetData::detectConnections(
     double tolerance
 )
 {
-    m_connections.clear();
+    std::vector<std::vector<Point3>> sampledCurves;
 
-    for (size_t i = 0;
-         i < m_curves.size();
-         ++i)
+    sampledCurves.reserve(m_curves.size());
+
+    for (const ProfileCurveData& curve : m_curves)
     {
-        const ProfileCurveData& endpointCurve =
-            m_curves[i];
+        sampledCurves.push_back(
+            curve.sampledPoints
+        );
+    }
 
-        struct EndpointInfo
-        {
-            CurveEndpoint endpoint;
-            MPoint position;
-        };
+    const std::vector<DetectedCurveConnection>
+        detectedConnections =
+            CurveConnectionDetector::detect(
+                sampledCurves,
+                tolerance
+            );
 
-        EndpointInfo endpoints[2] =
-        {
-            {
-                CurveEndpoint::Start,
-                endpointCurve.startPoint
-            },
-            {
-                CurveEndpoint::End,
-                endpointCurve.endPoint
-            }
-        };
+    m_connections.clear();
+    m_connections.reserve(
+        detectedConnections.size()
+    );
 
-        for (const EndpointInfo& endpointInfo :
-             endpoints)
-        {
-            for (size_t j = 0;
-                 j < m_curves.size();
-                 ++j)
-            {
-                if (i == j)
-                {
-                    continue;
-                }
+    for (const DetectedCurveConnection& detected :
+         detectedConnections)
+    {
+        CurveConnection connection;
 
-                const ProfileCurveData& targetCurve =
-                    m_curves[j];
+        connection.endpointCurveId =
+            detected.endpointCurveId;
 
-                const ClosestCurveSegmentResult result =
-                    findClosestPointOnCurve(
-                        endpointInfo.position,
-                        targetCurve
-                    );
+        connection.endpoint =
+            detected.endpoint;
 
-                if (!result.found)
-                {
-                    continue;
-                }
+        connection.targetCurveId =
+            detected.targetCurveId;
 
-                if (result.distance > tolerance)
-                {
-                    continue;
-                }
+        connection.targetSegmentId =
+            detected.targetSegmentId;
 
-                CurveConnection connection;
+        connection.targetSegmentT =
+            detected.targetSegmentT;
 
-                connection.endpointCurveId =
-                    static_cast<int>(i);
+        connection.position =
+            MPoint(
+                detected.position.x,
+                detected.position.y,
+                detected.position.z
+            );
 
-                connection.endpoint =
-                    endpointInfo.endpoint;
-
-                connection.targetCurveId =
-                    static_cast<int>(j);
-
-                connection.targetSegmentId =
-                    result.segmentId;
-
-                connection.targetSegmentT =
-                    result.segmentT;
-
-                connection.position =
-                    MPoint(
-                        result.closestPoint.x,
-                        result.closestPoint.y,
-                        result.closestPoint.z
-                    );
-
-                if (!connectionAlreadyExists(
-                        m_connections,
-                        connection,
-                        tolerance
-                    ))
-                {
-                    m_connections.push_back(
-                        connection
-                    );
-                }
-            }
-        }
+        m_connections.push_back(connection);
     }
 }
 
