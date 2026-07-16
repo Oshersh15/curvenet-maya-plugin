@@ -2,10 +2,27 @@ cmake_minimum_required(VERSION 3.16)
 
 project(CurvenetPlugin)
 
+set(
+    MAYA_LOCATION
+    "/Applications/Autodesk/maya2025"
+    CACHE PATH
+    "Path to the Maya installation"
+)
+
+if(APPLE)
+    set(
+        MAYA_INCLUDE_DIR
+        "${MAYA_LOCATION}/include"
+    )
+
+    set(
+        MAYA_LIBRARY_DIR
+        "${MAYA_LOCATION}/Maya.app/Contents/MacOS"
+    )
+endif()
+
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
-
-set(MAYA_LOCATION "/Applications/Autodesk/maya2025")
 
 add_library(CurvenetPlugin SHARED
     src/CurvenetNode.cpp
@@ -20,14 +37,11 @@ add_library(CurvenetPlugin SHARED
 
 target_include_directories(CurvenetPlugin PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/include
-)
-
-target_include_directories(CurvenetPlugin PRIVATE
-    "${MAYA_LOCATION}/include"
+    ${MAYA_INCLUDE_DIR}
 )
 
 target_link_directories(CurvenetPlugin PRIVATE
-    "${MAYA_LOCATION}/Maya.app/Contents/MacOS"
+    ${MAYA_LIBRARY_DIR}
 )
 
 target_link_libraries(CurvenetPlugin
@@ -60,13 +74,10 @@ target_include_directories(HalfEdgeTests PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/include
 )
 
-target_link_directories(HalfEdgeTests PRIVATE
-    "${MAYA_LOCATION}/Maya.app/Contents/MacOS"
-)
-
 target_link_libraries(HalfEdgeTests
     GTest::gtest_main
 )
 
 include(GoogleTest)
+
 gtest_discover_tests(HalfEdgeTests)

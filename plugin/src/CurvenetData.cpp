@@ -2,6 +2,9 @@
 #include "GeometryUtils.h"
 #include "ProfileCurveSampler.h"
 
+#include <maya/MGlobal.h>
+#include <maya/MString.h>
+
 namespace
 {
     ClosestCurveSegmentResult findClosestPointOnCurve(
@@ -172,13 +175,13 @@ void CurvenetData::detectConnections(
                 CurveConnection connection;
 
                 connection.endpointCurveId =
-                    endpointCurve.id;
+                    static_cast<int>(i);
 
                 connection.endpoint =
                     endpointInfo.endpoint;
 
                 connection.targetCurveId =
-                    targetCurve.id;
+                    static_cast<int>(j);
 
                 connection.targetSegmentId =
                     result.segmentId;

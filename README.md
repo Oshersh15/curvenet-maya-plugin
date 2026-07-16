@@ -91,6 +91,8 @@ The current implementation focuses on constructing the Curvenet and its relation
 - Degree-1 visualisation of sampled profile-curve polylines.
 - Locator markers for detected curve-mesh crossings.
 - Automatic replacement of existing debug objects.
+- Locator markers for detected endpoint-to-curve connections.
+- Colour-coded profile curves for easier Curvenet inspection.
 
 ### Cut Path Representation
 
@@ -115,6 +117,14 @@ The current implementation focuses on constructing the Curvenet and its relation
 - Maintains a fixed neutral sample count during posing.
 - Interpolates curve displacement using each vertex binding parameter.
 - Applies deformation only to vertices influenced by the CutPath.
+
+### Curvenet Connections
+
+- Detects endpoint-to-curve connections between profile curves.
+- Supports connections to any sampled location along a target curve.
+- Stores target curve ID, sampled segment ID and segment parameter.
+- Prevents duplicate connection records.
+- Supports circular, vertical and diagonal profile-curve layouts.
 
 ---
 

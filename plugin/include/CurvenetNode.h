@@ -52,6 +52,10 @@ public:
     const std::vector<CurveConnection>&
     getDebugConnections() const;
 
+    /* Returns the profile curves stored in the Curvenet representation. */
+    const std::vector<ProfileCurveData>&
+    getDebugProfileCurves() const;
+
     static MTypeId id;
     static MString nodeName;
     static MObject inputCurves;

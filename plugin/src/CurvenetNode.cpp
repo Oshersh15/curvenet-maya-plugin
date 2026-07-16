@@ -631,6 +631,12 @@ CurveDeformerNode::getDebugConnections() const
     return curvenetData.getConnections();
 }
 
+const std::vector<ProfileCurveData>&
+CurveDeformerNode::getDebugProfileCurves() const
+{
+    return curvenetData.getCurves();
+}
+
 MTypeId CurveDeformerNode::id(0x001226C1);
 MString CurveDeformerNode::nodeName("curvenetNode");
 MObject CurveDeformerNode::inputCurves;

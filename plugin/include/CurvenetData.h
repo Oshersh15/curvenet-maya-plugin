@@ -27,7 +27,7 @@ struct CurveConnection
 
 struct ProfileCurveData
 {
-    int id;
+    int id = -1;
     MObject curveObject;
     std::vector<MPoint> restCVPositions;
     std::vector<Point3> sampledPoints;
