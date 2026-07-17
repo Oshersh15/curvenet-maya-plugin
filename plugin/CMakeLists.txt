@@ -71,6 +71,7 @@ add_executable(HalfEdgeTests
     src/HalfEdge.cpp
     tests/test_curve_connection_detector.cpp
     src/CurveConnectionDetector.cpp
+    tests/test_cut_vertex.cpp
 )
 
 target_include_directories(HalfEdgeTests PRIVATE

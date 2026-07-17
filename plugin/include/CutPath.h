@@ -1,6 +1,7 @@
 #pragma once
 
 #include "CutCrossing.h"
+#include "CutVertex.h"
 
 #include <vector>
 
@@ -11,4 +12,5 @@ struct CutPath
     std::vector<CutCrossing> crossings;
     std::vector<int> influencedFaceIds;
     std::vector<int> influencedVertexIds;
+    std::vector<CutVertex> cutVertices;
 };
