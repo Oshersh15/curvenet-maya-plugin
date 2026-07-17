@@ -38,6 +38,19 @@ struct BoundaryHalfEdgeSplitResult
     int secondHalfEdgeId = -1;
 };
 
+struct InternalHalfEdgeSplitResult
+{
+    bool success = false;
+
+    int newVertexId = -1;
+
+    int firstHalfEdgeId = -1;
+    int firstNewHalfEdgeId = -1;
+
+    int twinHalfEdgeId = -1;
+    int twinNewHalfEdgeId = -1;
+};
+
 class HalfEdgeMesh
 {
 public:
@@ -71,6 +84,11 @@ public:
     ) const;
 
     BoundaryHalfEdgeSplitResult splitBoundaryHalfEdge(
+        int halfEdgeIndex,
+        const Point3& cutPosition
+    );
+
+    InternalHalfEdgeSplitResult splitInternalHalfEdge(
         int halfEdgeIndex,
         const Point3& cutPosition
     );

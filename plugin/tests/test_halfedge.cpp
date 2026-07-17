@@ -368,3 +368,145 @@ TEST(HalfEdgeMesh, SplitsBoundaryEdgeOfTwoQuadGrid)
     EXPECT_EQ(mesh.halfEdges[1].twin, 7);
     EXPECT_EQ(mesh.halfEdges[7].twin, 1);
 }
+
+TEST(HalfEdgeMesh, SplitsInternalEdgePair)
+{
+    HalfEdgeMesh mesh;
+    mesh.createTwoQuadMesh();
+
+    /*
+        Shared internal edge:
+
+        half-edge 1: vertex 1 -> vertex 6
+        half-edge 7: vertex 6 -> vertex 1
+    */
+    const InternalHalfEdgeSplitResult result =
+        mesh.splitInternalHalfEdge(
+            1,
+            Point3{1.0, 0.5, 0.0}
+        );
+
+    ASSERT_TRUE(result.success);
+
+    EXPECT_EQ(mesh.vertices.size(), 9);
+    EXPECT_EQ(mesh.halfEdges.size(), 10);
+
+    EXPECT_EQ(result.newVertexId, 8);
+    EXPECT_EQ(result.firstHalfEdgeId, 1);
+    EXPECT_EQ(result.firstNewHalfEdgeId, 8);
+    EXPECT_EQ(result.twinHalfEdgeId, 7);
+    EXPECT_EQ(result.twinNewHalfEdgeId, 9);
+
+    EXPECT_DOUBLE_EQ(
+        mesh.vertices[8].position.x,
+        1.0
+    );
+
+    EXPECT_DOUBLE_EQ(
+        mesh.vertices[8].position.y,
+        0.5
+    );
+
+    EXPECT_DOUBLE_EQ(
+        mesh.vertices[8].position.z,
+        0.0
+    );
+
+    /*
+        First face:
+
+        original half-edge 1:
+            1 -> 6
+
+        becomes:
+            1 -> 8
+            8 -> 6
+    */
+    EXPECT_EQ(mesh.halfEdges[1].startVertex, 1);
+    EXPECT_EQ(mesh.halfEdges[1].endVertex, 8);
+    EXPECT_EQ(mesh.halfEdges[1].next, 8);
+    EXPECT_EQ(mesh.halfEdges[1].face, 0);
+
+    EXPECT_EQ(mesh.halfEdges[8].startVertex, 8);
+    EXPECT_EQ(mesh.halfEdges[8].endVertex, 6);
+    EXPECT_EQ(mesh.halfEdges[8].next, 2);
+    EXPECT_EQ(mesh.halfEdges[8].face, 0);
+
+    /*
+        Second face:
+
+        original twin half-edge 7:
+            6 -> 1
+
+        becomes:
+            6 -> 8
+            8 -> 1
+    */
+    EXPECT_EQ(mesh.halfEdges[7].startVertex, 6);
+    EXPECT_EQ(mesh.halfEdges[7].endVertex, 8);
+    EXPECT_EQ(mesh.halfEdges[7].next, 9);
+    EXPECT_EQ(mesh.halfEdges[7].face, 1);
+
+    EXPECT_EQ(mesh.halfEdges[9].startVertex, 8);
+    EXPECT_EQ(mesh.halfEdges[9].endVertex, 1);
+    EXPECT_EQ(mesh.halfEdges[9].next, 4);
+    EXPECT_EQ(mesh.halfEdges[9].face, 1);
+
+    /*
+        Twin pairs after splitting:
+
+            1 -> 8  <->  8 -> 1
+            8 -> 6  <->  6 -> 8
+    */
+    EXPECT_EQ(mesh.halfEdges[1].twin, 9);
+    EXPECT_EQ(mesh.halfEdges[9].twin, 1);
+
+    EXPECT_EQ(mesh.halfEdges[8].twin, 7);
+    EXPECT_EQ(mesh.halfEdges[7].twin, 8);
+
+    EXPECT_EQ(
+        mesh.vertices[8].outgoingHalfEdge,
+        8
+    );
+}
+
+TEST(HalfEdgeMesh, SplitInternalHalfEdgeRejectsBoundaryEdge)
+{
+    HalfEdgeMesh mesh;
+    mesh.createTestQuad();
+
+    const InternalHalfEdgeSplitResult result =
+        mesh.splitInternalHalfEdge(
+            0,
+            Point3{0.5, 1.0, 0.0}
+        );
+
+    EXPECT_FALSE(result.success);
+
+    EXPECT_EQ(mesh.vertices.size(), 4);
+    EXPECT_EQ(mesh.halfEdges.size(), 4);
+}
+
+TEST(HalfEdgeMesh, SplitInternalHalfEdgeRejectsInvalidTwinRelationship)
+{
+    HalfEdgeMesh mesh;
+    mesh.createTwoQuadMesh();
+
+    /*
+        Corrupt the relationship deliberately:
+        half-edge 1 still points to 7,
+        but half-edge 7 no longer points back to 1.
+    */
+    mesh.halfEdges[7].twin = -1;
+
+    const InternalHalfEdgeSplitResult result =
+        mesh.splitInternalHalfEdge(
+            1,
+            Point3{1.0, 0.5, 0.0}
+        );
+
+    EXPECT_FALSE(result.success);
+
+    EXPECT_EQ(mesh.vertices.size(), 8);
+    EXPECT_EQ(mesh.halfEdges.size(), 8);
+}

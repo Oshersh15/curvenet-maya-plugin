@@ -409,3 +409,146 @@ HalfEdgeMesh::splitBoundaryHalfEdge(
 
     return result;
 }
+
+InternalHalfEdgeSplitResult
+HalfEdgeMesh::splitInternalHalfEdge(
+    int halfEdgeIndex,
+    const Point3& cutPosition
+)
+{
+    InternalHalfEdgeSplitResult result;
+
+    if (halfEdgeIndex < 0 ||
+        halfEdgeIndex >=
+            static_cast<int>(halfEdges.size()))
+    {
+        return result;
+    }
+
+    const HalfEdge originalHalfEdge =
+        halfEdges[halfEdgeIndex];
+
+    const int twinHalfEdgeIndex =
+        originalHalfEdge.twin;
+
+    if (twinHalfEdgeIndex < 0 ||
+        twinHalfEdgeIndex >=
+            static_cast<int>(halfEdges.size()))
+    {
+        return result;
+    }
+
+    const HalfEdge originalTwinHalfEdge =
+        halfEdges[twinHalfEdgeIndex];
+
+    if (originalTwinHalfEdge.twin !=
+        halfEdgeIndex)
+    {
+        return result;
+    }
+
+    if (originalHalfEdge.startVertex < 0 ||
+        originalHalfEdge.endVertex < 0 ||
+        originalTwinHalfEdge.startVertex < 0 ||
+        originalTwinHalfEdge.endVertex < 0)
+    {
+        return result;
+    }
+
+    Vertex newVertex;
+    newVertex.position =
+        cutPosition;
+
+    const int newVertexId =
+        static_cast<int>(vertices.size());
+
+    vertices.push_back(newVertex);
+
+    const int firstNewHalfEdgeId =
+        static_cast<int>(halfEdges.size());
+
+    const int twinNewHalfEdgeId =
+        firstNewHalfEdgeId + 1;
+
+    HalfEdge firstNewHalfEdge;
+
+    firstNewHalfEdge.startVertex =
+        newVertexId;
+
+    firstNewHalfEdge.endVertex =
+        originalHalfEdge.endVertex;
+
+    firstNewHalfEdge.next =
+        originalHalfEdge.next;
+
+    firstNewHalfEdge.face =
+        originalHalfEdge.face;
+
+    firstNewHalfEdge.twin =
+        twinHalfEdgeIndex;
+
+    HalfEdge twinNewHalfEdge;
+
+    twinNewHalfEdge.startVertex =
+        newVertexId;
+
+    twinNewHalfEdge.endVertex =
+        originalTwinHalfEdge.endVertex;
+
+    twinNewHalfEdge.next =
+        originalTwinHalfEdge.next;
+
+    twinNewHalfEdge.face =
+        originalTwinHalfEdge.face;
+
+    twinNewHalfEdge.twin =
+        halfEdgeIndex;
+
+    halfEdges.push_back(
+        firstNewHalfEdge
+    );
+
+    halfEdges.push_back(
+        twinNewHalfEdge
+    );
+
+    halfEdges[halfEdgeIndex].endVertex =
+        newVertexId;
+
+    halfEdges[halfEdgeIndex].next =
+        firstNewHalfEdgeId;
+
+    halfEdges[halfEdgeIndex].twin =
+        twinNewHalfEdgeId;
+
+    halfEdges[twinHalfEdgeIndex].endVertex =
+        newVertexId;
+
+    halfEdges[twinHalfEdgeIndex].next =
+        twinNewHalfEdgeId;
+
+    halfEdges[twinHalfEdgeIndex].twin =
+        firstNewHalfEdgeId;
+
+    vertices[newVertexId].outgoingHalfEdge =
+        firstNewHalfEdgeId;
+
+    result.success = true;
+
+    result.newVertexId =
+        newVertexId;
+
+    result.firstHalfEdgeId =
+        halfEdgeIndex;
+
+    result.firstNewHalfEdgeId =
+        firstNewHalfEdgeId;
+
+    result.twinHalfEdgeId =
+        twinHalfEdgeIndex;
+
+    result.twinNewHalfEdgeId =
+        twinNewHalfEdgeId;
+
+    return result;
+}
