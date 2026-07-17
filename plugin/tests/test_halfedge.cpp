@@ -289,3 +289,82 @@ TEST(HalfEdgeMesh, SplitBoundaryHalfEdgeRejectsNonBoundaryEdge)
         2
     );
 }
+
+TEST(HalfEdgeMesh, SplitsBoundaryEdgeOfSingleQuad)
+{
+    HalfEdgeMesh mesh;
+    mesh.createTestQuad();
+
+    const BoundaryHalfEdgeSplitResult result =
+        mesh.splitBoundaryHalfEdge(
+            0,
+            Point3{0.5, 1.0, 0.0}
+        );
+
+    ASSERT_TRUE(result.success);
+
+    EXPECT_EQ(mesh.vertices.size(), 5);
+    EXPECT_EQ(mesh.halfEdges.size(), 5);
+
+    const std::vector<int> faceHalfEdges =
+        mesh.getFaceHalfEdges(0);
+
+    ASSERT_EQ(faceHalfEdges.size(), 5);
+
+    EXPECT_EQ(mesh.halfEdges[0].startVertex, 0);
+    EXPECT_EQ(mesh.halfEdges[0].endVertex, 4);
+    EXPECT_EQ(mesh.halfEdges[0].next, 4);
+
+    EXPECT_EQ(mesh.halfEdges[4].startVertex, 4);
+    EXPECT_EQ(mesh.halfEdges[4].endVertex, 1);
+    EXPECT_EQ(mesh.halfEdges[4].next, 1);
+    EXPECT_EQ(mesh.halfEdges[4].face, 0);
+    EXPECT_EQ(mesh.halfEdges[4].twin, -1);
+
+    EXPECT_EQ(mesh.vertices[4].outgoingHalfEdge, 4);
+    EXPECT_EQ(mesh.faces[0].halfEdge, 0);
+}
+
+TEST(HalfEdgeMesh, SplitsBoundaryEdgeOfTwoQuadGrid)
+{
+    HalfEdgeMesh mesh;
+    mesh.createTwoQuadMesh();
+
+    const int originalSecondFaceHalfEdge =
+        mesh.faces[1].halfEdge;
+
+    const BoundaryHalfEdgeSplitResult result =
+        mesh.splitBoundaryHalfEdge(
+            0,
+            Point3{0.5, 1.0, 0.0}
+        );
+
+    ASSERT_TRUE(result.success);
+
+    EXPECT_EQ(mesh.vertices.size(), 9);
+    EXPECT_EQ(mesh.halfEdges.size(), 9);
+
+    const std::vector<int> firstFaceHalfEdges =
+        mesh.getFaceHalfEdges(0);
+
+    const std::vector<int> secondFaceHalfEdges =
+        mesh.getFaceHalfEdges(1);
+
+    EXPECT_EQ(firstFaceHalfEdges.size(), 5);
+    EXPECT_EQ(secondFaceHalfEdges.size(), 4);
+
+    EXPECT_EQ(mesh.halfEdges[0].startVertex, 0);
+    EXPECT_EQ(mesh.halfEdges[0].endVertex, 8);
+    EXPECT_EQ(mesh.halfEdges[0].next, 8);
+
+    EXPECT_EQ(mesh.halfEdges[8].startVertex, 8);
+    EXPECT_EQ(mesh.halfEdges[8].endVertex, 1);
+    EXPECT_EQ(mesh.halfEdges[8].next, 1);
+    EXPECT_EQ(mesh.halfEdges[8].face, 0);
+    EXPECT_EQ(mesh.halfEdges[8].twin, -1);
+
+    EXPECT_EQ(mesh.faces[1].halfEdge, originalSecondFaceHalfEdge);
+
+    EXPECT_EQ(mesh.halfEdges[1].twin, 7);
+    EXPECT_EQ(mesh.halfEdges[7].twin, 1);
+}
