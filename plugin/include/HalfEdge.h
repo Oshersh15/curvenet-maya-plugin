@@ -29,6 +29,15 @@ struct Face
     int halfEdge = -1;
 };
 
+struct BoundaryHalfEdgeSplitResult
+{
+    bool success = false;
+
+    int newVertexId = -1;
+    int firstHalfEdgeId = -1;
+    int secondHalfEdgeId = -1;
+};
+
 class HalfEdgeMesh
 {
 public:
@@ -60,4 +69,9 @@ public:
     std::vector<int> collectUniqueVerticesFromFaces(
         const std::vector<int>& faceIds
     ) const;
+
+    BoundaryHalfEdgeSplitResult splitBoundaryHalfEdge(
+        int halfEdgeIndex,
+        const Point3& cutPosition
+    );
 };

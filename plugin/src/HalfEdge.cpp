@@ -321,3 +321,91 @@ std::vector<int> HalfEdgeMesh::collectUniqueVerticesFromFaces(
 
     return uniqueVertexIds;
 }
+
+BoundaryHalfEdgeSplitResult
+HalfEdgeMesh::splitBoundaryHalfEdge(
+    int halfEdgeIndex,
+    const Point3& cutPosition
+)
+{
+    BoundaryHalfEdgeSplitResult result;
+
+    if (halfEdgeIndex < 0 ||
+        halfEdgeIndex >=
+            static_cast<int>(halfEdges.size()))
+    {
+        return result;
+    }
+
+    HalfEdge& originalHalfEdge =
+        halfEdges[halfEdgeIndex];
+
+    if (originalHalfEdge.twin != -1)
+    {
+        return result;
+    }
+
+    if (originalHalfEdge.startVertex < 0 ||
+        originalHalfEdge.endVertex < 0)
+    {
+        return result;
+    }
+
+    const int originalEndVertex =
+        originalHalfEdge.endVertex;
+
+    const int originalNext =
+        originalHalfEdge.next;
+
+    Vertex newVertex;
+    newVertex.position =
+        cutPosition;
+
+    const int newVertexId =
+        static_cast<int>(vertices.size());
+
+    vertices.push_back(newVertex);
+
+    HalfEdge secondHalfEdge;
+
+    secondHalfEdge.startVertex =
+        newVertexId;
+
+    secondHalfEdge.endVertex =
+        originalEndVertex;
+
+    secondHalfEdge.next =
+        originalNext;
+
+    secondHalfEdge.face =
+        originalHalfEdge.face;
+
+    secondHalfEdge.twin = -1;
+
+    const int secondHalfEdgeId =
+        static_cast<int>(halfEdges.size());
+
+    originalHalfEdge.endVertex =
+        newVertexId;
+
+    originalHalfEdge.next =
+        secondHalfEdgeId;
+
+    halfEdges.push_back(secondHalfEdge);
+
+    vertices[newVertexId].outgoingHalfEdge =
+        secondHalfEdgeId;
+
+    result.success = true;
+
+    result.newVertexId =
+        newVertexId;
+
+    result.firstHalfEdgeId =
+        halfEdgeIndex;
+
+    result.secondHalfEdgeId =
+        secondHalfEdgeId;
+
+    return result;
+}
