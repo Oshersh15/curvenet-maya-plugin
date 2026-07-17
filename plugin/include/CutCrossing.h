@@ -19,6 +19,7 @@ struct CutCrossing
     double curveSegmentT = 0.0;
     int faceId = -1;
     int halfEdgeId = -1;
+    double meshEdgeT = 0.0;
 
     Point3 position;
 };

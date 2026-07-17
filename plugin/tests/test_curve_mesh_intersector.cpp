@@ -358,3 +358,126 @@ TEST(CurveMeshIntersector, CollectUniqueFacesPreservesFirstTraversalOrder)
     EXPECT_EQ(collectedFaceIds[2], 5);
     EXPECT_EQ(collectedFaceIds[3], 3);
 }
+
+TEST(
+    CurveMeshIntersector,
+    BuildsCutVerticesFromOrderedCrossings
+)
+{
+    std::vector<CutCrossing> crossings;
+
+    CutCrossing firstCrossing;
+    firstCrossing.curveId = 3;
+    firstCrossing.halfEdgeId = 10;
+    firstCrossing.meshEdgeT = 0.25;
+    firstCrossing.position =
+        Point3{1.0, 2.0, 3.0};
+
+    CutCrossing secondCrossing;
+    secondCrossing.curveId = 3;
+    secondCrossing.halfEdgeId = 20;
+    secondCrossing.meshEdgeT = 0.75;
+    secondCrossing.position =
+        Point3{4.0, 5.0, 6.0};
+
+    crossings.push_back(firstCrossing);
+    crossings.push_back(secondCrossing);
+
+    const std::vector<CutVertex> cutVertices =
+        CurveMeshIntersector::buildCutVertices(
+            crossings,
+            0.0001
+        );
+
+    ASSERT_EQ(cutVertices.size(), 2);
+
+    EXPECT_EQ(cutVertices[0].curveId, 3);
+    EXPECT_EQ(cutVertices[0].sourceHalfEdgeId, 10);
+    EXPECT_DOUBLE_EQ(cutVertices[0].sourceEdgeT, 0.25);
+    EXPECT_EQ(cutVertices[0].cutPathOrder, 0);
+
+    EXPECT_DOUBLE_EQ(cutVertices[0].position.x, 1.0);
+    EXPECT_DOUBLE_EQ(cutVertices[0].position.y, 2.0);
+    EXPECT_DOUBLE_EQ(cutVertices[0].position.z, 3.0);
+
+    EXPECT_EQ(cutVertices[1].curveId, 3);
+    EXPECT_EQ(cutVertices[1].sourceHalfEdgeId, 20);
+    EXPECT_DOUBLE_EQ(cutVertices[1].sourceEdgeT, 0.75);
+    EXPECT_EQ(cutVertices[1].cutPathOrder, 1);
+}
+
+TEST(
+    CurveMeshIntersector,
+    ReusesCutVertexForDuplicateCrossingPosition
+)
+{
+    std::vector<CutCrossing> crossings;
+
+    CutCrossing firstCrossing;
+    firstCrossing.curveId = 1;
+    firstCrossing.halfEdgeId = 8;
+    firstCrossing.meshEdgeT = 0.5;
+    firstCrossing.position =
+        Point3{2.0, 0.0, 1.0};
+
+    CutCrossing duplicateCrossing;
+    duplicateCrossing.curveId = 1;
+    duplicateCrossing.halfEdgeId = 9;
+    duplicateCrossing.meshEdgeT = 0.5;
+    duplicateCrossing.position =
+        Point3{2.00001, 0.0, 1.0};
+
+    crossings.push_back(firstCrossing);
+    crossings.push_back(duplicateCrossing);
+
+    const std::vector<CutVertex> cutVertices =
+        CurveMeshIntersector::buildCutVertices(
+            crossings,
+            0.001
+        );
+
+    ASSERT_EQ(cutVertices.size(), 1);
+
+    EXPECT_EQ(cutVertices[0].sourceHalfEdgeId, 8);
+    EXPECT_EQ(cutVertices[0].cutPathOrder, 0);
+}
+
+TEST(
+    CurveMeshIntersector,
+    PreservesCutPathOrderAfterRemovingDuplicates
+)
+{
+    std::vector<CutCrossing> crossings;
+
+    CutCrossing firstCrossing;
+    firstCrossing.position =
+        Point3{0.0, 0.0, 0.0};
+
+    CutCrossing duplicateCrossing;
+    duplicateCrossing.position =
+        Point3{0.00001, 0.0, 0.0};
+
+    CutCrossing thirdCrossing;
+    thirdCrossing.position =
+        Point3{2.0, 0.0, 0.0};
+
+    crossings.push_back(firstCrossing);
+    crossings.push_back(duplicateCrossing);
+    crossings.push_back(thirdCrossing);
+
+    const std::vector<CutVertex> cutVertices =
+        CurveMeshIntersector::buildCutVertices(
+            crossings,
+            0.001
+        );
+
+    ASSERT_EQ(cutVertices.size(), 2);
+
+    EXPECT_EQ(cutVertices[0].cutPathOrder, 0);
+    EXPECT_EQ(cutVertices[1].cutPathOrder, 1);
+
+    EXPECT_DOUBLE_EQ(
+        cutVertices[1].position.x,
+        2.0
+    );
+}

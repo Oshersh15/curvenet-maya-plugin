@@ -434,6 +434,12 @@ unsigned int geometryIndex
 
         cutPath.crossings = crossings;
 
+        cutPath.cutVertices =
+            CurveMeshIntersector::buildCutVertices(
+                cutPath.crossings,
+                duplicateTolerance
+            );
+
         std::vector<int> faceIntervals =
             CurveMeshIntersector::deriveFaceIntervals(
                 cutPath,

@@ -4,6 +4,7 @@
 #include "ProfileCurveSampler.h"
 #include "CutCrossing.h"
 #include "CutPath.h"
+#include "CutVertex.h"
 
 /*
     Stores the result of searching for the first crossing between
@@ -73,5 +74,10 @@ public:
     */
     static std::vector<int> collectUniqueFaces(
         const std::vector<int>& faceIntervals
+    );
+
+    static std::vector<CutVertex> buildCutVertices(
+        const std::vector<CutCrossing>& crossings,
+        double duplicateTolerance
     );
 };

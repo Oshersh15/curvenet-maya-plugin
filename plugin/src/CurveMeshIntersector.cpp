@@ -63,6 +63,8 @@ FirstCrossingResult CurveMeshIntersector::findFirstCrossing(
                 result.crossing.curveSegmentId = curveSegmentIndex;
                 result.crossing.faceId = halfEdge.face;
                 result.crossing.halfEdgeId = halfEdgeIndex;
+                result.crossing.meshEdgeT =
+                    distanceResult.secondSegmentT;
                 result.crossing.position =
                     distanceResult.closestPointOnSecondSegment;
 
@@ -142,6 +144,8 @@ std::vector<CutCrossing> CurveMeshIntersector::findAllCrossings(
                 distanceResult.firstSegmentT;
             candidate.faceId = halfEdge.face;
             candidate.halfEdgeId = halfEdgeIndex;
+            candidate.meshEdgeT =
+                distanceResult.secondSegmentT;
             candidate.position =
                 distanceResult.closestPointOnSecondSegment;
 
@@ -187,6 +191,63 @@ std::vector<CutCrossing> CurveMeshIntersector::findAllCrossings(
     );
 
     return crossings;
+}
+
+std::vector<CutVertex>
+CurveMeshIntersector::buildCutVertices(
+    const std::vector<CutCrossing>& crossings,
+    double duplicateTolerance
+)
+{
+    std::vector<CutVertex> cutVertices;
+
+    for (const CutCrossing& crossing : crossings)
+    {
+        bool duplicateFound = false;
+
+        for (const CutVertex& existingVertex : cutVertices)
+        {
+            const double positionDistance =
+                GeometryUtils::pointToPointDistance(
+                    crossing.position,
+                    existingVertex.position
+                );
+
+            if (positionDistance <= duplicateTolerance)
+            {
+                duplicateFound = true;
+                break;
+            }
+        }
+
+        if (duplicateFound)
+        {
+            continue;
+        }
+
+        CutVertex cutVertex;
+
+        cutVertex.position =
+            crossing.position;
+
+        cutVertex.sourceHalfEdgeId =
+            crossing.halfEdgeId;
+
+        cutVertex.sourceEdgeT =
+            crossing.meshEdgeT;
+
+        cutVertex.curveId =
+            crossing.curveId;
+
+        cutVertex.cutPathOrder =
+            static_cast<int>(cutVertices.size());
+
+        cutVertices.push_back(
+            cutVertex
+        );
+    }
+
+    return cutVertices;
 }
 
 std::vector<int> CurveMeshIntersector::deriveFaceIntervals(
