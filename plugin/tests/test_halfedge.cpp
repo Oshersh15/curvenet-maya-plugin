@@ -1,6 +1,7 @@
 #include "HalfEdge.h"
 
 #include <gtest/gtest.h>
+#include <algorithm>
 
 TEST(HalfEdgeMesh, CreateTestQuad)
 {
@@ -509,4 +510,161 @@ TEST(HalfEdgeMesh, SplitInternalHalfEdgeRejectsInvalidTwinRelationship)
 
     EXPECT_EQ(mesh.vertices.size(), 8);
     EXPECT_EQ(mesh.halfEdges.size(), 8);
+}
+
+TEST(
+    HalfEdgeMesh,
+    InternalEdgeSplitPreservesBothFaceLoops
+)
+{
+    HalfEdgeMesh mesh;
+    mesh.createTwoQuadMesh();
+
+    const InternalHalfEdgeSplitResult result =
+        mesh.splitInternalHalfEdge(
+            1,
+            Point3{1.0, 0.5, 0.0}
+        );
+
+    ASSERT_TRUE(result.success);
+
+    const std::vector<int> firstFaceHalfEdges =
+        mesh.getFaceHalfEdges(0);
+
+    const std::vector<int> secondFaceHalfEdges =
+        mesh.getFaceHalfEdges(1);
+
+    ASSERT_EQ(firstFaceHalfEdges.size(), 5);
+    ASSERT_EQ(secondFaceHalfEdges.size(), 5);
+
+    EXPECT_NE(
+        std::find(
+            firstFaceHalfEdges.begin(),
+            firstFaceHalfEdges.end(),
+            result.firstHalfEdgeId
+        ),
+        firstFaceHalfEdges.end()
+    );
+
+    EXPECT_NE(
+        std::find(
+            firstFaceHalfEdges.begin(),
+            firstFaceHalfEdges.end(),
+            result.firstNewHalfEdgeId
+        ),
+        firstFaceHalfEdges.end()
+    );
+
+    EXPECT_NE(
+        std::find(
+            secondFaceHalfEdges.begin(),
+            secondFaceHalfEdges.end(),
+            result.twinHalfEdgeId
+        ),
+        secondFaceHalfEdges.end()
+    );
+
+    EXPECT_NE(
+        std::find(
+            secondFaceHalfEdges.begin(),
+            secondFaceHalfEdges.end(),
+            result.twinNewHalfEdgeId
+        ),
+        secondFaceHalfEdges.end()
+    );
+}
+
+TEST(
+    HalfEdgeMesh,
+    InternalEdgeSplitPreservesTwinSymmetry
+)
+{
+    HalfEdgeMesh mesh;
+    mesh.createTwoQuadMesh();
+
+    const InternalHalfEdgeSplitResult result =
+        mesh.splitInternalHalfEdge(
+            1,
+            Point3{1.0, 0.5, 0.0}
+        );
+
+    ASSERT_TRUE(result.success);
+
+    const std::vector<int> splitHalfEdgeIds
+    {
+        result.firstHalfEdgeId,
+        result.firstNewHalfEdgeId,
+        result.twinHalfEdgeId,
+        result.twinNewHalfEdgeId
+    };
+
+    for (int halfEdgeId : splitHalfEdgeIds)
+    {
+        ASSERT_GE(halfEdgeId, 0);
+        ASSERT_LT(
+            halfEdgeId,
+            static_cast<int>(mesh.halfEdges.size())
+        );
+
+        const int twinId =
+            mesh.halfEdges[halfEdgeId].twin;
+
+        ASSERT_GE(twinId, 0);
+        ASSERT_LT(
+            twinId,
+            static_cast<int>(mesh.halfEdges.size())
+        );
+
+        EXPECT_EQ(
+            mesh.halfEdges[twinId].twin,
+            halfEdgeId
+        );
+    }
+}
+
+TEST(
+    HalfEdgeMesh,
+    InternalEdgeSplitLeavesNoBrokenNextLinks
+)
+{
+    HalfEdgeMesh mesh;
+    mesh.createTwoQuadMesh();
+
+    const InternalHalfEdgeSplitResult result =
+        mesh.splitInternalHalfEdge(
+            1,
+            Point3{1.0, 0.5, 0.0}
+        );
+
+    ASSERT_TRUE(result.success);
+
+    for (int faceId = 0;
+         faceId < 2;
+         ++faceId)
+    {
+        const std::vector<int> faceHalfEdges =
+            mesh.getFaceHalfEdges(faceId);
+
+        ASSERT_EQ(faceHalfEdges.size(), 5);
+
+        for (int halfEdgeId : faceHalfEdges)
+        {
+            const int nextId =
+                mesh.halfEdges[halfEdgeId].next;
+
+            ASSERT_GE(nextId, 0);
+
+            ASSERT_LT(
+                nextId,
+                static_cast<int>(
+                    mesh.halfEdges.size()
+                )
+            );
+
+            EXPECT_EQ(
+                mesh.halfEdges[nextId].face,
+                faceId
+            );
+        }
+    }
 }
