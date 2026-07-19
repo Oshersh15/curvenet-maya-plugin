@@ -34,6 +34,7 @@ add_library(CurvenetPlugin SHARED
     src/CurvenetDebugCommand.cpp
     src/HalfEdge.cpp
     src/CurveConnectionDetector.cpp
+    src/CutPathMeshSplitter.cpp
 )
 
 target_include_directories(CurvenetPlugin PRIVATE
@@ -72,6 +73,8 @@ add_executable(HalfEdgeTests
     tests/test_curve_connection_detector.cpp
     src/CurveConnectionDetector.cpp
     tests/test_cut_vertex.cpp
+    tests/test_cut_path_mesh_splitter.cpp
+    src/CutPathMeshSplitter.cpp
 )
 
 target_include_directories(HalfEdgeTests PRIVATE
