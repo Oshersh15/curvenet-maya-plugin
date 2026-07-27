@@ -166,6 +166,80 @@ void HalfEdgeMesh::createTwoQuadMesh()
     assignTwins();
 }
 
+void HalfEdgeMesh::createFourQuadGrid()
+{
+    clear();
+
+    vertices.resize(9);
+    faces.resize(4);
+    halfEdges.resize(16);
+
+    vertices[0].position = Point3{0.0, 2.0, 0.0};
+    vertices[1].position = Point3{1.0, 2.0, 0.0};
+    vertices[2].position = Point3{2.0, 2.0, 0.0};
+
+    vertices[3].position = Point3{0.0, 1.0, 0.0};
+    vertices[4].position = Point3{1.0, 1.0, 0.0};
+    vertices[5].position = Point3{2.0, 1.0, 0.0};
+
+    vertices[6].position = Point3{0.0, 0.0, 0.0};
+    vertices[7].position = Point3{1.0, 0.0, 0.0};
+    vertices[8].position = Point3{2.0, 0.0, 0.0};
+
+    /*
+        Face 0:
+        0 -> 1 -> 4 -> 3
+    */
+    halfEdges[0] = HalfEdge{0, 1, 1, -1, 0};
+    halfEdges[1] = HalfEdge{1, 4, 2, -1, 0};
+    halfEdges[2] = HalfEdge{4, 3, 3, -1, 0};
+    halfEdges[3] = HalfEdge{3, 0, 0, -1, 0};
+
+    /*
+        Face 1:
+        1 -> 2 -> 5 -> 4
+    */
+    halfEdges[4] = HalfEdge{1, 2, 5, -1, 1};
+    halfEdges[5] = HalfEdge{2, 5, 6, -1, 1};
+    halfEdges[6] = HalfEdge{5, 4, 7, -1, 1};
+    halfEdges[7] = HalfEdge{4, 1, 4, -1, 1};
+
+    /*
+        Face 2:
+        3 -> 4 -> 7 -> 6
+    */
+    halfEdges[8] = HalfEdge{3, 4, 9, -1, 2};
+    halfEdges[9] = HalfEdge{4, 7, 10, -1, 2};
+    halfEdges[10] = HalfEdge{7, 6, 11, -1, 2};
+    halfEdges[11] = HalfEdge{6, 3, 8, -1, 2};
+
+    /*
+        Face 3:
+        4 -> 5 -> 8 -> 7
+    */
+    halfEdges[12] = HalfEdge{4, 5, 13, -1, 3};
+    halfEdges[13] = HalfEdge{5, 8, 14, -1, 3};
+    halfEdges[14] = HalfEdge{8, 7, 15, -1, 3};
+    halfEdges[15] = HalfEdge{7, 4, 12, -1, 3};
+
+    faces[0].halfEdge = 0;
+    faces[1].halfEdge = 4;
+    faces[2].halfEdge = 8;
+    faces[3].halfEdge = 12;
+
+    vertices[0].outgoingHalfEdge = 0;
+    vertices[1].outgoingHalfEdge = 1;
+    vertices[2].outgoingHalfEdge = 5;
+    vertices[3].outgoingHalfEdge = 3;
+    vertices[4].outgoingHalfEdge = 2;
+    vertices[5].outgoingHalfEdge = 6;
+    vertices[6].outgoingHalfEdge = 11;
+    vertices[7].outgoingHalfEdge = 10;
+    vertices[8].outgoingHalfEdge = 14;
+
+    assignTwins();
+}
+
 std::vector<int> HalfEdgeMesh::traverseFace(int faceIndex) const
 {
     std::vector<int> traversal;

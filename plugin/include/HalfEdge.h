@@ -71,6 +71,7 @@ public:
 
     void createTestQuad();
     void createTwoQuadMesh();
+    void createFourQuadGrid();
 
     std::vector<int> traverseFace(int faceIndex) const;
     std::vector<int> getFaceHalfEdges(int faceIndex) const;

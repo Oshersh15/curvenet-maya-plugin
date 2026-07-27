@@ -31,6 +31,7 @@
 #include "CurvenetDebugCommand.h"
 #include "CutPath.h"
 #include "VertexCurveBinding.h"
+#include "CutPathMeshSplitter.h"
 
 #include <vector>
 
@@ -512,6 +513,75 @@ unsigned int geometryIndex
             crossings.begin(),
             crossings.end()
         );
+    }
+
+    if (!cutPaths.empty())
+    {
+        const CutPath* circularCutPath = nullptr;
+
+        for (const CutPath& cutPath : cutPaths)
+        {
+            if (cutPath.curveId == 0)
+            {
+                circularCutPath = &cutPath;
+                break;
+            }
+        }
+
+        if (circularCutPath != nullptr)
+        {
+            HalfEdgeMesh verificationMesh =
+                mayaHalfEdgeMesh;
+
+            const int originalVertexCount =
+                static_cast<int>(
+                    verificationMesh.vertices.size()
+                );
+
+            const int originalHalfEdgeCount =
+                static_cast<int>(
+                    verificationMesh.halfEdges.size()
+                );
+
+            const CutPathSplitResult splitResult =
+                CutPathMeshSplitter::apply(
+                    verificationMesh,
+                    *circularCutPath,
+                    0.0001
+                );
+
+            MGlobal::displayInfo(
+                MString("Circular CutPath verification: ")
+                + (splitResult.success
+                    ? "SUCCESS"
+                    : "FAILED")
+            );
+
+            MGlobal::displayInfo(
+                MString("Circular CutVertices: ")
+                + static_cast<int>(
+                    circularCutPath->cutVertices.size()
+                )
+            );
+
+            MGlobal::displayInfo(
+                MString("Vertices: ")
+                + originalVertexCount
+                + " -> "
+                + static_cast<int>(
+                    verificationMesh.vertices.size()
+                )
+            );
+
+            MGlobal::displayInfo(
+                MString("Half-edges: ")
+                + originalHalfEdgeCount
+                + " -> "
+                + static_cast<int>(
+                    verificationMesh.halfEdges.size()
+                )
+            );
+        }
     }
 
     if (!vertexBindingsCaptured)

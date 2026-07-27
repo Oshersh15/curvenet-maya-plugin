@@ -668,3 +668,50 @@ TEST(
         }
     }
 }
+
+TEST(HalfEdgeMesh, CreatesValidFourQuadGrid)
+{
+    HalfEdgeMesh mesh;
+    mesh.createFourQuadGrid();
+
+    EXPECT_EQ(mesh.vertices.size(), 9);
+    EXPECT_EQ(mesh.faces.size(), 4);
+    EXPECT_EQ(mesh.halfEdges.size(), 16);
+
+    for (int faceId = 0; faceId < 4; ++faceId)
+    {
+        const std::vector<int> faceHalfEdges =
+            mesh.getFaceHalfEdges(faceId);
+
+        EXPECT_EQ(faceHalfEdges.size(), 4);
+    }
+
+    int halfEdgesWithTwins = 0;
+
+    for (int halfEdgeId = 0;
+         halfEdgeId < static_cast<int>(mesh.halfEdges.size());
+         ++halfEdgeId)
+    {
+        const int twinId =
+            mesh.halfEdges[halfEdgeId].twin;
+
+        if (twinId < 0)
+        {
+            continue;
+        }
+
+        ++halfEdgesWithTwins;
+
+        ASSERT_LT(
+            twinId,
+            static_cast<int>(mesh.halfEdges.size())
+        );
+
+        EXPECT_EQ(
+            mesh.halfEdges[twinId].twin,
+            halfEdgeId
+        );
+    }
+
+    EXPECT_EQ(halfEdgesWithTwins, 8);
+}

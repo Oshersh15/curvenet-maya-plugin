@@ -272,3 +272,252 @@ TEST(
         5
     );
 }
+
+TEST(
+    CutPathMeshSplitter,
+    AppliesStraightCutPathAcrossGrid
+)
+{
+    HalfEdgeMesh mesh;
+    mesh.createFourQuadGrid();
+
+    CutPath cutPath;
+    cutPath.curveId = 0;
+
+    CutVertex leftCut;
+    leftCut.position =
+        Point3{0.0, 1.5, 0.0};
+    leftCut.sourceHalfEdgeId = 3;
+    leftCut.sourceEdgeT = 0.5;
+    leftCut.curveId = 0;
+    leftCut.cutPathOrder = 0;
+
+    CutVertex centreCut;
+    centreCut.position =
+        Point3{1.0, 1.5, 0.0};
+    centreCut.sourceHalfEdgeId = 1;
+    centreCut.sourceEdgeT = 0.5;
+    centreCut.curveId = 0;
+    centreCut.cutPathOrder = 1;
+
+    CutVertex rightCut;
+    rightCut.position =
+        Point3{2.0, 1.5, 0.0};
+    rightCut.sourceHalfEdgeId = 5;
+    rightCut.sourceEdgeT = 0.5;
+    rightCut.curveId = 0;
+    rightCut.cutPathOrder = 2;
+
+    cutPath.cutVertices = {
+        leftCut,
+        centreCut,
+        rightCut
+    };
+
+    const CutPathSplitResult result =
+        CutPathMeshSplitter::apply(
+            mesh,
+            cutPath,
+            0.0001
+        );
+
+    ASSERT_TRUE(result.success);
+
+    ASSERT_EQ(
+        result.meshVertexIds.size(),
+        3
+    );
+
+    EXPECT_EQ(mesh.vertices.size(), 12);
+    EXPECT_EQ(mesh.halfEdges.size(), 20);
+
+    const int leftVertexId =
+        result.meshVertexIds[0];
+
+    const int centreVertexId =
+        result.meshVertexIds[1];
+
+    const int rightVertexId =
+        result.meshVertexIds[2];
+
+    EXPECT_DOUBLE_EQ(
+        mesh.vertices[leftVertexId].position.x,
+        0.0
+    );
+
+    EXPECT_DOUBLE_EQ(
+        mesh.vertices[leftVertexId].position.y,
+        1.5
+    );
+
+    EXPECT_DOUBLE_EQ(
+        mesh.vertices[centreVertexId].position.x,
+        1.0
+    );
+
+    EXPECT_DOUBLE_EQ(
+        mesh.vertices[centreVertexId].position.y,
+        1.5
+    );
+
+    EXPECT_DOUBLE_EQ(
+        mesh.vertices[rightVertexId].position.x,
+        2.0
+    );
+
+    EXPECT_DOUBLE_EQ(
+        mesh.vertices[rightVertexId].position.y,
+        1.5
+    );
+
+    const std::vector<int> firstFaceHalfEdges =
+        mesh.getFaceHalfEdges(0);
+
+    const std::vector<int> secondFaceHalfEdges =
+        mesh.getFaceHalfEdges(1);
+
+    EXPECT_EQ(firstFaceHalfEdges.size(), 6);
+    EXPECT_EQ(secondFaceHalfEdges.size(), 6);
+}
+
+TEST(
+    CutPathMeshSplitter,
+    AppliesDiagonalCutPathAcrossGrid
+)
+{
+    HalfEdgeMesh mesh;
+    mesh.createFourQuadGrid();
+
+    CutPath cutPath;
+    cutPath.curveId = 0;
+
+    CutVertex leftCut;
+    leftCut.position =
+        Point3{0.0, 1.75, 0.0};
+    leftCut.sourceHalfEdgeId = 3;
+    leftCut.sourceEdgeT = 0.75;
+    leftCut.curveId = 0;
+    leftCut.cutPathOrder = 0;
+
+    CutVertex verticalCut;
+    verticalCut.position =
+        Point3{1.0, 1.25, 0.0};
+    verticalCut.sourceHalfEdgeId = 1;
+    verticalCut.sourceEdgeT = 0.75;
+    verticalCut.curveId = 0;
+    verticalCut.cutPathOrder = 1;
+
+    CutVertex horizontalCut;
+    horizontalCut.position =
+        Point3{1.5, 1.0, 0.0};
+    horizontalCut.sourceHalfEdgeId = 6;
+    horizontalCut.sourceEdgeT = 0.5;
+    horizontalCut.curveId = 0;
+    horizontalCut.cutPathOrder = 2;
+
+    CutVertex rightCut;
+    rightCut.position =
+        Point3{2.0, 0.75, 0.0};
+    rightCut.sourceHalfEdgeId = 13;
+    rightCut.sourceEdgeT = 0.25;
+    rightCut.curveId = 0;
+    rightCut.cutPathOrder = 3;
+
+    cutPath.cutVertices = {
+        leftCut,
+        verticalCut,
+        horizontalCut,
+        rightCut
+    };
+
+    const CutPathSplitResult result =
+        CutPathMeshSplitter::apply(
+            mesh,
+            cutPath,
+            0.0001
+        );
+
+    ASSERT_TRUE(result.success);
+
+    ASSERT_EQ(
+        result.meshVertexIds.size(),
+        4
+    );
+
+    EXPECT_EQ(mesh.vertices.size(), 13);
+    EXPECT_EQ(mesh.halfEdges.size(), 22);
+
+    const int leftVertexId =
+        result.meshVertexIds[0];
+
+    const int verticalVertexId =
+        result.meshVertexIds[1];
+
+    const int horizontalVertexId =
+        result.meshVertexIds[2];
+
+    const int rightVertexId =
+        result.meshVertexIds[3];
+
+    EXPECT_DOUBLE_EQ(
+        mesh.vertices[leftVertexId].position.x,
+        0.0
+    );
+
+    EXPECT_DOUBLE_EQ(
+        mesh.vertices[leftVertexId].position.y,
+        1.75
+    );
+
+    EXPECT_DOUBLE_EQ(
+        mesh.vertices[verticalVertexId].position.x,
+        1.0
+    );
+
+    EXPECT_DOUBLE_EQ(
+        mesh.vertices[verticalVertexId].position.y,
+        1.25
+    );
+
+    EXPECT_DOUBLE_EQ(
+        mesh.vertices[horizontalVertexId].position.x,
+        1.5
+    );
+
+    EXPECT_DOUBLE_EQ(
+        mesh.vertices[horizontalVertexId].position.y,
+        1.0
+    );
+
+    EXPECT_DOUBLE_EQ(
+        mesh.vertices[rightVertexId].position.x,
+        2.0
+    );
+
+    EXPECT_DOUBLE_EQ(
+        mesh.vertices[rightVertexId].position.y,
+        0.75
+    );
+
+    const std::vector<int> face0HalfEdges =
+        mesh.getFaceHalfEdges(0);
+
+    const std::vector<int> face1HalfEdges =
+        mesh.getFaceHalfEdges(1);
+
+    const std::vector<int> face3HalfEdges =
+        mesh.getFaceHalfEdges(3);
+
+    EXPECT_EQ(face0HalfEdges.size(), 6);
+    EXPECT_EQ(face1HalfEdges.size(), 6);
+    EXPECT_EQ(face3HalfEdges.size(), 6);
+
+    /*
+        Face 2 was not crossed by the path,
+        so it should remain a quad.
+    */
+    const std::vector<int> face2HalfEdges =
+        mesh.getFaceHalfEdges(2);
+
+    EXPECT_EQ(face2HalfEdges.size(), 4);
+}
