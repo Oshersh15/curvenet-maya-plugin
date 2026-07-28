@@ -1,6 +1,7 @@
 #include "CutPathMeshSplitter.h"
 
 #include <gtest/gtest.h>
+#include <algorithm>
 
 TEST(
     CutPathMeshSplitter,
@@ -1109,5 +1110,401 @@ TEST(
             cutEdgeResult.secondHalfEdgeId
         ].twin,
         cutEdgeResult.firstHalfEdgeId
+    );
+}
+
+TEST(
+    CutPathMeshSplitter,
+    BuildsFirstFaceLoopWhenDividingCrossedFace
+)
+{
+    HalfEdgeMesh mesh;
+    mesh.createTestQuad();
+
+    const BoundaryHalfEdgeSplitResult topSplit =
+        mesh.splitBoundaryHalfEdge(
+            0,
+            Point3{0.5, 1.0, 0.0}
+        );
+
+    ASSERT_TRUE(topSplit.success);
+
+    const BoundaryHalfEdgeSplitResult bottomSplit =
+        mesh.splitBoundaryHalfEdge(
+            2,
+            Point3{0.5, 0.0, 0.0}
+        );
+
+    ASSERT_TRUE(bottomSplit.success);
+
+    const CutHalfEdgePairResult cutEdgeResult =
+        CutPathMeshSplitter::createCutHalfEdges(
+            mesh,
+            topSplit.newVertexId,
+            bottomSplit.newVertexId
+        );
+
+    ASSERT_TRUE(cutEdgeResult.success);
+
+    ASSERT_TRUE(
+        CutPathMeshSplitter::insertCutHalfEdgesIntoFace(
+            mesh,
+            0,
+            cutEdgeResult.firstHalfEdgeId,
+            cutEdgeResult.secondHalfEdgeId
+        )
+    );
+
+    const std::vector<int> faceHalfEdges =
+        mesh.getFaceHalfEdges(0);
+
+    ASSERT_EQ(faceHalfEdges.size(), 4);
+
+    /*
+        Every edge must connect continuously to the next edge:
+
+        current.endVertex == next.startVertex
+    */
+    for (int index = 0;
+         index < static_cast<int>(faceHalfEdges.size());
+         ++index)
+    {
+        const int currentHalfEdgeId =
+            faceHalfEdges[index];
+
+        const int nextHalfEdgeId =
+            faceHalfEdges[
+                (index + 1) %
+                faceHalfEdges.size()
+            ];
+
+        EXPECT_EQ(
+            mesh.halfEdges[
+                currentHalfEdgeId
+            ].endVertex,
+            mesh.halfEdges[
+                nextHalfEdgeId
+            ].startVertex
+        );
+
+        EXPECT_EQ(
+            mesh.halfEdges[
+                currentHalfEdgeId
+            ].next,
+            nextHalfEdgeId
+        );
+    }
+}
+
+TEST(
+    CutPathMeshSplitter,
+    BuildsSecondFaceLoopWhenDividingCrossedFace
+)
+{
+    HalfEdgeMesh mesh;
+    mesh.createTestQuad();
+
+    const BoundaryHalfEdgeSplitResult topSplit =
+        mesh.splitBoundaryHalfEdge(
+            0,
+            Point3{0.5, 1.0, 0.0}
+        );
+
+    ASSERT_TRUE(topSplit.success);
+
+    const BoundaryHalfEdgeSplitResult bottomSplit =
+        mesh.splitBoundaryHalfEdge(
+            2,
+            Point3{0.5, 0.0, 0.0}
+        );
+
+    ASSERT_TRUE(bottomSplit.success);
+
+    const CutHalfEdgePairResult cutEdgeResult =
+        CutPathMeshSplitter::createCutHalfEdges(
+            mesh,
+            topSplit.newVertexId,
+            bottomSplit.newVertexId
+        );
+
+    ASSERT_TRUE(cutEdgeResult.success);
+
+    ASSERT_TRUE(
+        CutPathMeshSplitter::insertCutHalfEdgesIntoFace(
+            mesh,
+            0,
+            cutEdgeResult.firstHalfEdgeId,
+            cutEdgeResult.secondHalfEdgeId
+        )
+    );
+
+    ASSERT_EQ(mesh.faces.size(), 2);
+
+    const std::vector<int> faceHalfEdges =
+        mesh.getFaceHalfEdges(1);
+
+    ASSERT_EQ(faceHalfEdges.size(), 4);
+
+    for (int index = 0;
+         index < static_cast<int>(
+             faceHalfEdges.size()
+         );
+         ++index)
+    {
+        const int currentHalfEdgeId =
+            faceHalfEdges[index];
+
+        const int nextHalfEdgeId =
+            faceHalfEdges[
+                (index + 1) %
+                faceHalfEdges.size()
+            ];
+
+        EXPECT_EQ(
+            mesh.halfEdges[
+                currentHalfEdgeId
+            ].endVertex,
+            mesh.halfEdges[
+                nextHalfEdgeId
+            ].startVertex
+        );
+
+        EXPECT_EQ(
+            mesh.halfEdges[
+                currentHalfEdgeId
+            ].next,
+            nextHalfEdgeId
+        );
+    }
+}
+
+TEST(
+    CutPathMeshSplitter,
+    AssignsFaceOwnershipAfterDividingCrossedFace
+)
+{
+    HalfEdgeMesh mesh;
+    mesh.createTestQuad();
+
+    const BoundaryHalfEdgeSplitResult topSplit =
+        mesh.splitBoundaryHalfEdge(
+            0,
+            Point3{0.5, 1.0, 0.0}
+        );
+
+    ASSERT_TRUE(topSplit.success);
+
+    const BoundaryHalfEdgeSplitResult bottomSplit =
+        mesh.splitBoundaryHalfEdge(
+            2,
+            Point3{0.5, 0.0, 0.0}
+        );
+
+    ASSERT_TRUE(bottomSplit.success);
+
+    const CutHalfEdgePairResult cutEdgeResult =
+        CutPathMeshSplitter::createCutHalfEdges(
+            mesh,
+            topSplit.newVertexId,
+            bottomSplit.newVertexId
+        );
+
+    ASSERT_TRUE(cutEdgeResult.success);
+
+    ASSERT_TRUE(
+        CutPathMeshSplitter::insertCutHalfEdgesIntoFace(
+            mesh,
+            0,
+            cutEdgeResult.firstHalfEdgeId,
+            cutEdgeResult.secondHalfEdgeId
+        )
+    );
+
+    ASSERT_EQ(mesh.faces.size(), 2);
+
+    const std::vector<int> firstFaceHalfEdges =
+        mesh.getFaceHalfEdges(0);
+
+    const std::vector<int> secondFaceHalfEdges =
+        mesh.getFaceHalfEdges(1);
+
+    for (int halfEdgeId : firstFaceHalfEdges)
+    {
+        EXPECT_EQ(
+            mesh.halfEdges[halfEdgeId].face,
+            0
+        );
+    }
+
+    for (int halfEdgeId : secondFaceHalfEdges)
+    {
+        EXPECT_EQ(
+            mesh.halfEdges[halfEdgeId].face,
+            1
+        );
+    }
+}
+
+TEST(
+    CutPathMeshSplitter,
+    UpdatesOriginalFaceRecordAfterDivision
+)
+{
+    HalfEdgeMesh mesh;
+    mesh.createTestQuad();
+
+    const BoundaryHalfEdgeSplitResult topSplit =
+        mesh.splitBoundaryHalfEdge(
+            0,
+            Point3{0.5, 1.0, 0.0}
+        );
+
+    ASSERT_TRUE(topSplit.success);
+
+    const BoundaryHalfEdgeSplitResult bottomSplit =
+        mesh.splitBoundaryHalfEdge(
+            2,
+            Point3{0.5, 0.0, 0.0}
+        );
+
+    ASSERT_TRUE(bottomSplit.success);
+
+    const CutHalfEdgePairResult cutEdgeResult =
+        CutPathMeshSplitter::createCutHalfEdges(
+            mesh,
+            topSplit.newVertexId,
+            bottomSplit.newVertexId
+        );
+
+    ASSERT_TRUE(cutEdgeResult.success);
+
+    ASSERT_TRUE(
+        CutPathMeshSplitter::insertCutHalfEdgesIntoFace(
+            mesh,
+            0,
+            cutEdgeResult.firstHalfEdgeId,
+            cutEdgeResult.secondHalfEdgeId
+        )
+    );
+
+    ASSERT_EQ(mesh.faces.size(), 2);
+
+    const int originalFaceHalfEdgeId =
+        mesh.faces[0].halfEdge;
+
+    ASSERT_GE(
+        originalFaceHalfEdgeId,
+        0
+    );
+
+    ASSERT_LT(
+        originalFaceHalfEdgeId,
+        static_cast<int>(
+            mesh.halfEdges.size()
+        )
+    );
+
+    EXPECT_EQ(
+        mesh.halfEdges[
+            originalFaceHalfEdgeId
+        ].face,
+        0
+    );
+
+    const std::vector<int> originalFaceHalfEdges =
+        mesh.getFaceHalfEdges(0);
+
+    EXPECT_NE(
+        std::find(
+            originalFaceHalfEdges.begin(),
+            originalFaceHalfEdges.end(),
+            originalFaceHalfEdgeId
+        ),
+        originalFaceHalfEdges.end()
+    );
+}
+
+TEST(
+    CutPathMeshSplitter,
+    AddsNewFaceRecordAfterDivision
+)
+{
+    HalfEdgeMesh mesh;
+    mesh.createTestQuad();
+
+    const BoundaryHalfEdgeSplitResult topSplit =
+        mesh.splitBoundaryHalfEdge(
+            0,
+            Point3{0.5, 1.0, 0.0}
+        );
+
+    ASSERT_TRUE(topSplit.success);
+
+    const BoundaryHalfEdgeSplitResult bottomSplit =
+        mesh.splitBoundaryHalfEdge(
+            2,
+            Point3{0.5, 0.0, 0.0}
+        );
+
+    ASSERT_TRUE(bottomSplit.success);
+
+    const CutHalfEdgePairResult cutEdgeResult =
+        CutPathMeshSplitter::createCutHalfEdges(
+            mesh,
+            topSplit.newVertexId,
+            bottomSplit.newVertexId
+        );
+
+    ASSERT_TRUE(cutEdgeResult.success);
+
+    ASSERT_EQ(mesh.faces.size(), 1);
+
+    ASSERT_TRUE(
+        CutPathMeshSplitter::insertCutHalfEdgesIntoFace(
+            mesh,
+            0,
+            cutEdgeResult.firstHalfEdgeId,
+            cutEdgeResult.secondHalfEdgeId
+        )
+    );
+
+    ASSERT_EQ(mesh.faces.size(), 2);
+
+    const int newFaceId = 1;
+
+    const int newFaceHalfEdgeId =
+        mesh.faces[newFaceId].halfEdge;
+
+    ASSERT_GE(
+        newFaceHalfEdgeId,
+        0
+    );
+
+    ASSERT_LT(
+        newFaceHalfEdgeId,
+        static_cast<int>(
+            mesh.halfEdges.size()
+        )
+    );
+
+    EXPECT_EQ(
+        mesh.halfEdges[
+            newFaceHalfEdgeId
+        ].face,
+        newFaceId
+    );
+
+    const std::vector<int> newFaceHalfEdges =
+        mesh.getFaceHalfEdges(
+            newFaceId
+        );
+
+    EXPECT_NE(
+        std::find(
+            newFaceHalfEdges.begin(),
+            newFaceHalfEdges.end(),
+            newFaceHalfEdgeId
+        ),
+        newFaceHalfEdges.end()
     );
 }
