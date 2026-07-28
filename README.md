@@ -136,6 +136,14 @@ Current-face lookup is performed against the modified topology so that later int
 
 The complete operation is integrated into `CutPathMeshSplitter::apply()`, extending CutPath processing from edge splitting to actual cut-edge construction through faces.
 
+The face-splitting operation has been verified on several basic polygon configurations:
+
+- a quad crossed through opposite edges, producing two quads;
+- a quad crossed through adjacent edges, producing a triangle and a pentagon;
+- a triangle crossed through two edges, producing a triangle and a quadrilateral.
+
+These cases use the same general boundary-loop splitting algorithm rather than specialised logic for individual polygon or crossing types.
+
 ---
 
 ## Technologies

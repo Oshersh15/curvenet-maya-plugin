@@ -848,3 +848,46 @@ TEST(
         0
     );
 }
+
+TEST(
+    HalfEdgeMesh,
+    CreatesValidTestTriangle
+)
+{
+    HalfEdgeMesh mesh;
+    mesh.createTestTriangle();
+
+    ASSERT_EQ(mesh.vertices.size(), 3);
+    ASSERT_EQ(mesh.halfEdges.size(), 3);
+    ASSERT_EQ(mesh.faces.size(), 1);
+
+    const std::vector<int> faceHalfEdges =
+        mesh.getFaceHalfEdges(0);
+
+    ASSERT_EQ(faceHalfEdges.size(), 3);
+
+    EXPECT_EQ(faceHalfEdges[0], 0);
+    EXPECT_EQ(faceHalfEdges[1], 1);
+    EXPECT_EQ(faceHalfEdges[2], 2);
+
+    EXPECT_EQ(mesh.halfEdges[0].startVertex, 0);
+    EXPECT_EQ(mesh.halfEdges[0].endVertex, 1);
+
+    EXPECT_EQ(mesh.halfEdges[1].startVertex, 1);
+    EXPECT_EQ(mesh.halfEdges[1].endVertex, 2);
+
+    EXPECT_EQ(mesh.halfEdges[2].startVertex, 2);
+    EXPECT_EQ(mesh.halfEdges[2].endVertex, 0);
+
+    EXPECT_EQ(mesh.halfEdges[0].next, 1);
+    EXPECT_EQ(mesh.halfEdges[1].next, 2);
+    EXPECT_EQ(mesh.halfEdges[2].next, 0);
+
+    EXPECT_EQ(mesh.halfEdges[0].twin, -1);
+    EXPECT_EQ(mesh.halfEdges[1].twin, -1);
+    EXPECT_EQ(mesh.halfEdges[2].twin, -1);
+
+    EXPECT_EQ(mesh.halfEdges[0].face, 0);
+    EXPECT_EQ(mesh.halfEdges[1].face, 0);
+    EXPECT_EQ(mesh.halfEdges[2].face, 0);
+}

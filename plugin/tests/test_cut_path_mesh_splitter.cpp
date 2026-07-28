@@ -821,3 +821,293 @@ TEST(
         static_cast<int>(mesh.faces.size())
     );
 }
+
+TEST(
+    CutPathMeshSplitter,
+    SplitsQuadAcrossOppositeEdgesIntoTwoQuads
+)
+{
+    HalfEdgeMesh mesh;
+    mesh.createTestQuad();
+
+    const BoundaryHalfEdgeSplitResult topSplit =
+        mesh.splitBoundaryHalfEdge(
+            0,
+            Point3{0.5, 1.0, 0.0}
+        );
+
+    ASSERT_TRUE(topSplit.success);
+
+    const BoundaryHalfEdgeSplitResult bottomSplit =
+        mesh.splitBoundaryHalfEdge(
+            2,
+            Point3{0.5, 0.0, 0.0}
+        );
+
+    ASSERT_TRUE(bottomSplit.success);
+
+    const CutHalfEdgePairResult cutEdgeResult =
+        CutPathMeshSplitter::createCutHalfEdges(
+            mesh,
+            topSplit.newVertexId,
+            bottomSplit.newVertexId
+        );
+
+    ASSERT_TRUE(cutEdgeResult.success);
+
+    ASSERT_TRUE(
+        CutPathMeshSplitter::insertCutHalfEdgesIntoFace(
+            mesh,
+            0,
+            cutEdgeResult.firstHalfEdgeId,
+            cutEdgeResult.secondHalfEdgeId
+        )
+    );
+
+    ASSERT_EQ(mesh.faces.size(), 2);
+
+    const std::vector<int> firstFaceHalfEdges =
+        mesh.getFaceHalfEdges(0);
+
+    const std::vector<int> secondFaceHalfEdges =
+        mesh.getFaceHalfEdges(1);
+
+    ASSERT_EQ(firstFaceHalfEdges.size(), 4);
+    ASSERT_EQ(secondFaceHalfEdges.size(), 4);
+
+    for (int halfEdgeId : firstFaceHalfEdges)
+    {
+        EXPECT_EQ(
+            mesh.halfEdges[halfEdgeId].face,
+            0
+        );
+    }
+
+    for (int halfEdgeId : secondFaceHalfEdges)
+    {
+        EXPECT_EQ(
+            mesh.halfEdges[halfEdgeId].face,
+            1
+        );
+    }
+
+    EXPECT_EQ(
+        mesh.halfEdges[
+            cutEdgeResult.firstHalfEdgeId
+        ].twin,
+        cutEdgeResult.secondHalfEdgeId
+    );
+
+    EXPECT_EQ(
+        mesh.halfEdges[
+            cutEdgeResult.secondHalfEdgeId
+        ].twin,
+        cutEdgeResult.firstHalfEdgeId
+    );
+}
+
+TEST(
+    CutPathMeshSplitter,
+    SplitsQuadAcrossAdjacentEdgesIntoTriangleAndPentagon
+)
+{
+    HalfEdgeMesh mesh;
+    mesh.createTestQuad();
+
+    const BoundaryHalfEdgeSplitResult topSplit =
+        mesh.splitBoundaryHalfEdge(
+            0,
+            Point3{0.5, 1.0, 0.0}
+        );
+
+    ASSERT_TRUE(topSplit.success);
+
+    const BoundaryHalfEdgeSplitResult rightSplit =
+        mesh.splitBoundaryHalfEdge(
+            1,
+            Point3{1.0, 0.5, 0.0}
+        );
+
+    ASSERT_TRUE(rightSplit.success);
+
+    const CutHalfEdgePairResult cutEdgeResult =
+        CutPathMeshSplitter::createCutHalfEdges(
+            mesh,
+            topSplit.newVertexId,
+            rightSplit.newVertexId
+        );
+
+    ASSERT_TRUE(cutEdgeResult.success);
+
+    ASSERT_TRUE(
+        CutPathMeshSplitter::insertCutHalfEdgesIntoFace(
+            mesh,
+            0,
+            cutEdgeResult.firstHalfEdgeId,
+            cutEdgeResult.secondHalfEdgeId
+        )
+    );
+
+    ASSERT_EQ(mesh.faces.size(), 2);
+
+    const std::vector<int> firstFaceHalfEdges =
+        mesh.getFaceHalfEdges(0);
+
+    const std::vector<int> secondFaceHalfEdges =
+        mesh.getFaceHalfEdges(1);
+
+    const int firstFaceSize =
+        static_cast<int>(
+            firstFaceHalfEdges.size()
+        );
+
+    const int secondFaceSize =
+        static_cast<int>(
+            secondFaceHalfEdges.size()
+        );
+
+    const bool validFaceSizes =
+        (
+            firstFaceSize == 3 &&
+            secondFaceSize == 5
+        ) ||
+        (
+            firstFaceSize == 5 &&
+            secondFaceSize == 3
+        );
+
+    EXPECT_TRUE(validFaceSizes);
+
+    for (int halfEdgeId : firstFaceHalfEdges)
+    {
+        EXPECT_EQ(
+            mesh.halfEdges[halfEdgeId].face,
+            0
+        );
+    }
+
+    for (int halfEdgeId : secondFaceHalfEdges)
+    {
+        EXPECT_EQ(
+            mesh.halfEdges[halfEdgeId].face,
+            1
+        );
+    }
+
+    EXPECT_EQ(
+        mesh.halfEdges[
+            cutEdgeResult.firstHalfEdgeId
+        ].twin,
+        cutEdgeResult.secondHalfEdgeId
+    );
+
+    EXPECT_EQ(
+        mesh.halfEdges[
+            cutEdgeResult.secondHalfEdgeId
+        ].twin,
+        cutEdgeResult.firstHalfEdgeId
+    );
+}
+
+TEST(
+    CutPathMeshSplitter,
+    SplitsTriangleAcrossTwoEdgesIntoTriangleAndQuad
+)
+{
+    HalfEdgeMesh mesh;
+    mesh.createTestTriangle();
+
+    const BoundaryHalfEdgeSplitResult firstSplit =
+        mesh.splitBoundaryHalfEdge(
+            0,
+            Point3{0.75, 0.5, 0.0}
+        );
+
+    ASSERT_TRUE(firstSplit.success);
+
+    const BoundaryHalfEdgeSplitResult secondSplit =
+        mesh.splitBoundaryHalfEdge(
+            2,
+            Point3{0.25, 0.5, 0.0}
+        );
+
+    ASSERT_TRUE(secondSplit.success);
+
+    const CutHalfEdgePairResult cutEdgeResult =
+        CutPathMeshSplitter::createCutHalfEdges(
+            mesh,
+            firstSplit.newVertexId,
+            secondSplit.newVertexId
+        );
+
+    ASSERT_TRUE(cutEdgeResult.success);
+
+    ASSERT_TRUE(
+        CutPathMeshSplitter::insertCutHalfEdgesIntoFace(
+            mesh,
+            0,
+            cutEdgeResult.firstHalfEdgeId,
+            cutEdgeResult.secondHalfEdgeId
+        )
+    );
+
+    ASSERT_EQ(mesh.faces.size(), 2);
+
+    const std::vector<int> firstFaceHalfEdges =
+        mesh.getFaceHalfEdges(0);
+
+    const std::vector<int> secondFaceHalfEdges =
+        mesh.getFaceHalfEdges(1);
+
+    const int firstFaceSize =
+        static_cast<int>(
+            firstFaceHalfEdges.size()
+        );
+
+    const int secondFaceSize =
+        static_cast<int>(
+            secondFaceHalfEdges.size()
+        );
+
+    const bool validFaceSizes =
+        (
+            firstFaceSize == 3 &&
+            secondFaceSize == 4
+        ) ||
+        (
+            firstFaceSize == 4 &&
+            secondFaceSize == 3
+        );
+
+    EXPECT_TRUE(validFaceSizes);
+
+    for (int halfEdgeId : firstFaceHalfEdges)
+    {
+        EXPECT_EQ(
+            mesh.halfEdges[halfEdgeId].face,
+            0
+        );
+    }
+
+    for (int halfEdgeId : secondFaceHalfEdges)
+    {
+        EXPECT_EQ(
+            mesh.halfEdges[halfEdgeId].face,
+            1
+        );
+    }
+
+    EXPECT_EQ(
+        mesh.halfEdges[
+            cutEdgeResult.firstHalfEdgeId
+        ].twin,
+        cutEdgeResult.secondHalfEdgeId
+    );
+
+    EXPECT_EQ(
+        mesh.halfEdges[
+            cutEdgeResult.secondHalfEdgeId
+        ].twin,
+        cutEdgeResult.firstHalfEdgeId
+    );
+}

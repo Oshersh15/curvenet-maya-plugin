@@ -240,6 +240,39 @@ void HalfEdgeMesh::createFourQuadGrid()
     assignTwins();
 }
 
+void HalfEdgeMesh::createTestTriangle()
+{
+    clear();
+
+    vertices.resize(3);
+    halfEdges.resize(3);
+    faces.resize(1);
+
+    vertices[0].position =
+        Point3{0.5, 1.0, 0.0};
+
+    vertices[1].position =
+        Point3{1.0, 0.0, 0.0};
+
+    vertices[2].position =
+        Point3{0.0, 0.0, 0.0};
+
+    vertices[0].outgoingHalfEdge = 0;
+    vertices[1].outgoingHalfEdge = 1;
+    vertices[2].outgoingHalfEdge = 2;
+
+    halfEdges[0] =
+        HalfEdge{0, 1, 1, -1, 0};
+
+    halfEdges[1] =
+        HalfEdge{1, 2, 2, -1, 0};
+
+    halfEdges[2] =
+        HalfEdge{2, 0, 0, -1, 0};
+
+    faces[0].halfEdge = 0;
+}
+
 std::vector<int> HalfEdgeMesh::traverseFace(int faceIndex) const
 {
     std::vector<int> traversal;
