@@ -521,3 +521,303 @@ TEST(
 
     EXPECT_EQ(face2HalfEdges.size(), 4);
 }
+
+TEST(
+    CutPathMeshSplitter,
+    CreatesTwoDirectedCutHalfEdges
+)
+{
+    HalfEdgeMesh mesh;
+    mesh.createTestQuad();
+
+    /*
+        Add two vertices representing CutVertices that have
+        already been inserted into the mesh by the edge-splitting stage.
+    */
+    Vertex firstCutVertex;
+    firstCutVertex.position =
+        Point3{0.0, 0.5, 0.0};
+
+    Vertex secondCutVertex;
+    secondCutVertex.position =
+        Point3{1.0, 0.5, 0.0};
+
+    mesh.vertices.push_back(
+        firstCutVertex
+    );
+
+    mesh.vertices.push_back(
+        secondCutVertex
+    );
+
+    CutPath cutPath;
+
+    /*
+        There is one interval between the two CutVertices,
+        and it belongs to face 0.
+    */
+    cutPath.faceIntervalIds.push_back(0);
+
+    CutPathSplitResult splitResult;
+    splitResult.success = true;
+
+    splitResult.meshVertexIds = {
+        4,
+        5
+    };
+
+    const int originalHalfEdgeCount =
+        static_cast<int>(
+            mesh.halfEdges.size()
+        );
+
+    const CutHalfEdgePairResult result =
+        CutPathMeshSplitter::createCutHalfEdges(
+            mesh,
+            splitResult.meshVertexIds[0],
+            splitResult.meshVertexIds[1]
+        );
+
+    ASSERT_TRUE(result.success);
+
+    EXPECT_EQ(
+        mesh.halfEdges.size(),
+        originalHalfEdgeCount + 2
+    );
+
+    const HalfEdge& firstHalfEdge =
+        mesh.halfEdges[
+            result.firstHalfEdgeId
+        ];
+
+    const HalfEdge& secondHalfEdge =
+        mesh.halfEdges[
+            result.secondHalfEdgeId
+        ];
+
+    EXPECT_EQ(
+        firstHalfEdge.startVertex,
+        4
+    );
+
+    EXPECT_EQ(
+        firstHalfEdge.endVertex,
+        5
+    );
+
+    EXPECT_EQ(
+        secondHalfEdge.startVertex,
+        5
+    );
+
+    EXPECT_EQ(
+        secondHalfEdge.endVertex,
+        4
+    );
+
+    EXPECT_EQ(
+        firstHalfEdge.twin,
+        result.secondHalfEdgeId
+    );
+
+    EXPECT_EQ(
+        secondHalfEdge.twin,
+        result.firstHalfEdgeId
+    );
+
+    EXPECT_EQ(firstHalfEdge.next, -1);
+    EXPECT_EQ(secondHalfEdge.next, -1);
+
+    EXPECT_EQ(firstHalfEdge.face, -1);
+    EXPECT_EQ(secondHalfEdge.face, -1);
+}
+
+TEST(
+    CutPathMeshSplitter,
+    InsertsCutHalfEdgesAndSplitsFaceIntoTwoLoops
+)
+{
+    HalfEdgeMesh mesh;
+    mesh.createTestQuad();
+
+    const BoundaryHalfEdgeSplitResult topSplit =
+        mesh.splitBoundaryHalfEdge(
+            0,
+            Point3{0.5, 1.0, 0.0}
+        );
+
+    ASSERT_TRUE(topSplit.success);
+
+    const BoundaryHalfEdgeSplitResult bottomSplit =
+        mesh.splitBoundaryHalfEdge(
+            2,
+            Point3{0.5, 0.0, 0.0}
+        );
+
+    ASSERT_TRUE(bottomSplit.success);
+
+    /*
+        The two boundary splits created:
+
+        vertex 4 = top CutVertex
+        vertex 5 = bottom CutVertex
+    */
+    CutPath cutPath;
+
+    cutPath.faceIntervalIds.push_back(
+        0
+    );
+
+    CutPathSplitResult splitResult;
+    splitResult.success = true;
+
+    splitResult.meshVertexIds = {
+        topSplit.newVertexId,
+        bottomSplit.newVertexId
+    };
+
+    const CutHalfEdgePairResult cutEdgeResult =
+        CutPathMeshSplitter::createCutHalfEdges(
+            mesh,
+            splitResult.meshVertexIds[0],
+            splitResult.meshVertexIds[1]
+        );
+
+    ASSERT_TRUE(cutEdgeResult.success);
+
+    ASSERT_EQ(
+        mesh.faces.size(),
+        1
+    );
+
+    const bool inserted =
+        CutPathMeshSplitter::insertCutHalfEdgesIntoFace(
+            mesh,
+            0,
+            cutEdgeResult.firstHalfEdgeId,
+            cutEdgeResult.secondHalfEdgeId
+        );
+
+    ASSERT_TRUE(inserted);
+
+    EXPECT_EQ(
+        mesh.faces.size(),
+        2
+    );
+
+    const std::vector<int> originalFaceHalfEdges =
+        mesh.getFaceHalfEdges(0);
+
+    const std::vector<int> newFaceHalfEdges =
+        mesh.getFaceHalfEdges(1);
+
+    EXPECT_EQ(
+        originalFaceHalfEdges.size(),
+        4
+    );
+
+    EXPECT_EQ(
+        newFaceHalfEdges.size(),
+        4
+    );
+
+    EXPECT_EQ(
+        mesh.halfEdges[
+            cutEdgeResult.firstHalfEdgeId
+        ].face,
+        1
+    );
+
+    EXPECT_EQ(
+        mesh.halfEdges[
+            cutEdgeResult.secondHalfEdgeId
+        ].face,
+        0
+    );
+
+    EXPECT_EQ(
+        mesh.halfEdges[
+            cutEdgeResult.firstHalfEdgeId
+        ].twin,
+        cutEdgeResult.secondHalfEdgeId
+    );
+
+    EXPECT_EQ(
+        mesh.halfEdges[
+            cutEdgeResult.secondHalfEdgeId
+        ].twin,
+        cutEdgeResult.firstHalfEdgeId
+    );
+}
+
+TEST(
+    HalfEdgeMesh,
+    FindsCurrentFaceAfterFaceSplit
+)
+{
+    HalfEdgeMesh mesh;
+    mesh.createTestQuad();
+
+    const BoundaryHalfEdgeSplitResult topSplit =
+        mesh.splitBoundaryHalfEdge(
+            0,
+            Point3{0.5, 1.0, 0.0}
+        );
+
+    ASSERT_TRUE(topSplit.success);
+
+    const BoundaryHalfEdgeSplitResult bottomSplit =
+        mesh.splitBoundaryHalfEdge(
+            2,
+            Point3{0.5, 0.0, 0.0}
+        );
+
+    ASSERT_TRUE(bottomSplit.success);
+
+    CutPath cutPath;
+    cutPath.faceIntervalIds.push_back(0);
+
+    CutPathSplitResult splitResult;
+    splitResult.success = true;
+    splitResult.meshVertexIds = {
+        topSplit.newVertexId,
+        bottomSplit.newVertexId
+    };
+
+    const CutHalfEdgePairResult cutEdgeResult =
+        CutPathMeshSplitter::createCutHalfEdges(
+            mesh,
+            splitResult.meshVertexIds[0],
+            splitResult.meshVertexIds[1]
+        );
+
+    ASSERT_TRUE(cutEdgeResult.success);
+
+    ASSERT_TRUE(
+        CutPathMeshSplitter::insertCutHalfEdgesIntoFace(
+            mesh,
+            0,
+            cutEdgeResult.firstHalfEdgeId,
+            cutEdgeResult.secondHalfEdgeId
+        )
+    );
+
+    /*
+        One side remains face 0.
+        The other becomes face 1.
+
+        Vertices 0 and the top cut vertex should now
+        belong to one of those current faces.
+    */
+    const int foundFace =
+        mesh.findFaceContainingVertices(
+            0,
+            topSplit.newVertexId
+        );
+
+    EXPECT_GE(foundFace, 0);
+    EXPECT_LT(
+        foundFace,
+        static_cast<int>(mesh.faces.size())
+    );
+}

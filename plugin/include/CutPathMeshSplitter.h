@@ -20,6 +20,14 @@ struct CutPathSplitResult
     std::vector<int> meshVertexIds;
 };
 
+struct CutHalfEdgePairResult
+{
+    bool success = false;
+
+    int firstHalfEdgeId = -1;
+    int secondHalfEdgeId = -1;
+};
+
 /*
     Applies the ordered CutVertices of a CutPath to a
     HalfEdgeMesh.
@@ -35,5 +43,18 @@ public:
         HalfEdgeMesh& mesh,
         const CutPath& cutPath,
         double duplicateTolerance
+    );
+
+    static CutHalfEdgePairResult createCutHalfEdges(
+        HalfEdgeMesh& mesh,
+        int firstVertexId,
+        int secondVertexId
+    );
+
+    static bool insertCutHalfEdgesIntoFace(
+        HalfEdgeMesh& mesh,
+        int faceId,
+        int firstCutHalfEdgeId,
+        int secondCutHalfEdgeId
     );
 };

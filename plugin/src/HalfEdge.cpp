@@ -275,6 +275,119 @@ std::vector<int> HalfEdgeMesh::getFaceHalfEdges(int faceIndex) const
     return traverseFace(faceIndex);
 }
 
+int HalfEdgeMesh::findOutgoingHalfEdgeInFace(
+    int faceId,
+    int vertexId
+) const
+{
+    const std::vector<int> faceHalfEdges =
+        getFaceHalfEdges(faceId);
+
+    for (int halfEdgeId : faceHalfEdges)
+    {
+        if (halfEdgeId < 0 ||
+            halfEdgeId >=
+                static_cast<int>(halfEdges.size()))
+        {
+            continue;
+        }
+
+        if (halfEdges[halfEdgeId].startVertex ==
+            vertexId)
+        {
+            return halfEdgeId;
+        }
+    }
+
+    return -1;
+}
+
+int HalfEdgeMesh::findPreviousHalfEdgeInFace(
+    int faceId,
+    int halfEdgeId
+) const
+{
+    const std::vector<int> faceHalfEdges =
+        getFaceHalfEdges(faceId);
+
+    for (int candidateHalfEdgeId :
+         faceHalfEdges)
+    {
+        if (candidateHalfEdgeId < 0 ||
+            candidateHalfEdgeId >=
+                static_cast<int>(
+                    halfEdges.size()
+                ))
+        {
+            continue;
+        }
+
+        if (halfEdges[
+                candidateHalfEdgeId
+            ].next == halfEdgeId)
+        {
+            return candidateHalfEdgeId;
+        }
+    }
+
+    return -1;
+}
+
+int HalfEdgeMesh::findFaceContainingVertices(
+    int firstVertexId,
+    int secondVertexId
+) const
+{
+    if (firstVertexId < 0 ||
+        firstVertexId >= static_cast<int>(vertices.size()) ||
+        secondVertexId < 0 ||
+        secondVertexId >= static_cast<int>(vertices.size()))
+    {
+        return -1;
+    }
+
+    for (int faceId = 0;
+         faceId < static_cast<int>(faces.size());
+         ++faceId)
+    {
+        const std::vector<int> faceHalfEdges =
+            getFaceHalfEdges(faceId);
+
+        bool firstFound = false;
+        bool secondFound = false;
+
+        for (int halfEdgeId : faceHalfEdges)
+        {
+            if (halfEdgeId < 0 ||
+                halfEdgeId >=
+                    static_cast<int>(halfEdges.size()))
+            {
+                continue;
+            }
+
+            const int startVertex =
+                halfEdges[halfEdgeId].startVertex;
+
+            if (startVertex == firstVertexId)
+            {
+                firstFound = true;
+            }
+
+            if (startVertex == secondVertexId)
+            {
+                secondFound = true;
+            }
+        }
+
+        if (firstFound && secondFound)
+        {
+            return faceId;
+        }
+    }
+
+    return -1;
+}
+
 double HalfEdgeMesh::computeMeanEdgeLength() const
 {
     double totalLength = 0.0;

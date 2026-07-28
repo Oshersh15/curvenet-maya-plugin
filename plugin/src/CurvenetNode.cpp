@@ -441,7 +441,7 @@ unsigned int geometryIndex
                 duplicateTolerance
             );
 
-        std::vector<int> faceIntervals =
+        cutPath.faceIntervalIds =
             CurveMeshIntersector::deriveFaceIntervals(
                 cutPath,
                 mayaHalfEdgeMesh
@@ -449,7 +449,7 @@ unsigned int geometryIndex
 
         std::vector<int> influencedFaceIds =
             CurveMeshIntersector::collectUniqueFaces(
-                faceIntervals
+                cutPath.faceIntervalIds
             );
 
         cutPath.influencedFaceIds =

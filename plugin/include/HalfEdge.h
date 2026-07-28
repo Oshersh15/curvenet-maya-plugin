@@ -76,6 +76,21 @@ public:
     std::vector<int> traverseFace(int faceIndex) const;
     std::vector<int> getFaceHalfEdges(int faceIndex) const;
 
+    int findOutgoingHalfEdgeInFace(
+        int faceId,
+        int vertexId
+    ) const;
+
+    int findPreviousHalfEdgeInFace(
+        int faceId,
+        int halfEdgeId
+    ) const;
+
+    int findFaceContainingVertices(
+        int firstVertexId,
+        int secondVertexId
+    ) const;
+
     double computeMeanEdgeLength() const;
 
     void assignTwins();

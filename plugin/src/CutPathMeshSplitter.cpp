@@ -215,7 +215,287 @@ CutPathMeshSplitter::apply(
         );
     }
 
+    for (int intervalIndex = 0;
+         intervalIndex <
+             static_cast<int>(
+                 cutPath.faceIntervalIds.size()
+             );
+         ++intervalIndex)
+    {
+        if (intervalIndex + 1 >=
+            static_cast<int>(
+                orderedCutVertices.size()
+            ))
+        {
+            return result;
+        }
+
+        const int firstOriginalIndex =
+            orderedCutVertices[
+                intervalIndex
+            ].originalIndex;
+
+        const int secondOriginalIndex =
+            orderedCutVertices[
+                intervalIndex + 1
+            ].originalIndex;
+
+        const int firstVertexId =
+            result.meshVertexIds[
+                firstOriginalIndex
+            ];
+
+        const int secondVertexId =
+            result.meshVertexIds[
+                secondOriginalIndex
+            ];
+
+        if (firstVertexId < 0 ||
+            secondVertexId < 0)
+        {
+            return result;
+        }
+
+        const int currentFaceId =
+            mesh.findFaceContainingVertices(
+                firstVertexId,
+                secondVertexId
+            );
+
+        if (currentFaceId < 0)
+        {
+            return result;
+        }
+
+        const CutHalfEdgePairResult cutEdgeResult =
+            createCutHalfEdges(
+                mesh,
+                firstVertexId,
+                secondVertexId
+            );
+
+        if (!cutEdgeResult.success)
+        {
+            return result;
+        }
+
+        const bool inserted =
+            insertCutHalfEdgesIntoFace(
+                mesh,
+                currentFaceId,
+                cutEdgeResult.firstHalfEdgeId,
+                cutEdgeResult.secondHalfEdgeId
+            );
+
+        if (!inserted)
+        {
+            return result;
+        }
+    }
+
     result.success = true;
 
     return result;
+}
+
+CutHalfEdgePairResult
+CutPathMeshSplitter::createCutHalfEdges(
+    HalfEdgeMesh& mesh,
+    int firstVertexId,
+    int secondVertexId
+)
+{
+    CutHalfEdgePairResult result;
+
+    if (firstVertexId < 0 ||
+        firstVertexId >=
+            static_cast<int>(mesh.vertices.size()) ||
+        secondVertexId < 0 ||
+        secondVertexId >=
+            static_cast<int>(mesh.vertices.size()))
+    {
+        return result;
+    }
+
+    const int firstHalfEdgeId =
+        static_cast<int>(
+            mesh.halfEdges.size()
+        );
+
+    const int secondHalfEdgeId =
+        firstHalfEdgeId + 1;
+
+    HalfEdge firstHalfEdge;
+    firstHalfEdge.startVertex = firstVertexId;
+    firstHalfEdge.endVertex = secondVertexId;
+
+    HalfEdge secondHalfEdge;
+    secondHalfEdge.startVertex = secondVertexId;
+    secondHalfEdge.endVertex = firstVertexId;
+
+    firstHalfEdge.twin =
+        secondHalfEdgeId;
+
+    secondHalfEdge.twin =
+        firstHalfEdgeId;
+
+    mesh.halfEdges.push_back(
+        firstHalfEdge
+    );
+
+    mesh.halfEdges.push_back(
+        secondHalfEdge
+    );
+
+    result.success = true;
+    result.firstHalfEdgeId =
+        firstHalfEdgeId;
+    result.secondHalfEdgeId =
+        secondHalfEdgeId;
+
+    return result;
+}
+
+bool CutPathMeshSplitter::insertCutHalfEdgesIntoFace(
+    HalfEdgeMesh& mesh,
+    int faceId,
+    int firstCutHalfEdgeId,
+    int secondCutHalfEdgeId
+)
+{
+    if (faceId < 0 ||
+        faceId >= static_cast<int>(mesh.faces.size()))
+    {
+        return false;
+    }
+
+    if (firstCutHalfEdgeId < 0 ||
+        firstCutHalfEdgeId >=
+            static_cast<int>(mesh.halfEdges.size()) ||
+        secondCutHalfEdgeId < 0 ||
+        secondCutHalfEdgeId >=
+            static_cast<int>(mesh.halfEdges.size()))
+    {
+        return false;
+    }
+
+    HalfEdge& firstCutHalfEdge =
+        mesh.halfEdges[firstCutHalfEdgeId];
+
+    HalfEdge& secondCutHalfEdge =
+        mesh.halfEdges[secondCutHalfEdgeId];
+
+    const int firstVertexId =
+        firstCutHalfEdge.startVertex;
+
+    const int secondVertexId =
+        firstCutHalfEdge.endVertex;
+
+    const int firstOutgoingHalfEdgeId =
+        mesh.findOutgoingHalfEdgeInFace(
+            faceId,
+            firstVertexId
+        );
+
+    const int secondOutgoingHalfEdgeId =
+        mesh.findOutgoingHalfEdgeInFace(
+            faceId,
+            secondVertexId
+        );
+
+    if (firstOutgoingHalfEdgeId < 0 ||
+        secondOutgoingHalfEdgeId < 0)
+    {
+        return false;
+    }
+
+    const int previousFirstHalfEdgeId =
+        mesh.findPreviousHalfEdgeInFace(
+            faceId,
+            firstOutgoingHalfEdgeId
+        );
+
+    const int previousSecondHalfEdgeId =
+        mesh.findPreviousHalfEdgeInFace(
+            faceId,
+            secondOutgoingHalfEdgeId
+        );
+
+    if (previousFirstHalfEdgeId < 0 ||
+        previousSecondHalfEdgeId < 0)
+    {
+        return false;
+    }
+
+    /*
+        Preserve the original face on the loop containing
+        firstVertex -> ... -> secondVertex -> firstVertex.
+    */
+    mesh.halfEdges[
+        previousSecondHalfEdgeId
+    ].next = secondCutHalfEdgeId;
+
+    secondCutHalfEdge.next =
+        firstOutgoingHalfEdgeId;
+
+    /*
+        The opposite boundary path becomes the new face.
+    */
+    mesh.halfEdges[
+        previousFirstHalfEdgeId
+    ].next = firstCutHalfEdgeId;
+
+    firstCutHalfEdge.next =
+        secondOutgoingHalfEdgeId;
+
+    secondCutHalfEdge.face =
+        faceId;
+
+    mesh.faces[faceId].halfEdge =
+        secondCutHalfEdgeId;
+
+    const int newFaceId =
+        static_cast<int>(
+            mesh.faces.size()
+        );
+
+    Face newFace;
+    newFace.halfEdge =
+        firstCutHalfEdgeId;
+
+    mesh.faces.push_back(newFace);
+
+    /*
+        Walk the newly created loop and assign every
+        half-edge to the new face.
+    */
+    int currentHalfEdgeId =
+        firstCutHalfEdgeId;
+
+    do
+    {
+        if (currentHalfEdgeId < 0 ||
+            currentHalfEdgeId >=
+                static_cast<int>(
+                    mesh.halfEdges.size()
+                ))
+        {
+            return false;
+        }
+
+        mesh.halfEdges[
+            currentHalfEdgeId
+        ].face = newFaceId;
+
+        currentHalfEdgeId =
+            mesh.halfEdges[
+                currentHalfEdgeId
+            ].next;
+
+    } while (
+        currentHalfEdgeId !=
+        firstCutHalfEdgeId
+    );
+
+    return true;
 }

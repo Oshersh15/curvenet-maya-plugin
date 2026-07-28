@@ -126,6 +126,16 @@ The current implementation focuses on constructing the Curvenet and its relation
 - Prevents duplicate connection records.
 - Supports circular, vertical and diagonal profile-curve layouts.
 
+### CutPath Face Splitting
+
+Consecutive CutVertices can now be connected through their shared mesh faces.
+
+After all crossed mesh edges have been split, the CutPath is processed in traversal order. Each consecutive pair of resulting mesh vertices is connected by a pair of directed twin half-edges. The existing face boundary is then divided into two valid face loops, preserving the original face ID for one region and creating a new face for the other.
+
+Current-face lookup is performed against the modified topology so that later intervals do not rely on face IDs that may have become stale after earlier face splits.
+
+The complete operation is integrated into `CutPathMeshSplitter::apply()`, extending CutPath processing from edge splitting to actual cut-edge construction through faces.
+
 ---
 
 ## Technologies

@@ -481,3 +481,69 @@ TEST(
         2.0
     );
 }
+
+TEST(
+    CurveMeshIntersector,
+    AssociatesConsecutiveCutVerticesWithFaceInterval
+)
+{
+    HalfEdgeMesh mesh;
+    mesh.createTestQuad();
+
+    CutPath cutPath;
+    cutPath.curveId = 0;
+
+    CutCrossing firstCrossing;
+    firstCrossing.curveId = 0;
+    firstCrossing.halfEdgeId = 0;
+    firstCrossing.position =
+        Point3{0.5, 1.0, 0.0};
+
+    CutCrossing secondCrossing;
+    secondCrossing.curveId = 0;
+    secondCrossing.halfEdgeId = 2;
+    secondCrossing.position =
+        Point3{0.5, 0.0, 0.0};
+
+    cutPath.crossings = {
+        firstCrossing,
+        secondCrossing
+    };
+
+    cutPath.cutVertices =
+        CurveMeshIntersector::buildCutVertices(
+            cutPath.crossings,
+            0.0001
+        );
+
+    cutPath.faceIntervalIds =
+        CurveMeshIntersector::deriveFaceIntervals(
+            cutPath,
+            mesh
+        );
+
+    ASSERT_EQ(
+        cutPath.cutVertices.size(),
+        2
+    );
+
+    ASSERT_EQ(
+        cutPath.faceIntervalIds.size(),
+        1
+    );
+
+    EXPECT_EQ(
+        cutPath.faceIntervalIds[0],
+        0
+    );
+
+    EXPECT_EQ(
+        cutPath.cutVertices[0].cutPathOrder,
+        0
+    );
+
+    EXPECT_EQ(
+        cutPath.cutVertices[1].cutPathOrder,
+        1
+    );
+}

@@ -13,4 +13,5 @@ struct CutPath
     std::vector<int> influencedFaceIds;
     std::vector<int> influencedVertexIds;
     std::vector<CutVertex> cutVertices;
+    std::vector<int> faceIntervalIds;
 };

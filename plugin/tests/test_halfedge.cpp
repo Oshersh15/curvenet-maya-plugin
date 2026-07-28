@@ -715,3 +715,136 @@ TEST(HalfEdgeMesh, CreatesValidFourQuadGrid)
 
     EXPECT_EQ(halfEdgesWithTwins, 8);
 }
+
+TEST(
+    HalfEdgeMesh,
+    FindsOutgoingHalfEdgeInFace
+)
+{
+    HalfEdgeMesh mesh;
+    mesh.createTestQuad();
+
+    EXPECT_EQ(
+        mesh.findOutgoingHalfEdgeInFace(
+            0,
+            0
+        ),
+        0
+    );
+
+    EXPECT_EQ(
+        mesh.findOutgoingHalfEdgeInFace(
+            0,
+            1
+        ),
+        1
+    );
+
+    EXPECT_EQ(
+        mesh.findOutgoingHalfEdgeInFace(
+            0,
+            2
+        ),
+        2
+    );
+
+    EXPECT_EQ(
+        mesh.findOutgoingHalfEdgeInFace(
+            0,
+            3
+        ),
+        3
+    );
+}
+
+TEST(
+    HalfEdgeMesh,
+    FindOutgoingHalfEdgeInFaceReturnsInvalidWhenVertexIsNotInFace
+)
+{
+    HalfEdgeMesh mesh;
+    mesh.createTestQuad();
+
+    EXPECT_EQ(
+        mesh.findOutgoingHalfEdgeInFace(
+            0,
+            99
+        ),
+        -1
+    );
+}
+
+TEST(
+    HalfEdgeMesh,
+    FindsPreviousHalfEdgeInFace
+)
+{
+    HalfEdgeMesh mesh;
+    mesh.createTestQuad();
+
+    EXPECT_EQ(
+        mesh.findPreviousHalfEdgeInFace(
+            0,
+            0
+        ),
+        3
+    );
+
+    EXPECT_EQ(
+        mesh.findPreviousHalfEdgeInFace(
+            0,
+            1
+        ),
+        0
+    );
+
+    EXPECT_EQ(
+        mesh.findPreviousHalfEdgeInFace(
+            0,
+            2
+        ),
+        1
+    );
+
+    EXPECT_EQ(
+        mesh.findPreviousHalfEdgeInFace(
+            0,
+            3
+        ),
+        2
+    );
+}
+
+TEST(
+    HalfEdgeMesh,
+    FindPreviousHalfEdgeInFaceReturnsInvalidForUnknownHalfEdge
+)
+{
+    HalfEdgeMesh mesh;
+    mesh.createTestQuad();
+
+    EXPECT_EQ(
+        mesh.findPreviousHalfEdgeInFace(
+            0,
+            99
+        ),
+        -1
+    );
+}
+
+TEST(
+    HalfEdgeMesh,
+    FindsFaceContainingTwoVertices
+)
+{
+    HalfEdgeMesh mesh;
+    mesh.createTestQuad();
+
+    EXPECT_EQ(
+        mesh.findFaceContainingVertices(
+            0,
+            2
+        ),
+        0
+    );
+}
