@@ -346,6 +346,13 @@ unsigned int geometryIndex
             continue;
         }
 
+        const MFnNurbsCurve::Form curveForm =
+            curveFn.form();
+
+        const bool curveClosed =
+            curveForm == MFnNurbsCurve::kClosed ||
+            curveForm == MFnNurbsCurve::kPeriodic;
+
         std::vector<MPoint> cvPositions;
         std::vector<Point3> controlPoints;
 
@@ -400,7 +407,8 @@ unsigned int geometryIndex
         curvenetData.addCurve(
             curveObject,
             cvPositions,
-            sampledPoints
+            sampledPoints,
+            curveClosed
         );
 
         currentSampledCurves.push_back(sampledPoints);
@@ -432,6 +440,9 @@ unsigned int geometryIndex
 
         cutPath.curveId =
             static_cast<int>(curveIndex);
+
+        cutPath.closed =
+            curveClosed;
 
         cutPath.crossings = crossings;
 

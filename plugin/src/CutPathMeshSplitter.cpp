@@ -55,6 +55,9 @@ CutPathMeshSplitter::apply(
 
     result.success = false;
 
+    result.cutChain.curveId =
+        cutPath.curveId;
+
     result.meshVertexIds.resize(
         cutPath.cutVertices.size(),
         -1
@@ -215,6 +218,36 @@ CutPathMeshSplitter::apply(
         );
     }
 
+    for (const OrderedCutVertex& orderedCutVertex :
+         orderedCutVertices)
+    {
+        const int originalIndex =
+            orderedCutVertex.originalIndex;
+
+        if (originalIndex < 0 ||
+            originalIndex >=
+                static_cast<int>(
+                    result.meshVertexIds.size()
+                ))
+        {
+            return result;
+        }
+
+        const int meshVertexId =
+            result.meshVertexIds[
+                originalIndex
+            ];
+
+        if (meshVertexId < 0)
+        {
+            return result;
+        }
+
+        result.cutChain.vertexIds.push_back(
+            meshVertexId
+        );
+    }
+
     for (int intervalIndex = 0;
          intervalIndex <
              static_cast<int>(
@@ -222,12 +255,28 @@ CutPathMeshSplitter::apply(
              );
          ++intervalIndex)
     {
-        if (intervalIndex + 1 >=
+        if (intervalIndex >=
             static_cast<int>(
                 orderedCutVertices.size()
             ))
         {
             return result;
+        }
+
+        int nextOrderedIndex =
+            intervalIndex + 1;
+
+        if (nextOrderedIndex >=
+            static_cast<int>(
+                orderedCutVertices.size()
+            ))
+        {
+            if (!cutPath.closed)
+            {
+                return result;
+            }
+
+            nextOrderedIndex = 0;
         }
 
         const int firstOriginalIndex =
@@ -237,7 +286,7 @@ CutPathMeshSplitter::apply(
 
         const int secondOriginalIndex =
             orderedCutVertices[
-                intervalIndex + 1
+                nextOrderedIndex
             ].originalIndex;
 
         const int firstVertexId =
@@ -291,6 +340,54 @@ CutPathMeshSplitter::apply(
         {
             return result;
         }
+
+        result.cutChain.halfEdgeIds.push_back(
+            cutEdgeResult.firstHalfEdgeId
+        );
+    }
+
+    result.cutChain.closed = false;
+
+    if (cutPath.closed)
+    {
+        if (result.cutChain.vertexIds.empty() ||
+            result.cutChain.halfEdgeIds.empty())
+        {
+            return result;
+        }
+
+        const int firstVertexId =
+            result.cutChain.vertexIds.front();
+
+        const int lastVertexId =
+            result.cutChain.vertexIds.back();
+
+        const int closingHalfEdgeId =
+            result.cutChain.halfEdgeIds.back();
+
+        if (closingHalfEdgeId < 0 ||
+            closingHalfEdgeId >=
+                static_cast<int>(
+                    mesh.halfEdges.size()
+                ))
+        {
+            return result;
+        }
+
+        const HalfEdge& closingHalfEdge =
+            mesh.halfEdges[
+                closingHalfEdgeId
+            ];
+
+        if (closingHalfEdge.startVertex !=
+                lastVertexId ||
+            closingHalfEdge.endVertex !=
+                firstVertexId)
+        {
+            return result;
+        }
+
+        result.cutChain.closed = true;
     }
 
     result.success = true;

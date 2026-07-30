@@ -14,4 +14,6 @@ struct CutPath
     std::vector<int> influencedVertexIds;
     std::vector<CutVertex> cutVertices;
     std::vector<int> faceIntervalIds;
+
+    bool closed = false;
 };

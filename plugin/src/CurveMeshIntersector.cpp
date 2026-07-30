@@ -355,6 +355,112 @@ std::vector<int> CurveMeshIntersector::deriveFaceIntervals(
         intervalFaceIds.push_back(sharedFaceId);
     }
 
+    if (cutPath.closed)
+    {
+        const CutCrossing& firstCrossing =
+            cutPath.crossings.back();
+
+        const CutCrossing& secondCrossing =
+            cutPath.crossings.front();
+
+        if (firstCrossing.halfEdgeId < 0 ||
+            firstCrossing.halfEdgeId >=
+                static_cast<int>(mesh.halfEdges.size()) ||
+            secondCrossing.halfEdgeId < 0 ||
+            secondCrossing.halfEdgeId >=
+                static_cast<int>(mesh.halfEdges.size()))
+        {
+            intervalFaceIds.push_back(-1);
+            return intervalFaceIds;
+        }
+
+        const HalfEdge& firstHalfEdge =
+            mesh.halfEdges[
+                firstCrossing.halfEdgeId
+            ];
+
+        const HalfEdge& secondHalfEdge =
+            mesh.halfEdges[
+                secondCrossing.halfEdgeId
+            ];
+
+        std::vector<int> firstAdjacentFaces;
+        std::vector<int> secondAdjacentFaces;
+
+        if (firstHalfEdge.face >= 0)
+        {
+            firstAdjacentFaces.push_back(
+                firstHalfEdge.face
+            );
+        }
+
+        if (firstHalfEdge.twin >= 0 &&
+            firstHalfEdge.twin <
+                static_cast<int>(mesh.halfEdges.size()))
+        {
+            const int twinFace =
+                mesh.halfEdges[
+                    firstHalfEdge.twin
+                ].face;
+
+            if (twinFace >= 0)
+            {
+                firstAdjacentFaces.push_back(
+                    twinFace
+                );
+            }
+        }
+
+        if (secondHalfEdge.face >= 0)
+        {
+            secondAdjacentFaces.push_back(
+                secondHalfEdge.face
+            );
+        }
+
+        if (secondHalfEdge.twin >= 0 &&
+            secondHalfEdge.twin <
+                static_cast<int>(mesh.halfEdges.size()))
+        {
+            const int twinFace =
+                mesh.halfEdges[
+                    secondHalfEdge.twin
+                ].face;
+
+            if (twinFace >= 0)
+            {
+                secondAdjacentFaces.push_back(
+                    twinFace
+                );
+            }
+        }
+
+        int sharedFaceId = -1;
+
+        for (int firstFaceId : firstAdjacentFaces)
+        {
+            for (int secondFaceId : secondAdjacentFaces)
+            {
+                if (firstFaceId == secondFaceId)
+                {
+                    sharedFaceId =
+                        firstFaceId;
+
+                    break;
+                }
+            }
+
+            if (sharedFaceId >= 0)
+            {
+                break;
+            }
+        }
+
+        intervalFaceIds.push_back(
+            sharedFaceId
+        );
+    }
+
     return intervalFaceIds;
 }
 

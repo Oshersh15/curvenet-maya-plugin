@@ -29,6 +29,8 @@ struct ProfileCurveData
 
     MPoint startPoint;
     MPoint endPoint;
+
+    bool closed = false;
 };
 
 class CurvenetData
@@ -39,7 +41,8 @@ public:
     void addCurve(
         const MObject& curveObject,
         const std::vector<MPoint>& cvPositions,
-        const std::vector<Point3>& sampledPoints
+        const std::vector<Point3>& sampledPoints,
+        bool closed
     );
 
     int getCurveCount() const;

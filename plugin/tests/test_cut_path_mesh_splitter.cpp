@@ -1508,3 +1508,286 @@ TEST(
         newFaceHalfEdges.end()
     );
 }
+
+TEST(
+    CutPathMeshSplitter,
+    StoresCutChainVertexIdsInTraversalOrder
+)
+{
+    HalfEdgeMesh mesh;
+    mesh.createTestQuad();
+
+    CutPath cutPath;
+    cutPath.curveId = 7;
+
+    CutVertex laterCut;
+    laterCut.position =
+        Point3{0.5, 0.0, 0.0};
+    laterCut.sourceHalfEdgeId = 2;
+    laterCut.sourceEdgeT = 0.5;
+    laterCut.curveId = 7;
+    laterCut.cutPathOrder = 1;
+
+    CutVertex earlierCut;
+    earlierCut.position =
+        Point3{0.5, 1.0, 0.0};
+    earlierCut.sourceHalfEdgeId = 0;
+    earlierCut.sourceEdgeT = 0.5;
+    earlierCut.curveId = 7;
+    earlierCut.cutPathOrder = 0;
+
+    /*
+        Deliberately store them in the wrong vector order.
+    */
+    cutPath.cutVertices = {
+        laterCut,
+        earlierCut
+    };
+
+    cutPath.faceIntervalIds = {
+        0
+    };
+
+    const CutPathSplitResult result =
+        CutPathMeshSplitter::apply(
+            mesh,
+            cutPath,
+            0.0001
+        );
+
+    ASSERT_TRUE(result.success);
+
+    EXPECT_EQ(
+        result.cutChain.curveId,
+        7
+    );
+
+    ASSERT_EQ(
+        result.cutChain.vertexIds.size(),
+        2
+    );
+
+    /*
+        The order-0 cut is processed first,
+        so it creates mesh vertex 4.
+
+        The order-1 cut creates mesh vertex 5.
+    */
+    EXPECT_EQ(
+        result.cutChain.vertexIds[0],
+        4
+    );
+
+    EXPECT_EQ(
+        result.cutChain.vertexIds[1],
+        5
+    );
+}
+
+TEST(
+    CutPathMeshSplitter,
+    StoresCutChainHalfEdgeIdsInTraversalOrder
+)
+{
+    HalfEdgeMesh mesh;
+    mesh.createTestQuad();
+
+    CutPath cutPath;
+    cutPath.curveId = 3;
+
+    CutVertex firstCut;
+    firstCut.position =
+        Point3{0.5, 1.0, 0.0};
+    firstCut.sourceHalfEdgeId = 0;
+    firstCut.sourceEdgeT = 0.5;
+    firstCut.curveId = 3;
+    firstCut.cutPathOrder = 0;
+
+    CutVertex secondCut;
+    secondCut.position =
+        Point3{1.0, 0.5, 0.0};
+    secondCut.sourceHalfEdgeId = 1;
+    secondCut.sourceEdgeT = 0.5;
+    secondCut.curveId = 3;
+    secondCut.cutPathOrder = 1;
+
+    CutVertex thirdCut;
+    thirdCut.position =
+        Point3{0.5, 0.0, 0.0};
+    thirdCut.sourceHalfEdgeId = 2;
+    thirdCut.sourceEdgeT = 0.5;
+    thirdCut.curveId = 3;
+    thirdCut.cutPathOrder = 2;
+
+    cutPath.cutVertices = {
+        firstCut,
+        secondCut,
+        thirdCut
+    };
+
+    cutPath.faceIntervalIds = {
+        0,
+        0
+    };
+
+    const CutPathSplitResult result =
+        CutPathMeshSplitter::apply(
+            mesh,
+            cutPath,
+            0.0001
+        );
+
+    ASSERT_TRUE(result.success);
+
+    ASSERT_EQ(
+        result.cutChain.vertexIds.size(),
+        3
+    );
+
+    ASSERT_EQ(
+        result.cutChain.halfEdgeIds.size(),
+        2
+    );
+
+    const int firstHalfEdgeId =
+        result.cutChain.halfEdgeIds[0];
+
+    const int secondHalfEdgeId =
+        result.cutChain.halfEdgeIds[1];
+
+    EXPECT_EQ(
+        mesh.halfEdges[firstHalfEdgeId].startVertex,
+        result.cutChain.vertexIds[0]
+    );
+
+    EXPECT_EQ(
+        mesh.halfEdges[firstHalfEdgeId].endVertex,
+        result.cutChain.vertexIds[1]
+    );
+
+    EXPECT_EQ(
+        mesh.halfEdges[secondHalfEdgeId].startVertex,
+        result.cutChain.vertexIds[1]
+    );
+
+    EXPECT_EQ(
+        mesh.halfEdges[secondHalfEdgeId].endVertex,
+        result.cutChain.vertexIds[2]
+    );
+
+    EXPECT_FALSE(
+        result.cutChain.closed
+    );
+
+    EXPECT_EQ(
+        result.cutChain.halfEdgeIds.size(),
+        result.cutChain.vertexIds.size() - 1
+    );
+}
+
+TEST(
+    CutPathMeshSplitter,
+    BuildsClosedCutChain
+)
+{
+    HalfEdgeMesh mesh;
+    mesh.createTestTriangle();
+
+    CutPath cutPath;
+    cutPath.curveId = 9;
+    cutPath.closed = true;
+
+    CutVertex firstCut;
+    firstCut.position =
+        Point3{0.75, 0.5, 0.0};
+    firstCut.sourceHalfEdgeId = 0;
+    firstCut.sourceEdgeT = 0.5;
+    firstCut.curveId = 9;
+    firstCut.cutPathOrder = 0;
+
+    CutVertex secondCut;
+    secondCut.position =
+        Point3{0.5, 0.0, 0.0};
+    secondCut.sourceHalfEdgeId = 1;
+    secondCut.sourceEdgeT = 0.5;
+    secondCut.curveId = 9;
+    secondCut.cutPathOrder = 1;
+
+    CutVertex thirdCut;
+    thirdCut.position =
+        Point3{0.25, 0.5, 0.0};
+    thirdCut.sourceHalfEdgeId = 2;
+    thirdCut.sourceEdgeT = 0.5;
+    thirdCut.curveId = 9;
+    thirdCut.cutPathOrder = 2;
+
+    cutPath.cutVertices = {
+        firstCut,
+        secondCut,
+        thirdCut
+    };
+
+    /*
+        Closed path:
+
+        first → second
+        second → third
+        third → first
+    */
+    cutPath.faceIntervalIds = {
+        0,
+        0,
+        0
+    };
+
+    const CutPathSplitResult result =
+        CutPathMeshSplitter::apply(
+            mesh,
+            cutPath,
+            0.0001
+        );
+
+    ASSERT_TRUE(result.success);
+
+    EXPECT_TRUE(
+        result.cutChain.closed
+    );
+
+    ASSERT_EQ(
+        result.cutChain.vertexIds.size(),
+        3
+    );
+
+    ASSERT_EQ(
+        result.cutChain.halfEdgeIds.size(),
+        3
+    );
+
+    EXPECT_EQ(
+        result.cutChain.curveId,
+        9
+    );
+
+    const int firstVertexId =
+        result.cutChain.vertexIds.front();
+
+    const int lastVertexId =
+        result.cutChain.vertexIds.back();
+
+    const int closingHalfEdgeId =
+        result.cutChain.halfEdgeIds.back();
+
+    EXPECT_EQ(
+        mesh.halfEdges[
+            closingHalfEdgeId
+        ].startVertex,
+        lastVertexId
+    );
+
+    EXPECT_EQ(
+        mesh.halfEdges[
+            closingHalfEdgeId
+        ].endVertex,
+        firstVertexId
+    );
+}

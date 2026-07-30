@@ -14,11 +14,12 @@ void CurvenetData::clear()
 void CurvenetData::addCurve(
     const MObject& curveObject,
     const std::vector<MPoint>& cvPositions,
-    const std::vector<Point3>& sampledPoints
+    const std::vector<Point3>& sampledPoints,
+    bool closed
 )
 {
     ProfileCurveData curve;
-    curve.sampledPoints = sampledPoints;
+    curve.closed = closed;
 
     curve.curveObject = curveObject;
     curve.restCVPositions = cvPositions;

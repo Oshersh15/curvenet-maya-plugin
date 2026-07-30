@@ -547,3 +547,79 @@ TEST(
         1
     );
 }
+
+TEST(
+    CurveMeshIntersector,
+    OpenCutPathHasNoClosingFaceInterval
+)
+{
+    HalfEdgeMesh mesh;
+    mesh.createTestQuad();
+
+    CutPath cutPath;
+    cutPath.closed = false;
+
+    CutCrossing firstCrossing;
+    firstCrossing.halfEdgeId = 0;
+
+    CutCrossing secondCrossing;
+    secondCrossing.halfEdgeId = 1;
+
+    CutCrossing thirdCrossing;
+    thirdCrossing.halfEdgeId = 2;
+
+    cutPath.crossings = {
+        firstCrossing,
+        secondCrossing,
+        thirdCrossing
+    };
+
+    const std::vector<int> faceIntervals =
+        CurveMeshIntersector::deriveFaceIntervals(
+            cutPath,
+            mesh
+        );
+
+    EXPECT_EQ(
+        faceIntervals.size(),
+        2
+    );
+}
+
+TEST(
+    CurveMeshIntersector,
+    ClosedCutPathAddsClosingFaceInterval
+)
+{
+    HalfEdgeMesh mesh;
+    mesh.createTestQuad();
+
+    CutPath cutPath;
+    cutPath.closed = true;
+
+    CutCrossing firstCrossing;
+    firstCrossing.halfEdgeId = 0;
+
+    CutCrossing secondCrossing;
+    secondCrossing.halfEdgeId = 1;
+
+    CutCrossing thirdCrossing;
+    thirdCrossing.halfEdgeId = 2;
+
+    cutPath.crossings = {
+        firstCrossing,
+        secondCrossing,
+        thirdCrossing
+    };
+
+    const std::vector<int> faceIntervals =
+        CurveMeshIntersector::deriveFaceIntervals(
+            cutPath,
+            mesh
+        );
+
+    EXPECT_EQ(
+        faceIntervals.size(),
+        3
+    );
+}

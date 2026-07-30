@@ -2,6 +2,7 @@
 
 #include "CutPath.h"
 #include "HalfEdge.h"
+#include "CutChain.h"
 
 #include <vector>
 
@@ -18,6 +19,8 @@ struct CutPathSplitResult
     bool success = false;
 
     std::vector<int> meshVertexIds;
+
+    CutChain cutChain;
 };
 
 struct CutHalfEdgePairResult

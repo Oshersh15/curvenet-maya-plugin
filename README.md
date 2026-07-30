@@ -144,6 +144,14 @@ The face-splitting operation has been verified on several basic polygon configur
 
 These cases use the same general boundary-loop splitting algorithm rather than specialised logic for individual polygon or crossing types.
 
+### Ordered Cut Chains
+
+Face-level cut edges are assembled into ordered `CutChain` representations following the traversal order of the originating `CutPath`.
+
+Each chain stores the resulting mesh vertex IDs and forward cut half-edge IDs in profile-curve order. Open and closed chains are represented explicitly. Closed chains include the final cut edge from the last vertex back to the first without duplicating the first vertex in the ordered vertex list.
+
+This connects local face-splitting topology into complete profile-derived cut chains that can be used by later Curvenet topology and correspondence stages.
+
 ---
 
 ## Technologies
