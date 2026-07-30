@@ -446,6 +446,13 @@ unsigned int geometryIndex
 
         cutPath.crossings = crossings;
 
+        MGlobal::displayInfo(
+            MString("Raw crossings for curve ")
+            + static_cast<int>(curveIndex)
+            + ": "
+            + static_cast<int>(crossings.size())
+        );
+
         cutPath.cutVertices =
             CurveMeshIntersector::buildCutVertices(
                 cutPath.crossings,
@@ -591,6 +598,68 @@ unsigned int geometryIndex
                 + static_cast<int>(
                     verificationMesh.halfEdges.size()
                 )
+            );
+
+            MGlobal::displayInfo(
+                MString("Circular CutChain closed: ")
+                + (splitResult.cutChain.closed
+                    ? "true"
+                    : "false")
+            );
+
+            MGlobal::displayInfo(
+                MString("Circular CutChain vertices: ")
+                + static_cast<int>(
+                    splitResult.cutChain.vertexIds.size()
+                )
+            );
+
+            MGlobal::displayInfo(
+                MString("Circular CutChain half-edges: ")
+                + static_cast<int>(
+                    splitResult.cutChain.halfEdgeIds.size()
+                )
+            );
+
+            bool closingEdgeValid = false;
+
+            if (splitResult.cutChain.closed &&
+                !splitResult.cutChain.vertexIds.empty() &&
+                !splitResult.cutChain.halfEdgeIds.empty())
+            {
+                const int firstVertexId =
+                    splitResult.cutChain.vertexIds.front();
+
+                const int lastVertexId =
+                    splitResult.cutChain.vertexIds.back();
+
+                const int closingHalfEdgeId =
+                    splitResult.cutChain.halfEdgeIds.back();
+
+                if (closingHalfEdgeId >= 0 &&
+                    closingHalfEdgeId <
+                        static_cast<int>(
+                            verificationMesh.halfEdges.size()
+                        ))
+                {
+                    const HalfEdge& closingHalfEdge =
+                        verificationMesh.halfEdges[
+                            closingHalfEdgeId
+                        ];
+
+                    closingEdgeValid =
+                        closingHalfEdge.startVertex ==
+                            lastVertexId &&
+                        closingHalfEdge.endVertex ==
+                            firstVertexId;
+                }
+            }
+
+            MGlobal::displayInfo(
+                MString("Circular closing edge valid: ")
+                + (closingEdgeValid
+                    ? "true"
+                    : "false")
             );
         }
     }

@@ -152,6 +152,16 @@ Each chain stores the resulting mesh vertex IDs and forward cut half-edge IDs in
 
 This connects local face-splitting topology into complete profile-derived cut chains that can be used by later Curvenet topology and correspondence stages.
 
+The ordered cut-chain representation has been verified on multiple profile configurations:
+
+- vertical open chains;
+- diagonal open chains crossing multiple faces and edge orientations;
+- circular closed chains on Tube A.
+
+The Tube A circular profile successfully produced a closed chain with matching vertex and cut-half-edge counts, and the final cut edge returned from the last chain vertex to the first.
+
+Testing also exposed a separate near-coincident intersection case when a profile lies directly on a mesh edge loop. This is tracked as a robustness task rather than treated as normal chain behaviour.
+
 ---
 
 ## Technologies

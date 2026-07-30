@@ -1791,3 +1791,233 @@ TEST(
         firstVertexId
     );
 }
+
+TEST(
+    CutPathMeshSplitter,
+    BuildsVerticalOpenCutChain
+)
+{
+    HalfEdgeMesh mesh;
+    mesh.createFourQuadGrid();
+
+    CutPath cutPath;
+    cutPath.curveId = 10;
+    cutPath.closed = false;
+
+    CutVertex topCut;
+    topCut.position =
+        Point3{0.5, 2.0, 0.0};
+    topCut.sourceHalfEdgeId = 0;
+    topCut.sourceEdgeT = 0.5;
+    topCut.curveId = 10;
+    topCut.cutPathOrder = 0;
+
+    CutVertex middleCut;
+    middleCut.position =
+        Point3{0.5, 1.0, 0.0};
+    middleCut.sourceHalfEdgeId = 2;
+    middleCut.sourceEdgeT = 0.5;
+    middleCut.curveId = 10;
+    middleCut.cutPathOrder = 1;
+
+    CutVertex bottomCut;
+    bottomCut.position =
+        Point3{0.5, 0.0, 0.0};
+    bottomCut.sourceHalfEdgeId = 10;
+    bottomCut.sourceEdgeT = 0.5;
+    bottomCut.curveId = 10;
+    bottomCut.cutPathOrder = 2;
+
+    cutPath.cutVertices = {
+        topCut,
+        middleCut,
+        bottomCut
+    };
+
+    cutPath.faceIntervalIds = {
+        0,
+        2
+    };
+
+    const CutPathSplitResult result =
+        CutPathMeshSplitter::apply(
+            mesh,
+            cutPath,
+            0.0001
+        );
+
+    ASSERT_TRUE(result.success);
+
+    EXPECT_FALSE(
+        result.cutChain.closed
+    );
+
+    ASSERT_EQ(
+        result.cutChain.vertexIds.size(),
+        3
+    );
+
+    ASSERT_EQ(
+        result.cutChain.halfEdgeIds.size(),
+        2
+    );
+
+    const int firstHalfEdgeId =
+        result.cutChain.halfEdgeIds[0];
+
+    const int secondHalfEdgeId =
+        result.cutChain.halfEdgeIds[1];
+
+    EXPECT_EQ(
+        mesh.halfEdges[firstHalfEdgeId].startVertex,
+        result.cutChain.vertexIds[0]
+    );
+
+    EXPECT_EQ(
+        mesh.halfEdges[firstHalfEdgeId].endVertex,
+        result.cutChain.vertexIds[1]
+    );
+
+    EXPECT_EQ(
+        mesh.halfEdges[secondHalfEdgeId].startVertex,
+        result.cutChain.vertexIds[1]
+    );
+
+    EXPECT_EQ(
+        mesh.halfEdges[secondHalfEdgeId].endVertex,
+        result.cutChain.vertexIds[2]
+    );
+
+    EXPECT_DOUBLE_EQ(
+        mesh.vertices[
+            result.cutChain.vertexIds[0]
+        ].position.y,
+        2.0
+    );
+
+    EXPECT_DOUBLE_EQ(
+        mesh.vertices[
+            result.cutChain.vertexIds[1]
+        ].position.y,
+        1.0
+    );
+
+    EXPECT_DOUBLE_EQ(
+        mesh.vertices[
+            result.cutChain.vertexIds[2]
+        ].position.y,
+        0.0
+    );
+}
+
+TEST(
+    CutPathMeshSplitter,
+    BuildsDiagonalOpenCutChain
+)
+{
+    HalfEdgeMesh mesh;
+    mesh.createFourQuadGrid();
+
+    CutPath cutPath;
+    cutPath.curveId = 11;
+    cutPath.closed = false;
+
+    CutVertex firstCut;
+    firstCut.position =
+        Point3{0.25, 2.0, 0.0};
+    firstCut.sourceHalfEdgeId = 0;
+    firstCut.sourceEdgeT = 0.25;
+    firstCut.curveId = 11;
+    firstCut.cutPathOrder = 0;
+
+    CutVertex secondCut;
+    secondCut.position =
+        Point3{1.0, 1.25, 0.0};
+    secondCut.sourceHalfEdgeId = 1;
+    secondCut.sourceEdgeT = 0.75;
+    secondCut.curveId = 11;
+    secondCut.cutPathOrder = 1;
+
+    CutVertex thirdCut;
+    thirdCut.position =
+        Point3{1.25, 1.0, 0.0};
+    thirdCut.sourceHalfEdgeId = 6;
+    thirdCut.sourceEdgeT = 0.75;
+    thirdCut.curveId = 11;
+    thirdCut.cutPathOrder = 2;
+
+    CutVertex fourthCut;
+    fourthCut.position =
+        Point3{2.0, 0.25, 0.0};
+    fourthCut.sourceHalfEdgeId = 13;
+    fourthCut.sourceEdgeT = 0.75;
+    fourthCut.curveId = 11;
+    fourthCut.cutPathOrder = 3;
+
+    cutPath.cutVertices = {
+        firstCut,
+        secondCut,
+        thirdCut,
+        fourthCut
+    };
+
+    cutPath.faceIntervalIds = {
+        0,
+        1,
+        3
+    };
+
+    const CutPathSplitResult result =
+        CutPathMeshSplitter::apply(
+            mesh,
+            cutPath,
+            0.0001
+        );
+
+    ASSERT_TRUE(result.success);
+
+    EXPECT_FALSE(
+        result.cutChain.closed
+    );
+
+    ASSERT_EQ(
+        result.cutChain.vertexIds.size(),
+        4
+    );
+
+    ASSERT_EQ(
+        result.cutChain.halfEdgeIds.size(),
+        3
+    );
+
+    for (int edgeIndex = 0;
+         edgeIndex <
+             static_cast<int>(
+                 result.cutChain.halfEdgeIds.size()
+             );
+         ++edgeIndex)
+    {
+        const int halfEdgeId =
+            result.cutChain.halfEdgeIds[
+                edgeIndex
+            ];
+
+        EXPECT_EQ(
+            mesh.halfEdges[
+                halfEdgeId
+            ].startVertex,
+            result.cutChain.vertexIds[
+                edgeIndex
+            ]
+        );
+
+        EXPECT_EQ(
+            mesh.halfEdges[
+                halfEdgeId
+            ].endVertex,
+            result.cutChain.vertexIds[
+                edgeIndex + 1
+            ]
+        );
+    }
+}
