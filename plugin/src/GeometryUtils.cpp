@@ -289,4 +289,59 @@ namespace GeometryUtils
             distance
         };
     }
+
+    bool GeometryUtils::areSegmentsNearlyParallel(
+        const Point3& firstStart,
+        const Point3& firstEnd,
+        const Point3& secondStart,
+        const Point3& secondEnd,
+        double parallelTolerance
+    )
+    {
+        const Point3 firstDirection =
+            subtract(
+                firstEnd,
+                firstStart
+            );
+
+        const Point3 secondDirection =
+            subtract(
+                secondEnd,
+                secondStart
+            );
+
+        const double firstLength =
+            length(firstDirection);
+
+        const double secondLength =
+            length(secondDirection);
+
+        if (firstLength <= 0.0 ||
+            secondLength <= 0.0)
+        {
+            return false;
+        }
+
+        const Point3 firstNormalised{
+            firstDirection.x / firstLength,
+            firstDirection.y / firstLength,
+            firstDirection.z / firstLength
+        };
+
+        const Point3 secondNormalised{
+            secondDirection.x / secondLength,
+            secondDirection.y / secondLength,
+            secondDirection.z / secondLength
+        };
+
+        const double directionDot =
+            dot(
+                firstNormalised,
+                secondNormalised
+            );
+
+        return
+            std::abs(directionDot) >=
+            1.0 - parallelTolerance;
+    }
 }

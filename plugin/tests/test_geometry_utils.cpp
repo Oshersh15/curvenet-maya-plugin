@@ -379,3 +379,69 @@ TEST(GeometryUtils, InterpolatesSegmentDisplacement)
     EXPECT_DOUBLE_EQ(displacement.y, 4.0);
     EXPECT_DOUBLE_EQ(displacement.z, 0.0);
 }
+
+TEST(
+    GeometryUtils,
+    DetectsNearlyParallelSegmentsSameDirection
+)
+{
+    const Point3 firstStart{0.0, 0.0, 0.0};
+    const Point3 firstEnd{1.0, 0.0, 0.0};
+
+    const Point3 secondStart{0.0, 1.0, 0.0};
+    const Point3 secondEnd{1.0, 1.0, 0.0};
+
+    EXPECT_TRUE(
+        GeometryUtils::areSegmentsNearlyParallel(
+            firstStart,
+            firstEnd,
+            secondStart,
+            secondEnd,
+            0.001
+        )
+    );
+}
+
+TEST(
+    GeometryUtils,
+    DetectsNearlyParallelSegmentsOppositeDirection
+)
+{
+    const Point3 firstStart{0.0, 0.0, 0.0};
+    const Point3 firstEnd{1.0, 0.0, 0.0};
+
+    const Point3 secondStart{1.0, 1.0, 0.0};
+    const Point3 secondEnd{0.0, 1.0, 0.0};
+
+    EXPECT_TRUE(
+        GeometryUtils::areSegmentsNearlyParallel(
+            firstStart,
+            firstEnd,
+            secondStart,
+            secondEnd,
+            0.001
+        )
+    );
+}
+
+TEST(
+    GeometryUtils,
+    RejectsPerpendicularSegmentsAsParallel
+)
+{
+    const Point3 firstStart{0.0, 0.0, 0.0};
+    const Point3 firstEnd{1.0, 0.0, 0.0};
+
+    const Point3 secondStart{0.5, -1.0, 0.0};
+    const Point3 secondEnd{0.5, 1.0, 0.0};
+
+    EXPECT_FALSE(
+        GeometryUtils::areSegmentsNearlyParallel(
+            firstStart,
+            firstEnd,
+            secondStart,
+            secondEnd,
+            0.001
+        )
+    );
+}

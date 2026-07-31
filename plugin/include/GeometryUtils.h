@@ -162,4 +162,12 @@ namespace GeometryUtils
         const Point3& posedEnd,
         double t
     );
+
+    bool areSegmentsNearlyParallel(
+        const Point3& firstStart,
+        const Point3& firstEnd,
+        const Point3& secondStart,
+        const Point3& secondEnd,
+        double parallelTolerance
+    );
 }

@@ -136,6 +136,20 @@ std::vector<CutCrossing> CurveMeshIntersector::findAllCrossings(
                 continue;
             }
 
+            const bool nearlyParallel =
+                GeometryUtils::areSegmentsNearlyParallel(
+                    curveSegment.start,
+                    curveSegment.end,
+                    meshEdgeStart,
+                    meshEdgeEnd,
+                    0.001
+                );
+
+            if (nearlyParallel)
+            {
+                continue;
+            }
+
             CutCrossing candidate;
 
             candidate.curveId = curveId;

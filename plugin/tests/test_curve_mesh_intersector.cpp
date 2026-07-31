@@ -623,3 +623,63 @@ TEST(
         3
     );
 }
+
+TEST(
+    CurveMeshIntersector,
+    IgnoresNearCoincidentParallelSegment
+)
+{
+    HalfEdgeMesh mesh;
+    mesh.createTestQuad();
+
+    std::vector<PolylineSegment> curveSegments;
+
+    PolylineSegment segment;
+    segment.start = Point3{0.2, 1.00001, 0.0};
+    segment.end = Point3{0.8, 1.00001, 0.0};
+
+    curveSegments.push_back(segment);
+
+    const std::vector<CutCrossing> crossings =
+        CurveMeshIntersector::findAllCrossings(
+            0,
+            curveSegments,
+            mesh,
+            0.001,
+            0.0001
+        );
+
+    EXPECT_TRUE(
+        crossings.empty()
+    );
+}
+
+TEST(
+    CurveMeshIntersector,
+    KeepsTransverseCrossing
+)
+{
+    HalfEdgeMesh mesh;
+    mesh.createTestQuad();
+
+    std::vector<PolylineSegment> curveSegments;
+
+    PolylineSegment segment;
+    segment.start = Point3{0.5, 1.5, 0.0};
+    segment.end = Point3{0.5, 0.5, 0.0};
+
+    curveSegments.push_back(segment);
+
+    const std::vector<CutCrossing> crossings =
+        CurveMeshIntersector::findAllCrossings(
+            0,
+            curveSegments,
+            mesh,
+            0.001,
+            0.0001
+        );
+
+    EXPECT_FALSE(
+        crossings.empty()
+    );
+}

@@ -446,13 +446,6 @@ unsigned int geometryIndex
 
         cutPath.crossings = crossings;
 
-        MGlobal::displayInfo(
-            MString("Raw crossings for curve ")
-            + static_cast<int>(curveIndex)
-            + ": "
-            + static_cast<int>(crossings.size())
-        );
-
         cutPath.cutVertices =
             CurveMeshIntersector::buildCutVertices(
                 cutPath.crossings,
