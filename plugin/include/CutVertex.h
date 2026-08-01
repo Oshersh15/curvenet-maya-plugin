@@ -26,6 +26,7 @@ struct CutVertex
     Point3 position;
 
     int sourceHalfEdgeId = -1;
+    int existingMeshVertexId = -1;
     double sourceEdgeT = 0.0;
 
     int curveId = -1;

@@ -114,6 +114,39 @@ CutPathMeshSplitter::apply(
         const CutVertex& cutVertex =
             *orderedCutVertex.cutVertex;
 
+        /*
+            A higher-level Curvenet operation may already
+            have identified this CutVertex as a shared node.
+        */
+        if (cutVertex.existingMeshVertexId >= 0)
+        {
+            if (cutVertex.existingMeshVertexId >=
+                static_cast<int>(
+                    mesh.vertices.size()
+                ))
+            {
+                return result;
+            }
+
+            result.meshVertexIds[
+                orderedCutVertex.originalIndex
+            ] = cutVertex.existingMeshVertexId;
+
+            ProcessedCut processedCut;
+
+            processedCut.position =
+                cutVertex.position;
+
+            processedCut.meshVertexId =
+                cutVertex.existingMeshVertexId;
+
+            processedCuts.push_back(
+                processedCut
+            );
+
+            continue;
+        }
+
         const int existingMeshVertexId =
             findProcessedCutVertex(
                 cutVertex.position,

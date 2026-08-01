@@ -305,3 +305,268 @@ TEST(
         result.cutChainsByCurveId.end()
     );
 }
+
+TEST(
+    CurvenetMeshCutter,
+    ReusesSharedEndpointBetweenTwoCutPaths
+)
+{
+    HalfEdgeMesh inputMesh;
+    inputMesh.createFourQuadGrid();
+
+    /*
+        First profile:
+
+        top boundary
+            |
+            |
+        shared node
+    */
+    CutPath firstPath;
+    firstPath.curveId = 0;
+    firstPath.closed = false;
+
+    CutVertex firstTop;
+    firstTop.position =
+        Point3{0.5, 2.0, 0.0};
+    firstTop.sourceHalfEdgeId = 0;
+    firstTop.sourceEdgeT = 0.5;
+    firstTop.curveId = 0;
+    firstTop.cutPathOrder = 0;
+
+    CutVertex firstSharedEndpoint;
+    firstSharedEndpoint.position =
+        Point3{0.5, 1.0, 0.0};
+    firstSharedEndpoint.sourceHalfEdgeId = 2;
+    firstSharedEndpoint.sourceEdgeT = 0.5;
+    firstSharedEndpoint.curveId = 0;
+    firstSharedEndpoint.cutPathOrder = 1;
+
+    firstPath.cutVertices = {
+        firstTop,
+        firstSharedEndpoint
+    };
+
+    firstPath.faceIntervalIds = {
+        0
+    };
+
+    /*
+        Second profile begins at the same Curvenet node
+        and travels towards the left boundary.
+    */
+    CutPath secondPath;
+    secondPath.curveId = 1;
+    secondPath.closed = false;
+
+    CutVertex secondSharedEndpoint;
+    secondSharedEndpoint.position =
+        Point3{0.5, 1.0, 0.0};
+    secondSharedEndpoint.sourceHalfEdgeId = 2;
+    secondSharedEndpoint.sourceEdgeT = 0.5;
+    secondSharedEndpoint.curveId = 1;
+    secondSharedEndpoint.cutPathOrder = 0;
+
+    CutVertex secondLeftEndpoint;
+    secondLeftEndpoint.position =
+        Point3{0.0, 1.5, 0.0};
+    secondLeftEndpoint.sourceHalfEdgeId = 3;
+    secondLeftEndpoint.sourceEdgeT = 0.5;
+    secondLeftEndpoint.curveId = 1;
+    secondLeftEndpoint.cutPathOrder = 1;
+
+    secondPath.cutVertices = {
+        secondSharedEndpoint,
+        secondLeftEndpoint
+    };
+
+    secondPath.faceIntervalIds = {
+        0
+    };
+
+    const std::vector<CutPath> cutPaths = {
+        firstPath,
+        secondPath
+    };
+
+    const CurvenetCutResult result =
+        CurvenetMeshCutter::apply(
+            inputMesh,
+            cutPaths,
+            0.0001
+        );
+
+    ASSERT_TRUE(result.success);
+
+    ASSERT_EQ(
+        result.cutChainsByCurveId.size(),
+        2
+    );
+
+    const CutChain& firstChain =
+        result.cutChainsByCurveId.at(0);
+
+    const CutChain& secondChain =
+        result.cutChainsByCurveId.at(1);
+
+    ASSERT_EQ(firstChain.vertexIds.size(), 2);
+    ASSERT_EQ(secondChain.vertexIds.size(), 2);
+
+    /*
+        The final vertex of Curve 0 and the first
+        vertex of Curve 1 must be the same mesh vertex.
+    */
+    EXPECT_EQ(
+        firstChain.vertexIds.back(),
+        secondChain.vertexIds.front()
+    );
+
+    /*
+        Curve 0 creates two mesh vertices.
+        Curve 1 reuses the shared one and creates
+        only its other endpoint.
+    */
+    EXPECT_EQ(
+        result.mesh.vertices.size(),
+        inputMesh.vertices.size() + 3
+    );
+}
+
+TEST(
+    CurvenetMeshCutter,
+    ReusesInteriorVertexOfExistingCutChain
+)
+{
+    HalfEdgeMesh inputMesh;
+    inputMesh.createFourQuadGrid();
+
+    /*
+        First profile creates a vertical chain
+        with an interior CutVertex at (0.5, 1.0).
+    */
+    CutPath verticalPath;
+    verticalPath.curveId = 0;
+    verticalPath.closed = false;
+
+    CutVertex topCut;
+    topCut.position =
+        Point3{0.5, 2.0, 0.0};
+    topCut.sourceHalfEdgeId = 0;
+    topCut.sourceEdgeT = 0.5;
+    topCut.curveId = 0;
+    topCut.cutPathOrder = 0;
+
+    CutVertex middleCut;
+    middleCut.position =
+        Point3{0.5, 1.0, 0.0};
+    middleCut.sourceHalfEdgeId = 2;
+    middleCut.sourceEdgeT = 0.5;
+    middleCut.curveId = 0;
+    middleCut.cutPathOrder = 1;
+
+    CutVertex bottomCut;
+    bottomCut.position =
+        Point3{0.5, 0.0, 0.0};
+    bottomCut.sourceHalfEdgeId = 10;
+    bottomCut.sourceEdgeT = 0.5;
+    bottomCut.curveId = 0;
+    bottomCut.cutPathOrder = 2;
+
+    verticalPath.cutVertices = {
+        topCut,
+        middleCut,
+        bottomCut
+    };
+
+    verticalPath.faceIntervalIds = {
+        0,
+        2
+    };
+
+    /*
+        The second profile starts at the interior
+        vertex of the first chain and travels left.
+    */
+    CutPath branchPath;
+    branchPath.curveId = 1;
+    branchPath.closed = false;
+
+    CutVertex sharedEndpoint;
+    sharedEndpoint.position =
+        Point3{0.5, 1.0, 0.0};
+    sharedEndpoint.sourceHalfEdgeId = 2;
+    sharedEndpoint.sourceEdgeT = 0.5;
+    sharedEndpoint.curveId = 1;
+    sharedEndpoint.cutPathOrder = 0;
+
+    CutVertex leftEndpoint;
+    leftEndpoint.position =
+        Point3{0.0, 1.5, 0.0};
+    leftEndpoint.sourceHalfEdgeId = 3;
+    leftEndpoint.sourceEdgeT = 0.5;
+    leftEndpoint.curveId = 1;
+    leftEndpoint.cutPathOrder = 1;
+
+    branchPath.cutVertices = {
+        sharedEndpoint,
+        leftEndpoint
+    };
+
+    branchPath.faceIntervalIds = {
+        0
+    };
+
+    const std::vector<CutPath> cutPaths = {
+        verticalPath,
+        branchPath
+    };
+
+    const CurvenetCutResult result =
+        CurvenetMeshCutter::apply(
+            inputMesh,
+            cutPaths,
+            0.0001
+        );
+
+    ASSERT_TRUE(result.success);
+
+    ASSERT_EQ(
+        result.cutChainsByCurveId.size(),
+        2
+    );
+
+    const CutChain& verticalChain =
+        result.cutChainsByCurveId.at(0);
+
+    const CutChain& branchChain =
+        result.cutChainsByCurveId.at(1);
+
+    ASSERT_EQ(
+        verticalChain.vertexIds.size(),
+        3
+    );
+
+    ASSERT_EQ(
+        branchChain.vertexIds.size(),
+        2
+    );
+
+    /*
+        The first vertex of the branch must reuse
+        the interior vertex of the vertical chain.
+    */
+    EXPECT_EQ(
+        branchChain.vertexIds.front(),
+        verticalChain.vertexIds[1]
+    );
+
+    /*
+        The vertical profile creates three vertices.
+        The branch reuses one and creates only its
+        outer endpoint.
+    */
+    EXPECT_EQ(
+        result.mesh.vertices.size(),
+        inputMesh.vertices.size() + 4
+    );
+}

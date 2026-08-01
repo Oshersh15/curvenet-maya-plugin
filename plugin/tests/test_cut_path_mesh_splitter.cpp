@@ -2021,3 +2021,89 @@ TEST(
         );
     }
 }
+
+TEST(
+    CutPathMeshSplitter,
+    ReusesExplicitExistingMeshVertex
+)
+{
+    HalfEdgeMesh mesh;
+    mesh.createTestQuad();
+
+    CutPath cutPath;
+    cutPath.curveId = 12;
+    cutPath.closed = false;
+
+    CutVertex firstCut;
+    firstCut.position =
+        mesh.vertices[0].position;
+    firstCut.sourceHalfEdgeId = 0;
+    firstCut.existingMeshVertexId = 0;
+    firstCut.curveId = 12;
+    firstCut.cutPathOrder = 0;
+
+    CutVertex secondCut;
+    secondCut.position =
+        Point3{0.5, 0.0, 0.0};
+    secondCut.sourceHalfEdgeId = 2;
+    secondCut.sourceEdgeT = 0.5;
+    secondCut.curveId = 12;
+    secondCut.cutPathOrder = 1;
+
+    cutPath.cutVertices = {
+        firstCut,
+        secondCut
+    };
+
+    cutPath.faceIntervalIds = {
+        0
+    };
+
+    const int originalVertexCount =
+        static_cast<int>(
+            mesh.vertices.size()
+        );
+
+    const CutPathSplitResult result =
+        CutPathMeshSplitter::apply(
+            mesh,
+            cutPath,
+            0.0001
+        );
+
+    ASSERT_TRUE(result.success);
+
+    ASSERT_EQ(
+        result.meshVertexIds.size(),
+        2
+    );
+
+    /*
+        The first CutVertex should reuse mesh vertex 0,
+        while only the second CutVertex creates a new vertex.
+    */
+    EXPECT_EQ(
+        result.meshVertexIds[0],
+        0
+    );
+
+    EXPECT_EQ(
+        mesh.vertices.size(),
+        originalVertexCount + 1
+    );
+
+    ASSERT_EQ(
+        result.cutChain.vertexIds.size(),
+        2
+    );
+
+    EXPECT_EQ(
+        result.cutChain.vertexIds[0],
+        0
+    );
+
+    EXPECT_EQ(
+        result.cutChain.vertexIds[1],
+        result.meshVertexIds[1]
+    );
+}

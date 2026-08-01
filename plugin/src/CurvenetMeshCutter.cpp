@@ -1,6 +1,7 @@
 #include "CurvenetMeshCutter.h"
 
 #include "CutPathMeshSplitter.h"
+#include "CurvenetSharedNodeDetector.h"
 
 CurvenetCutResult CurvenetMeshCutter::apply(
     const HalfEdgeMesh& inputMesh,
@@ -16,12 +17,95 @@ CurvenetCutResult CurvenetMeshCutter::apply(
     */
     result.mesh = inputMesh;
 
-    for (const CutPath& cutPath : cutPaths)
+    for (const CutPath& sourceCutPath : cutPaths)
     {
+        CutPath preparedCutPath =
+            sourceCutPath;
+
+        int firstEndpointIndex = -1;
+        int lastEndpointIndex = -1;
+
+        for (int cutVertexIndex = 0;
+             cutVertexIndex <
+                 static_cast<int>(
+                     preparedCutPath.cutVertices.size()
+                 );
+             ++cutVertexIndex)
+        {
+            if (firstEndpointIndex < 0 ||
+                preparedCutPath
+                    .cutVertices[cutVertexIndex]
+                    .cutPathOrder <
+                preparedCutPath
+                    .cutVertices[firstEndpointIndex]
+                    .cutPathOrder)
+            {
+                firstEndpointIndex =
+                    cutVertexIndex;
+            }
+
+            if (lastEndpointIndex < 0 ||
+                preparedCutPath
+                    .cutVertices[cutVertexIndex]
+                    .cutPathOrder >
+                preparedCutPath
+                    .cutVertices[lastEndpointIndex]
+                    .cutPathOrder)
+            {
+                lastEndpointIndex =
+                    cutVertexIndex;
+            }
+        }
+
+        if (firstEndpointIndex >= 0)
+        {
+            CutVertex& firstEndpoint =
+                preparedCutPath
+                    .cutVertices[firstEndpointIndex];
+
+            const std::optional<int>
+                sharedVertexId =
+                    CurvenetSharedNodeDetector::
+                        findSharedMeshVertex(
+                            firstEndpoint,
+                            result,
+                            duplicateTolerance
+                        );
+
+            if (sharedVertexId.has_value())
+            {
+                firstEndpoint.existingMeshVertexId =
+                    sharedVertexId.value();
+            }
+        }
+
+        if (lastEndpointIndex >= 0 &&
+            lastEndpointIndex != firstEndpointIndex)
+        {
+            CutVertex& lastEndpoint =
+                preparedCutPath
+                    .cutVertices[lastEndpointIndex];
+
+            const std::optional<int>
+                sharedVertexId =
+                    CurvenetSharedNodeDetector::
+                        findSharedMeshVertex(
+                            lastEndpoint,
+                            result,
+                            duplicateTolerance
+                        );
+
+            if (sharedVertexId.has_value())
+            {
+                lastEndpoint.existingMeshVertexId =
+                    sharedVertexId.value();
+            }
+        }
+
         CutPathSplitResult profileResult =
             CutPathMeshSplitter::apply(
                 result.mesh,
-                cutPath,
+                preparedCutPath,
                 duplicateTolerance
             );
 
@@ -32,7 +116,7 @@ CurvenetCutResult CurvenetMeshCutter::apply(
 
         if (
             result.cutChainsByCurveId.find(
-                cutPath.curveId
+                sourceCutPath.curveId
             ) != result.cutChainsByCurveId.end()
         )
         {
@@ -44,7 +128,7 @@ CurvenetCutResult CurvenetMeshCutter::apply(
         );
 
         result.cutChainsByCurveId[
-            cutPath.curveId
+            sourceCutPath.curveId
         ] = profileResult.cutChain;
     }
 
