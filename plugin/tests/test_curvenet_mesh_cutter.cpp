@@ -570,3 +570,122 @@ TEST(
         inputMesh.vertices.size() + 4
     );
 }
+
+TEST(
+    CurvenetMeshCutter,
+    PreservesOpenAndClosedChains
+)
+{
+    HalfEdgeMesh inputMesh;
+    inputMesh.createFourQuadGrid();
+
+    /*
+        Closed triangular CutPath.
+    */
+    CutPath closedPath;
+    closedPath.curveId = 0;
+    closedPath.closed = true;
+
+    CutVertex closedA;
+    closedA.position =
+        Point3{0.5, 2.0, 0.0};
+    closedA.sourceHalfEdgeId = 0;
+    closedA.sourceEdgeT = 0.5;
+    closedA.curveId = 0;
+    closedA.cutPathOrder = 0;
+
+    CutVertex closedB;
+    closedB.position =
+        Point3{1.0, 1.5, 0.0};
+    closedB.sourceHalfEdgeId = 1;
+    closedB.sourceEdgeT = 0.5;
+    closedB.curveId = 0;
+    closedB.cutPathOrder = 1;
+
+    CutVertex closedC;
+    closedC.position =
+        Point3{0.5, 1.0, 0.0};
+    closedC.sourceHalfEdgeId = 2;
+    closedC.sourceEdgeT = 0.5;
+    closedC.curveId = 0;
+    closedC.cutPathOrder = 2;
+
+    closedPath.cutVertices = {
+        closedA,
+        closedB,
+        closedC
+    };
+
+    closedPath.faceIntervalIds = {
+        0,
+        1,
+        0
+    };
+
+    /*
+        Independent open CutPath.
+    */
+    CutPath openPath;
+    openPath.curveId = 1;
+    openPath.closed = false;
+
+    CutVertex openA;
+    openA.position =
+        Point3{1.5, 2.0, 0.0};
+    openA.sourceHalfEdgeId = 4;
+    openA.sourceEdgeT = 0.5;
+    openA.curveId = 1;
+    openA.cutPathOrder = 0;
+
+    CutVertex openB;
+    openB.position =
+        Point3{1.5, 1.0, 0.0};
+    openB.sourceHalfEdgeId = 6;
+    openB.sourceEdgeT = 0.5;
+    openB.curveId = 1;
+    openB.cutPathOrder = 1;
+
+    openPath.cutVertices = {
+        openA,
+        openB
+    };
+
+    openPath.faceIntervalIds = {
+        1
+    };
+
+    const CurvenetCutResult result =
+        CurvenetMeshCutter::apply(
+            inputMesh,
+            {
+                closedPath,
+                openPath
+            },
+            0.0001
+        );
+
+    ASSERT_TRUE(result.success);
+
+    ASSERT_EQ(
+        result.cutChainsByCurveId.size(),
+        2
+    );
+
+    const CutChain& closedChain =
+        result.cutChainsByCurveId.at(0);
+
+    const CutChain& openChain =
+        result.cutChainsByCurveId.at(1);
+
+    /*
+        Each CutChain should preserve its
+        original open/closed state.
+    */
+    EXPECT_TRUE(
+        closedChain.closed
+    );
+
+    EXPECT_FALSE(
+        openChain.closed
+    );
+}

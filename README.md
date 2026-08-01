@@ -162,6 +162,21 @@ The Tube A circular profile successfully produced a closed chain with matching v
 
 Testing also exposed a separate near-coincident intersection case when a profile lies directly on a mesh edge loop. This is tracked as a robustness task rather than treated as normal chain behaviour.
 
+### Multi-profile Curvenet Cutting
+
+The cutting pipeline now supports complete Curvenets composed of multiple connected profile curves.
+
+Implemented functionality includes:
+
+- Processing multiple profile curves on a single evolving HalfEdge mesh.
+- Progressive mesh modification so each profile operates on previously generated topology.
+- Independent `CutChain` generation for every profile curve.
+- Shared Curvenet node detection with embedded mesh vertex reuse.
+- Support for both open and closed profile curves.
+- Comprehensive unit and integration tests covering multi-profile cutting and shared-node behaviour.
+
+The resulting embedded Curvenet provides the topological foundation required for the subsequent correspondence and deformation stages.
+
 ---
 
 ## Technologies
