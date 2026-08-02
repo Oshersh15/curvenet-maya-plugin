@@ -204,6 +204,20 @@ Implemented functionality includes:
 - Support for Curvenet faces with arbitrary numbers of boundary sections.
 - Unit tests covering both four-sided and five-sided Curvenet faces.
 
+### Curvenet Face Region Mapping
+
+Logical Curvenet faces are associated with the detailed polygon faces contained inside their profile-curve boundaries.
+
+The region builder:
+
+- resolves ordered Curvenet boundary sections to embedded cut half-edges;
+- uses profile-derived edges as flood-fill barriers;
+- traverses internal non-boundary mesh edges;
+- stores the polygon-face IDs contained within each Curvenet region;
+- preserves separation between neighbouring Curvenet faces sharing the same CutChain boundary.
+
+This mapping connects the high-level Curvenet structure with the underlying cut-mesh geometry required for later correspondence and deformation.
+
 ---
 
 ## Technologies

@@ -36,4 +36,10 @@ struct CurvenetFace
         around the boundary of this face.
     */
     std::vector<CurvenetFaceBoundary> boundary;
+
+    /*
+        Mesh polygon faces contained inside
+        this logical Curvenet region.
+    */
+    std::vector<int> meshFaceIds;
 };
