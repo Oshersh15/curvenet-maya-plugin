@@ -192,6 +192,18 @@ The representation includes:
 
 This separates the logical Curvenet structure from the original mesh topology while retaining the mesh-specific embedding required for later correspondence and deformation.
 
+### Curvenet Face Representation
+
+Logical Curvenet regions are reconstructed from the embedded profile-curve network.
+
+Implemented functionality includes:
+
+- Identification of closed regions bounded by connected profile curves.
+- Ordered boundary traversal for every Curvenet face.
+- Boundary orientation relative to the original CutChain direction.
+- Support for Curvenet faces with arbitrary numbers of boundary sections.
+- Unit tests covering both four-sided and five-sided Curvenet faces.
+
 ---
 
 ## Technologies

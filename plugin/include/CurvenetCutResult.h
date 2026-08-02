@@ -6,6 +6,7 @@
 
 #include "CutPathMeshSplitter.h"
 #include "SharedCurvenetNode.h"
+#include "CurvenetFace.h"
 
 struct CurvenetCutResult
 {
@@ -24,4 +25,7 @@ struct CurvenetCutResult
 
     std::vector<SharedCurvenetNode>
         sharedCurvenetNodes;
+
+    std::vector<CurvenetFace>
+        curvenetFaces;
 };
