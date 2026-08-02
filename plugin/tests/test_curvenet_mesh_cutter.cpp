@@ -1,4 +1,5 @@
 #include <gtest/gtest.h>
+#include <algorithm>
 
 #include "CurvenetMeshCutter.h"
 
@@ -687,5 +688,436 @@ TEST(
 
     EXPECT_FALSE(
         openChain.closed
+    );
+}
+
+TEST(
+    CurvenetMeshCutter,
+    StoresEmbeddedMeshVertexIds
+)
+{
+    HalfEdgeMesh inputMesh;
+    inputMesh.createFourQuadGrid();
+
+    CutPath verticalPath;
+    verticalPath.curveId = 0;
+    verticalPath.closed = false;
+
+    CutVertex topCut;
+    topCut.position =
+        Point3{0.5, 2.0, 0.0};
+    topCut.sourceHalfEdgeId = 0;
+    topCut.sourceEdgeT = 0.5;
+    topCut.curveId = 0;
+    topCut.cutPathOrder = 0;
+
+    CutVertex middleCut;
+    middleCut.position =
+        Point3{0.5, 1.0, 0.0};
+    middleCut.sourceHalfEdgeId = 2;
+    middleCut.sourceEdgeT = 0.5;
+    middleCut.curveId = 0;
+    middleCut.cutPathOrder = 1;
+
+    CutVertex bottomCut;
+    bottomCut.position =
+        Point3{0.5, 0.0, 0.0};
+    bottomCut.sourceHalfEdgeId = 10;
+    bottomCut.sourceEdgeT = 0.5;
+    bottomCut.curveId = 0;
+    bottomCut.cutPathOrder = 2;
+
+    verticalPath.cutVertices = {
+        topCut,
+        middleCut,
+        bottomCut
+    };
+
+    verticalPath.faceIntervalIds = {
+        0,
+        2
+    };
+
+    const CurvenetCutResult result =
+        CurvenetMeshCutter::apply(
+            inputMesh,
+            {
+                verticalPath
+            },
+            0.0001
+        );
+
+    ASSERT_TRUE(result.success);
+
+    /*
+        Every vertex belonging to the CutChain
+        should also appear in the embedded
+        Curvenet vertex set.
+    */
+    ASSERT_EQ(
+        result.embeddedVertexIds.size(),
+        result.cutChainsByCurveId
+            .at(0)
+            .vertexIds
+            .size()
+    );
+
+    for (int meshVertexId :
+         result.cutChainsByCurveId
+             .at(0)
+             .vertexIds)
+    {
+        EXPECT_TRUE(
+            result.embeddedVertexIds.count(
+                meshVertexId
+            )
+        );
+    }
+}
+
+TEST(
+    CurvenetMeshCutter,
+    StoresEmbeddedCutHalfEdgeIds
+)
+{
+    HalfEdgeMesh inputMesh;
+    inputMesh.createFourQuadGrid();
+
+    CutPath verticalPath;
+    verticalPath.curveId = 0;
+    verticalPath.closed = false;
+
+    CutVertex topCut;
+    topCut.position =
+        Point3{0.5, 2.0, 0.0};
+    topCut.sourceHalfEdgeId = 0;
+    topCut.sourceEdgeT = 0.5;
+    topCut.curveId = 0;
+    topCut.cutPathOrder = 0;
+
+    CutVertex middleCut;
+    middleCut.position =
+        Point3{0.5, 1.0, 0.0};
+    middleCut.sourceHalfEdgeId = 2;
+    middleCut.sourceEdgeT = 0.5;
+    middleCut.curveId = 0;
+    middleCut.cutPathOrder = 1;
+
+    CutVertex bottomCut;
+    bottomCut.position =
+        Point3{0.5, 0.0, 0.0};
+    bottomCut.sourceHalfEdgeId = 10;
+    bottomCut.sourceEdgeT = 0.5;
+    bottomCut.curveId = 0;
+    bottomCut.cutPathOrder = 2;
+
+    verticalPath.cutVertices = {
+        topCut,
+        middleCut,
+        bottomCut
+    };
+
+    verticalPath.faceIntervalIds = {
+        0,
+        2
+    };
+
+    const CurvenetCutResult result =
+        CurvenetMeshCutter::apply(
+            inputMesh,
+            {
+                verticalPath
+            },
+            0.0001
+        );
+
+    ASSERT_TRUE(result.success);
+
+    const CutChain& cutChain =
+        result.cutChainsByCurveId.at(0);
+
+    /*
+        Every forward half-edge belonging to the
+        CutChain should appear in the complete
+        embedded Curvenet half-edge set.
+    */
+    ASSERT_EQ(
+        result.embeddedHalfEdgeIds.size(),
+        cutChain.halfEdgeIds.size()
+    );
+
+    for (int halfEdgeId :
+         cutChain.halfEdgeIds)
+    {
+        EXPECT_TRUE(
+            result.embeddedHalfEdgeIds.count(
+                halfEdgeId
+            )
+        );
+    }
+}
+
+TEST(
+    CurvenetMeshCutter,
+    StoresAffectedMeshFaceIds
+)
+{
+    HalfEdgeMesh inputMesh;
+    inputMesh.createFourQuadGrid();
+
+    CutPath verticalPath;
+    verticalPath.curveId = 0;
+    verticalPath.closed = false;
+
+    CutVertex topCut;
+    topCut.position =
+        Point3{0.5, 2.0, 0.0};
+    topCut.sourceHalfEdgeId = 0;
+    topCut.sourceEdgeT = 0.5;
+    topCut.curveId = 0;
+    topCut.cutPathOrder = 0;
+
+    CutVertex middleCut;
+    middleCut.position =
+        Point3{0.5, 1.0, 0.0};
+    middleCut.sourceHalfEdgeId = 2;
+    middleCut.sourceEdgeT = 0.5;
+    middleCut.curveId = 0;
+    middleCut.cutPathOrder = 1;
+
+    CutVertex bottomCut;
+    bottomCut.position =
+        Point3{0.5, 0.0, 0.0};
+    bottomCut.sourceHalfEdgeId = 10;
+    bottomCut.sourceEdgeT = 0.5;
+    bottomCut.curveId = 0;
+    bottomCut.cutPathOrder = 2;
+
+    verticalPath.cutVertices = {
+        topCut,
+        middleCut,
+        bottomCut
+    };
+
+    verticalPath.faceIntervalIds = {
+        0,
+        2
+    };
+
+    const CurvenetCutResult result =
+        CurvenetMeshCutter::apply(
+            inputMesh,
+            {
+                verticalPath
+            },
+            0.0001
+        );
+
+    ASSERT_TRUE(result.success);
+
+    const CutChain& cutChain =
+        result.cutChainsByCurveId.at(0);
+
+    ASSERT_FALSE(
+        result.embeddedFaceIds.empty()
+    );
+
+    /*
+        Both faces adjacent to every embedded cut edge
+        should appear in the complete Curvenet face set.
+    */
+    for (int halfEdgeId :
+         cutChain.halfEdgeIds)
+    {
+        ASSERT_GE(halfEdgeId, 0);
+
+        ASSERT_LT(
+            halfEdgeId,
+            static_cast<int>(
+                result.mesh.halfEdges.size()
+            )
+        );
+
+        const HalfEdge& halfEdge =
+            result.mesh.halfEdges[
+                halfEdgeId
+            ];
+
+        if (halfEdge.face >= 0)
+        {
+            EXPECT_TRUE(
+                result.embeddedFaceIds.count(
+                    halfEdge.face
+                )
+            );
+        }
+
+        if (halfEdge.twin >= 0)
+        {
+            const int twinFaceId =
+                result.mesh.halfEdges[
+                    halfEdge.twin
+                ].face;
+
+            if (twinFaceId >= 0)
+            {
+                EXPECT_TRUE(
+                    result.embeddedFaceIds.count(
+                        twinFaceId
+                    )
+                );
+            }
+        }
+    }
+}
+
+TEST(
+    CurvenetMeshCutter,
+    StoresSharedCurvenetNodeConnectivity
+)
+{
+    HalfEdgeMesh inputMesh;
+    inputMesh.createFourQuadGrid();
+
+    /*
+        Vertical profile with a shared interior vertex.
+    */
+    CutPath verticalPath;
+    verticalPath.curveId = 0;
+    verticalPath.closed = false;
+
+    CutVertex topCut;
+    topCut.position =
+        Point3{0.5, 2.0, 0.0};
+    topCut.sourceHalfEdgeId = 0;
+    topCut.sourceEdgeT = 0.5;
+    topCut.curveId = 0;
+    topCut.cutPathOrder = 0;
+
+    CutVertex middleCut;
+    middleCut.position =
+        Point3{0.5, 1.0, 0.0};
+    middleCut.sourceHalfEdgeId = 2;
+    middleCut.sourceEdgeT = 0.5;
+    middleCut.curveId = 0;
+    middleCut.cutPathOrder = 1;
+
+    CutVertex bottomCut;
+    bottomCut.position =
+        Point3{0.5, 0.0, 0.0};
+    bottomCut.sourceHalfEdgeId = 10;
+    bottomCut.sourceEdgeT = 0.5;
+    bottomCut.curveId = 0;
+    bottomCut.cutPathOrder = 2;
+
+    verticalPath.cutVertices = {
+        topCut,
+        middleCut,
+        bottomCut
+    };
+
+    verticalPath.faceIntervalIds = {
+        0,
+        2
+    };
+
+    /*
+        Branch profile meeting the vertical profile
+        at its interior Curvenet node.
+    */
+    CutPath branchPath;
+    branchPath.curveId = 1;
+    branchPath.closed = false;
+
+    CutVertex sharedEndpoint;
+    sharedEndpoint.position =
+        Point3{0.5, 1.0, 0.0};
+    sharedEndpoint.sourceHalfEdgeId = 2;
+    sharedEndpoint.sourceEdgeT = 0.5;
+    sharedEndpoint.curveId = 1;
+    sharedEndpoint.cutPathOrder = 0;
+
+    CutVertex outerEndpoint;
+    outerEndpoint.position =
+        Point3{0.0, 1.5, 0.0};
+    outerEndpoint.sourceHalfEdgeId = 3;
+    outerEndpoint.sourceEdgeT = 0.5;
+    outerEndpoint.curveId = 1;
+    outerEndpoint.cutPathOrder = 1;
+
+    branchPath.cutVertices = {
+        sharedEndpoint,
+        outerEndpoint
+    };
+
+    branchPath.faceIntervalIds = {
+        0
+    };
+
+    const CurvenetCutResult result =
+        CurvenetMeshCutter::apply(
+            inputMesh,
+            {
+                verticalPath,
+                branchPath
+            },
+            0.0001
+        );
+
+    ASSERT_TRUE(result.success);
+
+    ASSERT_EQ(
+        result.sharedCurvenetNodes.size(),
+        1
+    );
+
+    const SharedCurvenetNode& sharedNode =
+        result.sharedCurvenetNodes.front();
+
+    const CutChain& verticalChain =
+        result.cutChainsByCurveId.at(0);
+
+    const CutChain& branchChain =
+        result.cutChainsByCurveId.at(1);
+
+    /*
+        The shared Curvenet node should map to the
+        same mesh vertex used by both CutChains.
+    */
+    EXPECT_EQ(
+        sharedNode.meshVertexId,
+        verticalChain.vertexIds[1]
+    );
+
+    EXPECT_EQ(
+        sharedNode.meshVertexId,
+        branchChain.vertexIds.front()
+    );
+
+    /*
+        The shared node should record both
+        connected profile-curve IDs.
+    */
+    ASSERT_EQ(
+        sharedNode.connectedCurveIds.size(),
+        2
+    );
+
+    EXPECT_NE(
+        std::find(
+            sharedNode.connectedCurveIds.begin(),
+            sharedNode.connectedCurveIds.end(),
+            0
+        ),
+        sharedNode.connectedCurveIds.end()
+    );
+
+    EXPECT_NE(
+        std::find(
+            sharedNode.connectedCurveIds.begin(),
+            sharedNode.connectedCurveIds.end(),
+            1
+        ),
+        sharedNode.connectedCurveIds.end()
     );
 }

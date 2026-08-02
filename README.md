@@ -177,6 +177,21 @@ Implemented functionality includes:
 
 The resulting embedded Curvenet provides the topological foundation required for the subsequent correspondence and deformation stages.
 
+### Embedded Curvenet Representation
+
+The complete mesh-specific Curvenet embedding is stored after multi-profile cutting.
+
+The representation includes:
+
+- mesh vertex IDs belonging to the embedded Curvenet;
+- forward cut half-edge IDs for all profile-derived CutChains;
+- mesh faces adjacent to the generated cut topology;
+- direct profile-curve ID to CutChain mapping;
+- shared Curvenet nodes mapped to their embedded mesh vertices;
+- the profile curves connected through each shared node.
+
+This separates the logical Curvenet structure from the original mesh topology while retaining the mesh-specific embedding required for later correspondence and deformation.
+
 ---
 
 ## Technologies

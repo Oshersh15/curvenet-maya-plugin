@@ -3,6 +3,9 @@
 #include "CutPathMeshSplitter.h"
 #include "CurvenetSharedNodeDetector.h"
 
+#include <algorithm>
+#include <unordered_map>
+
 CurvenetCutResult CurvenetMeshCutter::apply(
     const HalfEdgeMesh& inputMesh,
     const std::vector<CutPath>& cutPaths,
@@ -130,6 +133,137 @@ CurvenetCutResult CurvenetMeshCutter::apply(
         result.cutChainsByCurveId[
             sourceCutPath.curveId
         ] = profileResult.cutChain;
+
+        for (int meshVertexId :
+             profileResult.cutChain.vertexIds)
+        {
+            result.embeddedVertexIds.insert(
+                meshVertexId
+            );
+        }
+
+        for (int halfEdgeId :
+             profileResult.cutChain.halfEdgeIds)
+        {
+            result.embeddedHalfEdgeIds.insert(
+                halfEdgeId
+            );
+        }
+    }
+
+    for (int halfEdgeId :
+         result.embeddedHalfEdgeIds)
+    {
+        if (halfEdgeId < 0 ||
+            halfEdgeId >=
+                static_cast<int>(
+                    result.mesh.halfEdges.size()
+                ))
+        {
+            return result;
+        }
+
+        const HalfEdge& cutHalfEdge =
+            result.mesh.halfEdges[
+                halfEdgeId
+            ];
+
+        if (cutHalfEdge.face >= 0)
+        {
+            result.embeddedFaceIds.insert(
+                cutHalfEdge.face
+            );
+        }
+
+        if (cutHalfEdge.twin >= 0 &&
+            cutHalfEdge.twin <
+                static_cast<int>(
+                    result.mesh.halfEdges.size()
+                ))
+        {
+            const int twinFaceId =
+                result.mesh.halfEdges[
+                    cutHalfEdge.twin
+                ].face;
+
+            if (twinFaceId >= 0)
+            {
+                result.embeddedFaceIds.insert(
+                    twinFaceId
+                );
+            }
+        }
+    }
+
+    std::unordered_map<int, std::vector<int>>
+        curveIdsByMeshVertex;
+
+    for (const auto& entry :
+         result.cutChainsByCurveId)
+    {
+        const int curveId =
+            entry.first;
+
+        const CutChain& cutChain =
+            entry.second;
+
+        for (int meshVertexId :
+             cutChain.vertexIds)
+        {
+            std::vector<int>& connectedCurveIds =
+                curveIdsByMeshVertex[
+                    meshVertexId
+                ];
+
+            /*
+                Avoid storing the same curve more than once
+                if a chain happens to reference a vertex
+                repeatedly.
+            */
+            if (
+                std::find(
+                    connectedCurveIds.begin(),
+                    connectedCurveIds.end(),
+                    curveId
+                ) == connectedCurveIds.end()
+            )
+            {
+                connectedCurveIds.push_back(
+                    curveId
+                );
+            }
+        }
+    }
+
+    for (const auto& entry :
+         curveIdsByMeshVertex)
+    {
+        const int meshVertexId =
+            entry.first;
+
+        const std::vector<int>& connectedCurveIds =
+            entry.second;
+
+        /*
+            A shared Curvenet node must belong to at
+            least two different profile curves.
+        */
+        if (connectedCurveIds.size() < 2)
+        {
+            continue;
+        }
+
+        SharedCurvenetNode sharedNode;
+
+        sharedNode.meshVertexId =
+            meshVertexId;
+
+        sharedNode.connectedCurveIds =
+            connectedCurveIds;
+
+        result.sharedCurvenetNodes.push_back(
+            sharedNode
+        );
     }
 
     result.success = true;
