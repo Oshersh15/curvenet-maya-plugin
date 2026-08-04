@@ -32,6 +32,9 @@
 #include "CutPath.h"
 #include "VertexCurveBinding.h"
 #include "CutPathMeshSplitter.h"
+#include "CurvenetFaceBuilder.h"
+#include "CurvenetFaceRegionBuilder.h"
+#include "CurvenetMeshCutter.h"
 
 #include <vector>
 
@@ -313,6 +316,7 @@ unsigned int geometryIndex
     unsigned int numConnectedCurves = curveArrayHandle.elementCount();
 
     std::vector<CutPath> cutPaths;
+    std::vector<ProfileCutInput> profileInputs;
 
     currentSampledCurves.clear();
 
@@ -519,6 +523,23 @@ unsigned int geometryIndex
 
         cutPaths.push_back(cutPath);
 
+        ProfileCutInput profileInput;
+
+        profileInput.curveId =
+            static_cast<int>(
+                curveIndex
+            );
+
+        profileInput.closed =
+            curveClosed;
+
+        profileInput.sampledSegments =
+            sampledSegments;
+
+        profileInputs.push_back(
+            profileInput
+        );
+
         debugCrossings.insert(
             debugCrossings.end(),
             crossings.begin(),
@@ -528,131 +549,301 @@ unsigned int geometryIndex
 
     if (!cutPaths.empty())
     {
-        const CutPath* circularCutPath = nullptr;
+        const int originalVertexCount =
+            static_cast<int>(
+                mayaHalfEdgeMesh.vertices.size()
+            );
 
-        for (const CutPath& cutPath : cutPaths)
+        const int originalHalfEdgeCount =
+            static_cast<int>(
+                mayaHalfEdgeMesh.halfEdges.size()
+            );
+
+        const int originalFaceCount =
+            static_cast<int>(
+                mayaHalfEdgeMesh.faces.size()
+            );
+
+        for (int cutPathIndex = 0;
+             cutPathIndex <
+                 static_cast<int>(
+                     cutPaths.size()
+                 );
+             ++cutPathIndex)
         {
-            if (cutPath.curveId == 0)
-            {
-                circularCutPath = &cutPath;
-                break;
-            }
+            const CutPath& cutPath =
+                cutPaths[cutPathIndex];
+
+            MGlobal::displayInfo(
+                MString("CutPath ")
+                + cutPathIndex
+                + " curve ID: "
+                + cutPath.curveId
+                + ", CutVertices: "
+                + static_cast<int>(
+                    cutPath.cutVertices.size()
+                )
+                + ", face intervals: "
+                + static_cast<int>(
+                    cutPath.faceIntervalIds.size()
+                )
+                + ", closed: "
+                + (cutPath.closed
+                    ? "true"
+                    : "false")
+            );
         }
 
-        if (circularCutPath != nullptr)
+        const double crossingTolerance =
+            0.01;
+
+        const double duplicateTolerance =
+            0.0001;
+
+        CurvenetCutResult curvenetCutResult =
+            CurvenetMeshCutter::apply(
+                mayaHalfEdgeMesh,
+                profileInputs,
+                crossingTolerance,
+                duplicateTolerance
+            );
+
+        MGlobal::displayInfo(
+            MString("Curvenet cutting: ")
+            + (curvenetCutResult.success
+                ? "SUCCESS"
+                : "FAILED")
+        );
+
+        MGlobal::displayInfo(
+            MString("Processed CutPaths: ")
+            + static_cast<int>(
+                cutPaths.size()
+            )
+        );
+
+        MGlobal::displayInfo(
+            MString("Stored CutChains: ")
+            + static_cast<int>(
+                curvenetCutResult
+                    .cutChainsByCurveId
+                    .size()
+            )
+        );
+
+        for (const CutPath& attemptedCutPath :
+             curvenetCutResult.attemptedCutPaths)
         {
-            HalfEdgeMesh verificationMesh =
-                mayaHalfEdgeMesh;
-
-            const int originalVertexCount =
-                static_cast<int>(
-                    verificationMesh.vertices.size()
-                );
-
-            const int originalHalfEdgeCount =
-                static_cast<int>(
-                    verificationMesh.halfEdges.size()
-                );
-
-            const CutPathSplitResult splitResult =
-                CutPathMeshSplitter::apply(
-                    verificationMesh,
-                    *circularCutPath,
-                    0.0001
-                );
-
             MGlobal::displayInfo(
-                MString("Circular CutPath verification: ")
-                + (splitResult.success
-                    ? "SUCCESS"
-                    : "FAILED")
-            );
-
-            MGlobal::displayInfo(
-                MString("Circular CutVertices: ")
+                MString("Fresh CutPath curve ID: ")
+                + attemptedCutPath.curveId
+                + ", CutVertices: "
                 + static_cast<int>(
-                    circularCutPath->cutVertices.size()
+                    attemptedCutPath
+                        .cutVertices
+                        .size()
                 )
-            );
-
-            MGlobal::displayInfo(
-                MString("Vertices: ")
-                + originalVertexCount
-                + " -> "
+                + ", face intervals: "
                 + static_cast<int>(
-                    verificationMesh.vertices.size()
+                    attemptedCutPath
+                        .faceIntervalIds
+                        .size()
                 )
-            );
-
-            MGlobal::displayInfo(
-                MString("Half-edges: ")
-                + originalHalfEdgeCount
-                + " -> "
-                + static_cast<int>(
-                    verificationMesh.halfEdges.size()
-                )
-            );
-
-            MGlobal::displayInfo(
-                MString("Circular CutChain closed: ")
-                + (splitResult.cutChain.closed
+                + ", closed: "
+                + (attemptedCutPath.closed
                     ? "true"
                     : "false")
             );
+        }
 
-            MGlobal::displayInfo(
-                MString("Circular CutChain vertices: ")
-                + static_cast<int>(
-                    splitResult.cutChain.vertexIds.size()
-                )
-            );
+        if (curvenetCutResult.failedCurveId >= 0)
+        {
+            MString failureName =
+                "Unknown";
 
-            MGlobal::displayInfo(
-                MString("Circular CutChain half-edges: ")
-                + static_cast<int>(
-                    splitResult.cutChain.halfEdgeIds.size()
-                )
-            );
-
-            bool closingEdgeValid = false;
-
-            if (splitResult.cutChain.closed &&
-                !splitResult.cutChain.vertexIds.empty() &&
-                !splitResult.cutChain.halfEdgeIds.empty())
+            switch (
+                curvenetCutResult.failedSplitReason
+            )
             {
-                const int firstVertexId =
-                    splitResult.cutChain.vertexIds.front();
+                case CutPathSplitFailure::None:
+                    failureName = "None";
+                    break;
 
-                const int lastVertexId =
-                    splitResult.cutChain.vertexIds.back();
+                case CutPathSplitFailure::NullCutVertex:
+                    failureName = "NullCutVertex";
+                    break;
 
-                const int closingHalfEdgeId =
-                    splitResult.cutChain.halfEdgeIds.back();
+                case CutPathSplitFailure::
+                    InvalidExistingMeshVertex:
+                    failureName =
+                        "InvalidExistingMeshVertex";
+                    break;
 
-                if (closingHalfEdgeId >= 0 &&
-                    closingHalfEdgeId <
-                        static_cast<int>(
-                            verificationMesh.halfEdges.size()
-                        ))
-                {
-                    const HalfEdge& closingHalfEdge =
-                        verificationMesh.halfEdges[
-                            closingHalfEdgeId
-                        ];
+                case CutPathSplitFailure::InvalidHalfEdge:
+                    failureName = "InvalidHalfEdge";
+                    break;
 
-                    closingEdgeValid =
-                        closingHalfEdge.startVertex ==
-                            lastVertexId &&
-                        closingHalfEdge.endVertex ==
-                            firstVertexId;
-                }
+                case CutPathSplitFailure::
+                    BoundarySplitFailed:
+                    failureName = "BoundarySplitFailed";
+                    break;
+
+                case CutPathSplitFailure::
+                    InternalSplitFailed:
+                    failureName = "InternalSplitFailed";
+                    break;
+
+                case CutPathSplitFailure::InvalidMeshVertex:
+                    failureName = "InvalidMeshVertex";
+                    break;
+
+                case CutPathSplitFailure::
+                    InvalidFaceInterval:
+                    failureName = "InvalidFaceInterval";
+                    break;
+
+                case CutPathSplitFailure::
+                    VerticesNotOnSameFace:
+                    failureName = "VerticesNotOnSameFace";
+                    break;
+
+                case CutPathSplitFailure::
+                    CreateCutHalfEdgesFailed:
+                    failureName =
+                        "CreateCutHalfEdgesFailed";
+                    break;
+
+                case CutPathSplitFailure::
+                    InsertCutHalfEdgesFailed:
+                    failureName =
+                        "InsertCutHalfEdgesFailed";
+                    break;
+
+                case CutPathSplitFailure::
+                    InvalidClosingHalfEdge:
+                    failureName =
+                        "InvalidClosingHalfEdge";
+                    break;
+
+                case CutPathSplitFailure::
+                    ClosingEdgeMismatch:
+                    failureName = "ClosingEdgeMismatch";
+                    break;
             }
 
             MGlobal::displayInfo(
-                MString("Circular closing edge valid: ")
-                + (closingEdgeValid
-                    ? "true"
-                    : "false")
+                MString("Fresh CutPath failed for curve ID: ")
+                + curvenetCutResult.failedCurveId
+                + ", reason: "
+                + failureName
+                + ", interval: "
+                + curvenetCutResult.failedIntervalIndex
+                + ", vertices: "
+                + curvenetCutResult.failedFirstVertexId
+                + " -> "
+                + curvenetCutResult.failedSecondVertexId
+            );
+        }
+
+        MGlobal::displayInfo(
+            MString("Vertices: ")
+            + originalVertexCount
+            + " -> "
+            + static_cast<int>(
+                curvenetCutResult
+                    .mesh
+                    .vertices
+                    .size()
+            )
+        );
+
+        MGlobal::displayInfo(
+            MString("Half-edges: ")
+            + originalHalfEdgeCount
+            + " -> "
+            + static_cast<int>(
+                curvenetCutResult
+                    .mesh
+                    .halfEdges
+                    .size()
+            )
+        );
+
+        MGlobal::displayInfo(
+            MString("Faces: ")
+            + originalFaceCount
+            + " -> "
+            + static_cast<int>(
+                curvenetCutResult
+                    .mesh
+                    .faces
+                    .size()
+            )
+        );
+
+        MGlobal::displayInfo(
+            MString("Embedded vertices: ")
+            + static_cast<int>(
+                curvenetCutResult
+                    .embeddedVertexIds
+                    .size()
+            )
+        );
+
+        MGlobal::displayInfo(
+            MString("Embedded half-edges: ")
+            + static_cast<int>(
+                curvenetCutResult
+                    .embeddedHalfEdgeIds
+                    .size()
+            )
+        );
+
+        MGlobal::displayInfo(
+            MString("Shared Curvenet nodes: ")
+            + static_cast<int>(
+                curvenetCutResult
+                    .sharedCurvenetNodes
+                    .size()
+            )
+        );
+
+        if (curvenetCutResult.success)
+        {
+            curvenetCutResult.curvenetFaces =
+                CurvenetFaceBuilder::build(
+                    curvenetCutResult
+                );
+
+            CurvenetFaceRegionBuilder::build(
+                curvenetCutResult
+            );
+
+            MGlobal::displayInfo(
+                MString("Curvenet faces: ")
+                + static_cast<int>(
+                    curvenetCutResult
+                        .curvenetFaces
+                        .size()
+                )
+            );
+
+            int mappedMeshFaceCount = 0;
+
+            for (const CurvenetFace& curvenetFace :
+                 curvenetCutResult.curvenetFaces)
+            {
+                mappedMeshFaceCount +=
+                    static_cast<int>(
+                        curvenetFace
+                            .meshFaceIds
+                            .size()
+                    );
+            }
+
+            MGlobal::displayInfo(
+                MString("Mapped mesh faces: ")
+                + mappedMeshFaceCount
             );
         }
     }

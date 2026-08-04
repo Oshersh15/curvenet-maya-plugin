@@ -6,6 +6,23 @@
 
 #include <vector>
 
+enum class CutPathSplitFailure
+{
+    None,
+    NullCutVertex,
+    InvalidExistingMeshVertex,
+    InvalidHalfEdge,
+    BoundarySplitFailed,
+    InternalSplitFailed,
+    InvalidMeshVertex,
+    InvalidFaceInterval,
+    VerticesNotOnSameFace,
+    CreateCutHalfEdgesFailed,
+    InsertCutHalfEdgesFailed,
+    InvalidClosingHalfEdge,
+    ClosingEdgeMismatch
+};
+
 /*
     Stores the result of applying the ordered CutVertices
     from one CutPath to a HalfEdgeMesh.
@@ -17,6 +34,13 @@
 struct CutPathSplitResult
 {
     bool success = false;
+
+    CutPathSplitFailure failure =
+        CutPathSplitFailure::None;
+
+    int failedIntervalIndex = -1;
+    int failedFirstVertexId = -1;
+    int failedSecondVertexId = -1;
 
     std::vector<int> meshVertexIds;
 

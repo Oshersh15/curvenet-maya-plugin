@@ -2,6 +2,8 @@
 #include <algorithm>
 #include "GeometryUtils.h"
 #include <unordered_map>
+#include <iostream>
+
 
 namespace
 {
@@ -63,7 +65,8 @@ CutPathMeshSplitter::apply(
         -1
     );
 
-    std::vector<OrderedCutVertex> orderedCutVertices;
+    std::vector<OrderedCutVertex>
+        orderedCutVertices;
 
     for (int cutVertexIndex = 0;
          cutVertexIndex <
@@ -75,7 +78,9 @@ CutPathMeshSplitter::apply(
         OrderedCutVertex orderedCutVertex;
 
         orderedCutVertex.cutVertex =
-            &cutPath.cutVertices[cutVertexIndex];
+            &cutPath.cutVertices[
+                cutVertexIndex
+            ];
 
         orderedCutVertex.originalIndex =
             cutVertexIndex;
@@ -93,44 +98,282 @@ CutPathMeshSplitter::apply(
             const OrderedCutVertex& second
         )
         {
+            if (first.cutVertex == nullptr)
+            {
+                return false;
+            }
+
+            if (second.cutVertex == nullptr)
+            {
+                return true;
+            }
+
             return
                 first.cutVertex->cutPathOrder <
                 second.cutVertex->cutPathOrder;
         }
     );
 
-    std::unordered_map<int, int> edgeRedirects;
+    const int cutVertexCount =
+        static_cast<int>(
+            orderedCutVertices.size()
+        );
 
-    std::vector<ProcessedCut> processedCuts;
+    const int expectedIntervalCount =
+        cutPath.closed
+            ? cutVertexCount
+            : cutVertexCount - 1;
 
-    for (const OrderedCutVertex& orderedCutVertex :
-         orderedCutVertices)
+    if (cutVertexCount <
+            (cutPath.closed ? 3 : 2))
     {
-        if (orderedCutVertex.cutVertex == nullptr)
-        {
-            return result;
-        }
+        result.failure =
+            CutPathSplitFailure::
+                InvalidFaceInterval;
 
-        const CutVertex& cutVertex =
-            *orderedCutVertex.cutVertex;
+        return result;
+    }
 
-        /*
-            A higher-level Curvenet operation may already
-            have identified this CutVertex as a shared node.
-        */
-        if (cutVertex.existingMeshVertexId >= 0)
+    if (!cutPath.faceIntervalIds.empty() &&
+        static_cast<int>(
+            cutPath.faceIntervalIds.size()
+        ) != expectedIntervalCount)
+    {
+        result.failure =
+            CutPathSplitFailure::
+                InvalidFaceInterval;
+
+        return result;
+    }
+
+    std::unordered_map<int, int>
+        edgeRedirects;
+
+    std::vector<ProcessedCut>
+        processedCuts;
+
+    /*
+        Creates or reuses one mesh vertex only when
+        the current interval needs it.
+
+        This avoids creating every future cut vertex
+        before earlier intervals divide their faces.
+    */
+    const auto resolveMeshVertex =
+        [&](
+            const OrderedCutVertex&
+                orderedCutVertex
+        ) -> int
         {
-            if (cutVertex.existingMeshVertexId >=
-                static_cast<int>(
-                    mesh.vertices.size()
-                ))
+            if (
+                orderedCutVertex.cutVertex ==
+                nullptr
+            )
             {
-                return result;
+                result.failure =
+                    CutPathSplitFailure::
+                        NullCutVertex;
+
+                return -1;
             }
 
+            const int originalIndex =
+                orderedCutVertex.originalIndex;
+
+            if (originalIndex < 0 ||
+                originalIndex >=
+                    static_cast<int>(
+                        result
+                            .meshVertexIds
+                            .size()
+                    ))
+            {
+                result.failure =
+                    CutPathSplitFailure::
+                        InvalidMeshVertex;
+
+                return -1;
+            }
+
+            /*
+                This vertex may already have been
+                resolved for the preceding interval.
+            */
+            if (result.meshVertexIds[
+                    originalIndex
+                ] >= 0)
+            {
+                return result.meshVertexIds[
+                    originalIndex
+                ];
+            }
+
+            const CutVertex& cutVertex =
+                *orderedCutVertex.cutVertex;
+
+            /*
+                A higher-level Curvenet operation may
+                already have identified this crossing
+                as an existing shared mesh vertex.
+            */
+            if (
+                cutVertex
+                    .existingMeshVertexId >= 0
+            )
+            {
+                if (
+                    cutVertex
+                        .existingMeshVertexId >=
+                    static_cast<int>(
+                        mesh.vertices.size()
+                    )
+                )
+                {
+                    result.failure =
+                        CutPathSplitFailure::
+                            InvalidExistingMeshVertex;
+
+                    return -1;
+                }
+
+                result.meshVertexIds[
+                    originalIndex
+                ] =
+                    cutVertex
+                        .existingMeshVertexId;
+
+                ProcessedCut processedCut;
+
+                processedCut.position =
+                    cutVertex.position;
+
+                processedCut.meshVertexId =
+                    cutVertex
+                        .existingMeshVertexId;
+
+                processedCuts.push_back(
+                    processedCut
+                );
+
+                return
+                    cutVertex
+                        .existingMeshVertexId;
+            }
+
+            const int existingMeshVertexId =
+                findProcessedCutVertex(
+                    cutVertex.position,
+                    processedCuts,
+                    duplicateTolerance
+                );
+
+            if (existingMeshVertexId >= 0)
+            {
+                result.meshVertexIds[
+                    originalIndex
+                ] =
+                    existingMeshVertexId;
+
+                return existingMeshVertexId;
+            }
+
+            int currentHalfEdgeId =
+                cutVertex.sourceHalfEdgeId;
+
+            const auto redirectIterator =
+                edgeRedirects.find(
+                    cutVertex
+                        .sourceHalfEdgeId
+                );
+
+            if (
+                redirectIterator !=
+                edgeRedirects.end()
+            )
+            {
+                currentHalfEdgeId =
+                    redirectIterator->second;
+            }
+
+            if (currentHalfEdgeId < 0 ||
+                currentHalfEdgeId >=
+                    static_cast<int>(
+                        mesh.halfEdges.size()
+                    ))
+            {
+                result.failure =
+                    CutPathSplitFailure::
+                        InvalidHalfEdge;
+
+                return -1;
+            }
+
+            int newMeshVertexId = -1;
+            int remainingHalfEdgeId = -1;
+
+            const HalfEdge currentHalfEdge =
+                mesh.halfEdges[
+                    currentHalfEdgeId
+                ];
+
+            if (currentHalfEdge.twin < 0)
+            {
+                const BoundaryHalfEdgeSplitResult
+                    splitResult =
+                        mesh.splitBoundaryHalfEdge(
+                            currentHalfEdgeId,
+                            cutVertex.position
+                        );
+
+                if (!splitResult.success)
+                {
+                    result.failure =
+                        CutPathSplitFailure::
+                            BoundarySplitFailed;
+
+                    return -1;
+                }
+
+                newMeshVertexId =
+                    splitResult.newVertexId;
+
+                remainingHalfEdgeId =
+                    splitResult
+                        .secondHalfEdgeId;
+            }
+            else
+            {
+                const InternalHalfEdgeSplitResult
+                    splitResult =
+                        mesh.splitInternalHalfEdge(
+                            currentHalfEdgeId,
+                            cutVertex.position
+                        );
+
+                if (!splitResult.success)
+                {
+                    result.failure =
+                        CutPathSplitFailure::
+                            InternalSplitFailed;
+
+                    return -1;
+                }
+
+                newMeshVertexId =
+                    splitResult.newVertexId;
+
+                remainingHalfEdgeId =
+                    splitResult
+                        .firstNewHalfEdgeId;
+            }
+
+            edgeRedirects[
+                cutVertex.sourceHalfEdgeId
+            ] = remainingHalfEdgeId;
+
             result.meshVertexIds[
-                orderedCutVertex.originalIndex
-            ] = cutVertex.existingMeshVertexId;
+                originalIndex
+            ] = newMeshVertexId;
 
             ProcessedCut processedCut;
 
@@ -138,204 +381,158 @@ CutPathMeshSplitter::apply(
                 cutVertex.position;
 
             processedCut.meshVertexId =
-                cutVertex.existingMeshVertexId;
+                newMeshVertexId;
 
             processedCuts.push_back(
                 processedCut
             );
 
-            continue;
-        }
+            return newMeshVertexId;
+        };
 
-        const int existingMeshVertexId =
-            findProcessedCutVertex(
-                cutVertex.position,
-                processedCuts,
-                duplicateTolerance
-            );
-
-        if (existingMeshVertexId >= 0)
-        {
-            result.meshVertexIds[
-                orderedCutVertex.originalIndex
-            ] = existingMeshVertexId;
-
-            continue;
-        }
-
-        int currentHalfEdgeId =
-            cutVertex.sourceHalfEdgeId;
-
-        const auto redirectIterator =
-            edgeRedirects.find(
-                cutVertex.sourceHalfEdgeId
-            );
-
-        if (redirectIterator !=
-            edgeRedirects.end())
-        {
-            currentHalfEdgeId =
-                redirectIterator->second;
-        }
-
-        if (currentHalfEdgeId < 0 ||
-            currentHalfEdgeId >=
-                static_cast<int>(mesh.halfEdges.size()))
-        {
-            return result;
-        }
-
-        int newMeshVertexId = -1;
-        int remainingHalfEdgeId = -1;
-
-        const HalfEdge& currentHalfEdge =
-            mesh.halfEdges[currentHalfEdgeId];
-
-        if (currentHalfEdge.twin < 0)
-        {
-            const BoundaryHalfEdgeSplitResult splitResult =
-                mesh.splitBoundaryHalfEdge(
-                    currentHalfEdgeId,
-                    cutVertex.position
-                );
-
-            if (!splitResult.success)
-            {
-                return result;
-            }
-
-            newMeshVertexId =
-                splitResult.newVertexId;
-
-            remainingHalfEdgeId =
-                splitResult.secondHalfEdgeId;
-        }
-        else
-        {
-            const InternalHalfEdgeSplitResult splitResult =
-                mesh.splitInternalHalfEdge(
-                    currentHalfEdgeId,
-                    cutVertex.position
-                );
-
-            if (!splitResult.success)
-            {
-                return result;
-            }
-
-            newMeshVertexId =
-                splitResult.newVertexId;
-
-            remainingHalfEdgeId =
-                splitResult.firstNewHalfEdgeId;
-        }
-
-        edgeRedirects[
-            cutVertex.sourceHalfEdgeId
-        ] = remainingHalfEdgeId;
-
-        result.meshVertexIds[
-            orderedCutVertex.originalIndex
-        ] = newMeshVertexId;
-
-        ProcessedCut processedCut;
-
-        processedCut.position =
-            cutVertex.position;
-
-        processedCut.meshVertexId =
-            newMeshVertexId;
-
-        processedCuts.push_back(
-            processedCut
-        );
-    }
-
-    for (const OrderedCutVertex& orderedCutVertex :
-         orderedCutVertices)
+    /*
+        Some callers use the splitter only to resolve
+        ordered CutVertices and do not provide face
+        intervals. Preserve that supported behaviour.
+    */
+    if (cutPath.faceIntervalIds.empty())
     {
-        const int originalIndex =
-            orderedCutVertex.originalIndex;
-
-        if (originalIndex < 0 ||
-            originalIndex >=
-                static_cast<int>(
-                    result.meshVertexIds.size()
-                ))
+        for (const OrderedCutVertex& orderedCutVertex :
+             orderedCutVertices)
         {
-            return result;
+            const int meshVertexId =
+                resolveMeshVertex(
+                    orderedCutVertex
+                );
+
+            if (meshVertexId < 0)
+            {
+                return result;
+            }
+
+            result.cutChain.vertexIds.push_back(
+                meshVertexId
+            );
         }
 
-        const int meshVertexId =
-            result.meshVertexIds[
-                originalIndex
-            ];
+        result.cutChain.closed = false;
+        result.success = true;
 
-        if (meshVertexId < 0)
-        {
-            return result;
-        }
-
-        result.cutChain.vertexIds.push_back(
-            meshVertexId
-        );
+        return result;
     }
 
+    /*
+        Resolve each interval’s endpoints and divide
+        its current face immediately.
+
+        Future endpoints are not created until their
+        interval is reached.
+    */
     for (int intervalIndex = 0;
          intervalIndex <
-             static_cast<int>(
-                 cutPath.faceIntervalIds.size()
-             );
+             expectedIntervalCount;
          ++intervalIndex)
     {
-        if (intervalIndex >=
-            static_cast<int>(
-                orderedCutVertices.size()
-            ))
-        {
-            return result;
-        }
+        const int firstOrderedIndex =
+            intervalIndex;
 
-        int nextOrderedIndex =
+        int secondOrderedIndex =
             intervalIndex + 1;
 
-        if (nextOrderedIndex >=
-            static_cast<int>(
-                orderedCutVertices.size()
-            ))
+        if (secondOrderedIndex >=
+            cutVertexCount)
         {
             if (!cutPath.closed)
             {
+                result.failure =
+                    CutPathSplitFailure::
+                        InvalidFaceInterval;
+
                 return result;
             }
 
-            nextOrderedIndex = 0;
+            secondOrderedIndex = 0;
         }
 
-        const int firstOriginalIndex =
-            orderedCutVertices[
-                intervalIndex
-            ].originalIndex;
+        const OrderedCutVertex&
+            firstOrderedCutVertex =
+                orderedCutVertices[
+                    firstOrderedIndex
+                ];
 
-        const int secondOriginalIndex =
-            orderedCutVertices[
-                nextOrderedIndex
-            ].originalIndex;
+        const OrderedCutVertex&
+            secondOrderedCutVertex =
+                orderedCutVertices[
+                    secondOrderedIndex
+                ];
 
         const int firstVertexId =
-            result.meshVertexIds[
-                firstOriginalIndex
-            ];
+            resolveMeshVertex(
+                firstOrderedCutVertex
+            );
 
-        const int secondVertexId =
-            result.meshVertexIds[
-                secondOriginalIndex
-            ];
-
-        if (firstVertexId < 0 ||
-            secondVertexId < 0)
+        if (firstVertexId < 0)
         {
             return result;
+        }
+
+        const int secondVertexId =
+            resolveMeshVertex(
+                secondOrderedCutVertex
+            );
+
+        if (secondVertexId < 0)
+        {
+            return result;
+        }
+
+        /*
+            A zero-length interval can occur when
+            two CutVertices resolve to the same
+            existing shared vertex.
+        */
+        if (firstVertexId == secondVertexId)
+        {
+            continue;
+        }
+
+        int existingHalfEdgeId = -1;
+
+        for (int halfEdgeId = 0;
+             halfEdgeId <
+                 static_cast<int>(
+                     mesh.halfEdges.size()
+                 );
+             ++halfEdgeId)
+        {
+            const HalfEdge& halfEdge =
+                mesh.halfEdges[
+                    halfEdgeId
+                ];
+
+            if (
+                halfEdge.startVertex ==
+                    firstVertexId &&
+                halfEdge.endVertex ==
+                    secondVertexId
+            )
+            {
+                existingHalfEdgeId =
+                    halfEdgeId;
+
+                break;
+            }
+        }
+
+        if (existingHalfEdgeId >= 0)
+        {
+            result.cutChain
+                .halfEdgeIds
+                .push_back(
+                    existingHalfEdgeId
+                );
+
+            continue;
         }
 
         const int currentFaceId =
@@ -346,18 +543,36 @@ CutPathMeshSplitter::apply(
 
         if (currentFaceId < 0)
         {
+            result.failure =
+                CutPathSplitFailure::
+                    VerticesNotOnSameFace;
+
+            result.failedIntervalIndex =
+                intervalIndex;
+
+            result.failedFirstVertexId =
+                firstVertexId;
+
+            result.failedSecondVertexId =
+                secondVertexId;
+
             return result;
         }
 
-        const CutHalfEdgePairResult cutEdgeResult =
-            createCutHalfEdges(
-                mesh,
-                firstVertexId,
-                secondVertexId
-            );
+        const CutHalfEdgePairResult
+            cutEdgeResult =
+                createCutHalfEdges(
+                    mesh,
+                    firstVertexId,
+                    secondVertexId
+                );
 
         if (!cutEdgeResult.success)
         {
+            result.failure =
+                CutPathSplitFailure::
+                    CreateCutHalfEdgesFailed;
+
             return result;
         }
 
@@ -365,45 +580,124 @@ CutPathMeshSplitter::apply(
             insertCutHalfEdgesIntoFace(
                 mesh,
                 currentFaceId,
-                cutEdgeResult.firstHalfEdgeId,
-                cutEdgeResult.secondHalfEdgeId
+                cutEdgeResult
+                    .firstHalfEdgeId,
+                cutEdgeResult
+                    .secondHalfEdgeId
             );
 
         if (!inserted)
         {
+            result.failure =
+                CutPathSplitFailure::
+                    InsertCutHalfEdgesFailed;
+
             return result;
         }
 
-        result.cutChain.halfEdgeIds.push_back(
-            cutEdgeResult.firstHalfEdgeId
-        );
+        result.cutChain
+            .halfEdgeIds
+            .push_back(
+                cutEdgeResult
+                    .firstHalfEdgeId
+            );
+    }
+
+    /*
+        Store the CutChain vertices in profile
+        traversal order, independent of the order
+        in which they were resolved.
+    */
+    for (const OrderedCutVertex&
+         orderedCutVertex :
+         orderedCutVertices)
+    {
+        const int originalIndex =
+            orderedCutVertex.originalIndex;
+
+        if (originalIndex < 0 ||
+            originalIndex >=
+                static_cast<int>(
+                    result
+                        .meshVertexIds
+                        .size()
+                ))
+        {
+            result.failure =
+                CutPathSplitFailure::
+                    InvalidMeshVertex;
+
+            return result;
+        }
+
+        const int meshVertexId =
+            result.meshVertexIds[
+                originalIndex
+            ];
+
+        if (meshVertexId < 0)
+        {
+            result.failure =
+                CutPathSplitFailure::
+                    InvalidMeshVertex;
+
+            return result;
+        }
+
+        result.cutChain
+            .vertexIds
+            .push_back(
+                meshVertexId
+            );
     }
 
     result.cutChain.closed = false;
 
     if (cutPath.closed)
     {
-        if (result.cutChain.vertexIds.empty() ||
-            result.cutChain.halfEdgeIds.empty())
+        if (
+            result.cutChain
+                .vertexIds
+                .empty() ||
+            result.cutChain
+                .halfEdgeIds
+                .empty()
+        )
         {
+            result.failure =
+                CutPathSplitFailure::
+                    InvalidClosingHalfEdge;
+
             return result;
         }
 
         const int firstVertexId =
-            result.cutChain.vertexIds.front();
+            result.cutChain
+                .vertexIds
+                .front();
 
         const int lastVertexId =
-            result.cutChain.vertexIds.back();
+            result.cutChain
+                .vertexIds
+                .back();
 
         const int closingHalfEdgeId =
-            result.cutChain.halfEdgeIds.back();
+            result.cutChain
+                .halfEdgeIds
+                .back();
 
-        if (closingHalfEdgeId < 0 ||
+        if (
+            closingHalfEdgeId < 0 ||
             closingHalfEdgeId >=
                 static_cast<int>(
                     mesh.halfEdges.size()
-                ))
+                )
+        )
         {
+            result.failure =
+                CutPathSplitFailure::
+                    InvalidClosingHalfEdge;
+
             return result;
         }
 
@@ -412,11 +706,17 @@ CutPathMeshSplitter::apply(
                 closingHalfEdgeId
             ];
 
-        if (closingHalfEdge.startVertex !=
+        if (
+            closingHalfEdge.startVertex !=
                 lastVertexId ||
             closingHalfEdge.endVertex !=
-                firstVertexId)
+                firstVertexId
+        )
         {
+            result.failure =
+                CutPathSplitFailure::
+                    ClosingEdgeMismatch;
+
             return result;
         }
 

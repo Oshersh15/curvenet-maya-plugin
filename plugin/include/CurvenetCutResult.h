@@ -20,6 +20,17 @@ struct CurvenetCutResult
     std::vector<CutPathSplitResult>
         profileResults;
 
+    std::vector<CutPath> attemptedCutPaths;
+
+    int failedCurveId = -1;
+
+    CutPathSplitFailure failedSplitReason =
+        CutPathSplitFailure::None;
+
+    int failedIntervalIndex = -1;
+    int failedFirstVertexId = -1;
+    int failedSecondVertexId = -1;
+
     std::unordered_map<int, CutChain>
         cutChainsByCurveId;
 
