@@ -1,6 +1,7 @@
 #include "HalfEdge.h"
 
 #include <cmath>
+#include <unordered_set>
 
 void HalfEdgeMesh::clear()
 {
@@ -333,6 +334,189 @@ int HalfEdgeMesh::findOutgoingHalfEdgeInFace(
     }
 
     return -1;
+}
+
+int HalfEdgeMesh::findHalfEdge(
+    int startVertexId,
+    int endVertexId
+) const
+{
+    if (startVertexId < 0 ||
+        startVertexId >=
+            static_cast<int>(
+                vertices.size()
+            ) ||
+        endVertexId < 0 ||
+        endVertexId >=
+            static_cast<int>(
+                vertices.size()
+            ))
+    {
+        return -1;
+    }
+
+    for (int halfEdgeId = 0;
+         halfEdgeId <
+             static_cast<int>(
+                 halfEdges.size()
+             );
+         ++halfEdgeId)
+    {
+        const HalfEdge& halfEdge =
+            halfEdges[halfEdgeId];
+
+        if (halfEdge.startVertex ==
+                startVertexId &&
+            halfEdge.endVertex ==
+                endVertexId)
+        {
+            return halfEdgeId;
+        }
+    }
+
+    return -1;
+}
+
+std::vector<int>
+HalfEdgeMesh::getOutgoingHalfEdgesAtVertex(
+    int vertexId
+) const
+{
+    std::vector<int> outgoingHalfEdgeIds;
+
+    if (vertexId < 0 ||
+        vertexId >=
+            static_cast<int>(
+                vertices.size()
+            ))
+    {
+        return outgoingHalfEdgeIds;
+    }
+
+    for (int halfEdgeId = 0;
+         halfEdgeId <
+             static_cast<int>(
+                 halfEdges.size()
+             );
+         ++halfEdgeId)
+    {
+        if (halfEdges[
+                halfEdgeId
+            ].startVertex ==
+            vertexId)
+        {
+            outgoingHalfEdgeIds.push_back(
+                halfEdgeId
+            );
+        }
+    }
+
+    return outgoingHalfEdgeIds;
+}
+
+std::vector<int>
+HalfEdgeMesh::getOrderedOutgoingHalfEdgesAtVertex(
+    int vertexId
+) const
+{
+    std::vector<int> orderedHalfEdgeIds;
+
+    const std::vector<int> outgoingHalfEdgeIds =
+        getOutgoingHalfEdgesAtVertex(
+            vertexId
+        );
+
+    if (outgoingHalfEdgeIds.empty())
+    {
+        return orderedHalfEdgeIds;
+    }
+
+    int currentHalfEdgeId =
+        outgoingHalfEdgeIds.front();
+
+    std::unordered_set<int>
+        visitedHalfEdgeIds;
+
+    while (
+        currentHalfEdgeId >= 0 &&
+        currentHalfEdgeId <
+            static_cast<int>(
+                halfEdges.size()
+            ) &&
+        visitedHalfEdgeIds.find(
+            currentHalfEdgeId
+        ) ==
+            visitedHalfEdgeIds.end()
+    )
+    {
+        orderedHalfEdgeIds.push_back(
+            currentHalfEdgeId
+        );
+
+        visitedHalfEdgeIds.insert(
+            currentHalfEdgeId
+        );
+
+        const int currentFaceId =
+            halfEdges[
+                currentHalfEdgeId
+            ].face;
+
+        if (currentFaceId < 0)
+        {
+            break;
+        }
+
+        const int previousHalfEdgeId =
+            findPreviousHalfEdgeInFace(
+                currentFaceId,
+                currentHalfEdgeId
+            );
+
+        if (previousHalfEdgeId < 0)
+        {
+            break;
+        }
+
+        const int nextAroundVertexId =
+            halfEdges[
+                previousHalfEdgeId
+            ].twin;
+
+        if (nextAroundVertexId < 0)
+        {
+            break;
+        }
+
+        currentHalfEdgeId =
+            nextAroundVertexId;
+    }
+
+    /*
+        Boundary vertices may produce an incomplete fan
+        when traversal reaches an edge without a twin.
+
+        Append any remaining outgoing half-edges so the
+        result still contains every outgoing edge exactly
+        once.
+    */
+    for (int halfEdgeId :
+         outgoingHalfEdgeIds)
+    {
+        if (
+            visitedHalfEdgeIds.find(
+                halfEdgeId
+            ) ==
+            visitedHalfEdgeIds.end()
+        )
+        {
+            orderedHalfEdgeIds.push_back(
+                halfEdgeId
+            );
+        }
+    }
+
+    return orderedHalfEdgeIds;
 }
 
 int HalfEdgeMesh::findPreviousHalfEdgeInFace(

@@ -37,6 +37,7 @@
 #include "CurvenetMeshCutter.h"
 
 #include <vector>
+#include <algorithm>
 
 namespace
 {
@@ -547,6 +548,64 @@ unsigned int geometryIndex
         );
     }
 
+    /*
+        Detect profile endpoint connections before
+        the curves are embedded into the mesh.
+    */
+    const std::vector<DetectedCurveConnection>
+        detectedProfileConnections =
+            CurveConnectionDetector::detect(
+                currentSampledCurves,
+                0.001
+            );
+
+    for (const DetectedCurveConnection& detected :
+         detectedProfileConnections)
+    {
+        for (ProfileCutInput& profileInput :
+             profileInputs)
+        {
+            if (profileInput.curveId !=
+                detected.endpointCurveId)
+            {
+                continue;
+            }
+
+            ProfileCurveConnection connection;
+
+            connection.endpoint =
+                detected.endpoint;
+
+            connection.targetCurveId =
+                detected.targetCurveId;
+
+            connection.targetSegmentId =
+                detected.targetSegmentId;
+
+            connection.targetSegmentT =
+                detected.targetSegmentT;
+
+            profileInput.connections.push_back(
+                connection
+            );
+
+            break;
+        }
+    }
+
+    std::stable_sort(
+        profileInputs.begin(),
+        profileInputs.end(),
+        [](
+            const ProfileCutInput& first,
+            const ProfileCutInput& second
+        )
+        {
+            return first.connections.size() <
+                   second.connections.size();
+        }
+    );
+
     if (!cutPaths.empty())
     {
         const int originalVertexCount =
@@ -654,6 +713,21 @@ unsigned int geometryIndex
                     ? "true"
                     : "false")
             );
+
+            MString message =
+                MString("CutPath ")
+                + attemptedCutPath.curveId
+                + " source half-edges:";
+
+            for (const CutVertex& cutVertex :
+                 attemptedCutPath.cutVertices)
+            {
+                message +=
+                    MString(" ")
+                    + cutVertex.sourceHalfEdgeId;
+            }
+
+            MGlobal::displayInfo(message);
         }
 
         if (curvenetCutResult.failedCurveId >= 0)

@@ -30,5 +30,14 @@ struct CutVertex
     double sourceEdgeT = 0.0;
 
     int curveId = -1;
+
+    /*
+        Identifies where this CutVertex came from on the
+        sampled profile-curve polyline.
+    */
+    int curveSegmentId = -1;
+
+    double curveSegmentT = 0.0;
+
     int cutPathOrder = -1;
 };

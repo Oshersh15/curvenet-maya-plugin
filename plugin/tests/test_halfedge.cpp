@@ -891,3 +891,85 @@ TEST(
     EXPECT_EQ(mesh.halfEdges[1].face, 0);
     EXPECT_EQ(mesh.halfEdges[2].face, 0);
 }
+
+TEST(
+    HalfEdgeMesh,
+    GetsOutgoingHalfEdgesAtVertex
+)
+{
+    HalfEdgeMesh mesh;
+    mesh.createFourQuadGrid();
+
+    int centreVertexId = -1;
+
+    /*
+        Find the grid vertex with four outgoing
+        half-edges rather than relying on a fixed ID.
+    */
+    for (int vertexId = 0;
+         vertexId <
+             static_cast<int>(
+                 mesh.vertices.size()
+             );
+         ++vertexId)
+    {
+        int outgoingCount = 0;
+
+        for (const HalfEdge& halfEdge :
+             mesh.halfEdges)
+        {
+            if (halfEdge.startVertex ==
+                vertexId)
+            {
+                ++outgoingCount;
+            }
+        }
+
+        if (outgoingCount == 4)
+        {
+            centreVertexId =
+                vertexId;
+
+            break;
+        }
+    }
+
+    ASSERT_GE(
+        centreVertexId,
+        0
+    );
+
+    const std::vector<int>
+        outgoingHalfEdgeIds =
+            mesh.getOutgoingHalfEdgesAtVertex(
+                centreVertexId
+            );
+
+    ASSERT_EQ(
+        outgoingHalfEdgeIds.size(),
+        4
+    );
+
+    for (int halfEdgeId :
+         outgoingHalfEdgeIds)
+    {
+        ASSERT_GE(
+            halfEdgeId,
+            0
+        );
+
+        ASSERT_LT(
+            halfEdgeId,
+            static_cast<int>(
+                mesh.halfEdges.size()
+            )
+        );
+
+        EXPECT_EQ(
+            mesh.halfEdges[
+                halfEdgeId
+            ].startVertex,
+            centreVertexId
+        );
+    }
+}

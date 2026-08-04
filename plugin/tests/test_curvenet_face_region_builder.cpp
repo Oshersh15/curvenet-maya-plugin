@@ -603,3 +603,255 @@ TEST(
         resultFaceB.meshFaceIds.front()
     );
 }
+
+TEST(
+    CurvenetFaceRegionBuilder,
+    UsesTwinFaceAsRegionSeed
+)
+{
+    CurvenetCutResult cutResult;
+    cutResult.mesh.createFourQuadGrid();
+
+    /*
+        Mesh Face 0 has these directed boundary edges:
+
+        0: 0 -> 1
+        1: 1 -> 4
+        2: 4 -> 3
+        3: 3 -> 0
+
+        Traverse the same boundary in reverse:
+
+        4 -> 1 -> 0 -> 3 -> 4
+
+        The first edge, 4 -> 1, is the twin of
+        Face 0's edge 1 -> 4. Its owning face is the
+        neighbouring mesh face, while its twin owns
+        the intended region, Face 0.
+    */
+
+    const auto getOrCreateTwin =
+        [&cutResult](
+            int halfEdgeId
+        ) -> int
+        {
+            if (
+                halfEdgeId < 0 ||
+                halfEdgeId >=
+                    static_cast<int>(
+                        cutResult.mesh.halfEdges.size()
+                    )
+            )
+            {
+                return -1;
+            }
+
+            const int existingTwinId =
+                cutResult.mesh.halfEdges[
+                    halfEdgeId
+                ].twin;
+
+            if (existingTwinId >= 0)
+            {
+                return existingTwinId;
+            }
+
+            const HalfEdge& sourceHalfEdge =
+                cutResult.mesh.halfEdges[
+                    halfEdgeId
+                ];
+
+            HalfEdge reverseHalfEdge;
+
+            reverseHalfEdge.startVertex =
+                sourceHalfEdge.endVertex;
+
+            reverseHalfEdge.endVertex =
+                sourceHalfEdge.startVertex;
+
+            reverseHalfEdge.face = -1;
+            reverseHalfEdge.next = -1;
+            reverseHalfEdge.twin =
+                halfEdgeId;
+
+            const int reverseHalfEdgeId =
+                static_cast<int>(
+                    cutResult.mesh.halfEdges.size()
+                );
+
+            cutResult.mesh.halfEdges.push_back(
+                reverseHalfEdge
+            );
+
+            cutResult.mesh.halfEdges[
+                halfEdgeId
+            ].twin =
+                reverseHalfEdgeId;
+
+            return reverseHalfEdgeId;
+        };
+
+    const int edge4To1 =
+        getOrCreateTwin(1);
+
+    const int edge1To0 =
+        getOrCreateTwin(0);
+
+    const int edge0To3 =
+        getOrCreateTwin(3);
+
+    const int edge3To4 =
+        getOrCreateTwin(2);
+
+    ASSERT_GE(
+        edge4To1,
+        0
+    );
+
+    ASSERT_GE(
+        edge1To0,
+        0
+    );
+
+    ASSERT_GE(
+        edge0To3,
+        0
+    );
+
+    ASSERT_GE(
+        edge3To4,
+        0
+    );
+
+    /*
+        Confirm that the first oriented edge owns the
+        neighbouring face and its twin owns Face 0.
+    */
+    ASSERT_NE(
+        cutResult.mesh.halfEdges[
+            edge4To1
+        ].face,
+        0
+    );
+
+    ASSERT_EQ(
+        cutResult.mesh.halfEdges[
+            cutResult.mesh.halfEdges[
+                edge4To1
+            ].twin
+        ].face,
+        0
+    );
+
+    CutChain firstChain;
+    firstChain.curveId = 0;
+    firstChain.vertexIds = {
+        4,
+        1
+    };
+    firstChain.halfEdgeIds = {
+        edge4To1
+    };
+
+    CutChain secondChain;
+    secondChain.curveId = 1;
+    secondChain.vertexIds = {
+        1,
+        0
+    };
+    secondChain.halfEdgeIds = {
+        edge1To0
+    };
+
+    CutChain thirdChain;
+    thirdChain.curveId = 2;
+    thirdChain.vertexIds = {
+        0,
+        3
+    };
+    thirdChain.halfEdgeIds = {
+        edge0To3
+    };
+
+    CutChain fourthChain;
+    fourthChain.curveId = 3;
+    fourthChain.vertexIds = {
+        3,
+        4
+    };
+    fourthChain.halfEdgeIds = {
+        edge3To4
+    };
+
+    cutResult.cutChainsByCurveId[0] =
+        firstChain;
+
+    cutResult.cutChainsByCurveId[1] =
+        secondChain;
+
+    cutResult.cutChainsByCurveId[2] =
+        thirdChain;
+
+    cutResult.cutChainsByCurveId[3] =
+        fourthChain;
+
+    CurvenetFace curvenetFace;
+    curvenetFace.id = 0;
+
+    CurvenetFaceBoundary firstBoundary;
+    firstBoundary.curveId = 0;
+    firstBoundary.startVertexId = 4;
+    firstBoundary.endVertexId = 1;
+    firstBoundary.reversed = false;
+
+    CurvenetFaceBoundary secondBoundary;
+    secondBoundary.curveId = 1;
+    secondBoundary.startVertexId = 1;
+    secondBoundary.endVertexId = 0;
+    secondBoundary.reversed = false;
+
+    CurvenetFaceBoundary thirdBoundary;
+    thirdBoundary.curveId = 2;
+    thirdBoundary.startVertexId = 0;
+    thirdBoundary.endVertexId = 3;
+    thirdBoundary.reversed = false;
+
+    CurvenetFaceBoundary fourthBoundary;
+    fourthBoundary.curveId = 3;
+    fourthBoundary.startVertexId = 3;
+    fourthBoundary.endVertexId = 4;
+    fourthBoundary.reversed = false;
+
+    curvenetFace.boundary = {
+        firstBoundary,
+        secondBoundary,
+        thirdBoundary,
+        fourthBoundary
+    };
+
+    cutResult.curvenetFaces = {
+        curvenetFace
+    };
+
+    CurvenetFaceRegionBuilder::build(
+        cutResult
+    );
+
+    ASSERT_EQ(
+        cutResult.curvenetFaces.size(),
+        1
+    );
+
+    const CurvenetFace& resultFace =
+        cutResult.curvenetFaces.front();
+
+    ASSERT_EQ(
+        resultFace.meshFaceIds.size(),
+        1
+    );
+
+    EXPECT_EQ(
+        resultFace.meshFaceIds.front(),
+        0
+    );
+}

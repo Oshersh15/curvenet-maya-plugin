@@ -6,11 +6,24 @@
 
 namespace
 {
-bool collectBoundaryHalfEdges(
-    const CurvenetFace& curvenetFace,
-    const CurvenetCutResult& cutResult,
-    std::unordered_set<int>& boundaryHalfEdgeIds
-)
+    struct BoundaryCollection
+    {
+        std::unordered_set<int>
+            boundaryHalfEdgeIds;
+
+        /*
+            One oriented boundary half-edge belonging
+            to this Curvenet face. Used only to choose
+            the flood-fill seed.
+        */
+        int seedHalfEdgeId = -1;
+    };
+
+    bool collectBoundaryHalfEdges(
+        const CurvenetFace& curvenetFace,
+        const CurvenetCutResult& cutResult,
+        BoundaryCollection& boundaryCollection
+    )
 {
     for (const CurvenetFaceBoundary& boundary :
          curvenetFace.boundary)
@@ -86,11 +99,22 @@ bool collectBoundaryHalfEdges(
                     return false;
                 }
 
-                boundaryHalfEdgeIds.insert(
+                const int orientedHalfEdgeId =
                     cutChain.halfEdgeIds[
                         currentIndex
-                    ]
-                );
+                    ];
+
+                boundaryCollection
+                    .boundaryHalfEdgeIds
+                    .insert(
+                        orientedHalfEdgeId
+                    );
+
+                if (boundaryCollection.seedHalfEdgeId < 0)
+                {
+                    boundaryCollection.seedHalfEdgeId =
+                        orientedHalfEdgeId;
+                }
 
                 ++currentIndex;
 
@@ -159,9 +183,17 @@ bool collectBoundaryHalfEdges(
                     return false;
                 }
 
-                boundaryHalfEdgeIds.insert(
-                    reverseHalfEdgeId
-                );
+                boundaryCollection
+                    .boundaryHalfEdgeIds
+                    .insert(
+                        reverseHalfEdgeId
+                    );
+
+                if (boundaryCollection.seedHalfEdgeId < 0)
+                {
+                    boundaryCollection.seedHalfEdgeId =
+                        reverseHalfEdgeId;
+                }
 
                 currentIndex =
                     previousIndex;
@@ -182,14 +214,13 @@ void CurvenetFaceRegionBuilder::build(
     {
         curvenetFace.meshFaceIds.clear();
 
-        std::unordered_set<int>
-            boundaryHalfEdgeIds;
+        BoundaryCollection boundaryCollection;
 
         const bool boundaryCollected =
             collectBoundaryHalfEdges(
                 curvenetFace,
                 cutResult,
-                boundaryHalfEdgeIds
+                boundaryCollection
             );
 
         if (!boundaryCollected)
@@ -197,7 +228,11 @@ void CurvenetFaceRegionBuilder::build(
             continue;
         }
 
-        if (boundaryHalfEdgeIds.empty())
+        if (
+            boundaryCollection
+                .boundaryHalfEdgeIds
+                .empty()
+        )
         {
             continue;
         }
@@ -208,7 +243,7 @@ void CurvenetFaceRegionBuilder::build(
             provides the starting face for the region.
         */
         const int firstBoundaryHalfEdgeId =
-            *boundaryHalfEdgeIds.begin();
+            boundaryCollection.seedHalfEdgeId;
 
         if (firstBoundaryHalfEdgeId < 0 ||
             firstBoundaryHalfEdgeId >=
@@ -219,16 +254,63 @@ void CurvenetFaceRegionBuilder::build(
             continue;
         }
 
-        const int seedFaceId =
+        /*
+            Prefer the face on the opposite side of the
+            oriented boundary half-edge.
+
+            Some valid test and boundary-mesh cases do not
+            provide a twin with a valid owning face. In that
+            case, fall back to the oriented half-edge's face.
+        */
+        int seedFaceId = -1;
+
+        const HalfEdge& seedBoundaryHalfEdge =
             cutResult.mesh.halfEdges[
                 firstBoundaryHalfEdgeId
-            ].face;
+            ];
 
-        if (seedFaceId < 0 ||
+        const int seedTwinHalfEdgeId =
+            seedBoundaryHalfEdge.twin;
+
+        if (
+            seedTwinHalfEdgeId >= 0 &&
+            seedTwinHalfEdgeId <
+                static_cast<int>(
+                    cutResult.mesh.halfEdges.size()
+                )
+        )
+        {
+            const int twinFaceId =
+                cutResult.mesh.halfEdges[
+                    seedTwinHalfEdgeId
+                ].face;
+
+            if (
+                twinFaceId >= 0 &&
+                twinFaceId <
+                    static_cast<int>(
+                        cutResult.mesh.faces.size()
+                    )
+            )
+            {
+                seedFaceId =
+                    twinFaceId;
+            }
+        }
+
+        if (seedFaceId < 0)
+        {
+            seedFaceId =
+                seedBoundaryHalfEdge.face;
+        }
+
+        if (
+            seedFaceId < 0 ||
             seedFaceId >=
                 static_cast<int>(
                     cutResult.mesh.faces.size()
-                ))
+                )
+        )
         {
             continue;
         }
@@ -290,12 +372,12 @@ void CurvenetFaceRegionBuilder::build(
                     of the same physical boundary edge.
                 */
                 const bool boundaryEdge =
-                    boundaryHalfEdgeIds.find(
+                    boundaryCollection.boundaryHalfEdgeIds.find(
                         currentHalfEdgeId
-                    ) != boundaryHalfEdgeIds.end() ||
-                    boundaryHalfEdgeIds.find(
+                    ) != boundaryCollection.boundaryHalfEdgeIds.end() ||
+                    boundaryCollection.boundaryHalfEdgeIds.find(
                         twinHalfEdgeId
-                    ) != boundaryHalfEdgeIds.end();
+                    ) != boundaryCollection.boundaryHalfEdgeIds.end();
 
                 if (!boundaryEdge &&
                     twinHalfEdgeId >= 0 &&

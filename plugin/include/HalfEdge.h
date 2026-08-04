@@ -109,4 +109,18 @@ public:
         int halfEdgeIndex,
         const Point3& cutPosition
     );
+
+    std::vector<int> getOutgoingHalfEdgesAtVertex(
+        int vertexId
+    ) const;
+
+    std::vector<int>
+    getOrderedOutgoingHalfEdgesAtVertex(
+        int vertexId
+    ) const;
+
+    int findHalfEdge(
+        int startVertexId,
+        int endVertexId
+    ) const;
 };

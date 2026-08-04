@@ -3,6 +3,19 @@
 #include <vector>
 
 #include "ProfileCurveSampler.h"
+#include "CurveConnectionDetector.h"
+
+struct ProfileCurveConnection
+{
+    CurveEndpoint endpoint =
+        CurveEndpoint::Start;
+
+    int targetCurveId = -1;
+
+    int targetSegmentId = -1;
+
+    double targetSegmentT = 0.0;
+};
 
 struct ProfileCutInput
 {
@@ -22,4 +35,10 @@ struct ProfileCutInput
         intersect the current evolving mesh.
     */
     std::vector<PolylineSegment> sampledSegments;
+
+    /*
+        Endpoint connections detected before
+        mesh embedding.
+    */
+    std::vector<ProfileCurveConnection> connections;
 };

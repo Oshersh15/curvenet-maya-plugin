@@ -8,6 +8,13 @@
 #include "SharedCurvenetNode.h"
 #include "CurvenetFace.h"
 
+struct EmbeddedSegmentVertex
+{
+    double segmentT = 0.0;
+
+    int meshVertexId = -1;
+};
+
 struct CurvenetCutResult
 {
     bool success = false;
@@ -33,6 +40,22 @@ struct CurvenetCutResult
 
     std::unordered_map<int, CutChain>
         cutChainsByCurveId;
+
+    /*
+        Stores all embedded vertices created from each
+        sampled curve segment.
+
+        curveId
+            -> segmentId
+                -> candidate embedded vertices
+    */
+    std::unordered_map<
+        int,
+        std::unordered_map<
+            int,
+            std::vector<EmbeddedSegmentVertex>
+        >
+    > embeddedVerticesByCurveAndSegment;
 
     std::vector<SharedCurvenetNode>
         sharedCurvenetNodes;

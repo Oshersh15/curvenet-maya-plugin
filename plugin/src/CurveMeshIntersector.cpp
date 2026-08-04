@@ -253,6 +253,12 @@ CurveMeshIntersector::buildCutVertices(
         cutVertex.curveId =
             crossing.curveId;
 
+        cutVertex.curveSegmentId =
+            crossing.curveSegmentId;
+
+        cutVertex.curveSegmentT =
+            crossing.curveSegmentT;
+
         cutVertex.cutPathOrder =
             static_cast<int>(cutVertices.size());
 

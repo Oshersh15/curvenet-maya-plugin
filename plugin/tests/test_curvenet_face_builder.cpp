@@ -496,3 +496,371 @@ TEST(
         }
     }
 }
+
+TEST(
+    CurvenetFaceBuilder,
+    BuildsTubeBCurvenetFaces
+)
+{
+    CurvenetCutResult cutResult;
+
+    /*
+        Unwrapped logical tube topology:
+
+              curve 2
+          A ------------ D
+          | \            |
+          |  \ curve 4   |
+     c0   |   \          |   c1
+          |    \         |
+          B ------------ C
+              curve 3
+
+        The closed curves 2 and 3 each provide
+        two distinct sections around the cylinder.
+
+        Expected logical faces:
+
+        {0, 1, 2, 3}
+        {1, 3, 4}
+        {0, 2, 4}
+    */
+
+    const int nodeA = 0;
+    const int nodeB = 1;
+    const int nodeC = 2;
+    const int nodeD = 3;
+
+    /*
+        Each boundary section receives neighbouring
+        vertices so its local direction at a shared
+        node can be ordered using the half-edge mesh.
+    */
+    const int curve0AtB = 4;
+    const int curve0AtA = 5;
+
+    const int curve1AtC = 6;
+    const int curve1AtD = 7;
+
+    const int curve2FirstAtA = 8;
+    const int curve2FirstAtD = 9;
+    const int curve2SecondAtD = 10;
+    const int curve2SecondAtA = 11;
+
+    const int curve3FirstAtB = 12;
+    const int curve3FirstAtC = 13;
+    const int curve3SecondAtC = 14;
+    const int curve3SecondAtB = 15;
+
+    const int curve4AtB = 16;
+    const int curve4AtD = 17;
+
+    cutResult.mesh.vertices.resize(18);
+
+    CutChain curve0;
+    curve0.curveId = 0;
+    curve0.closed = false;
+    curve0.vertexIds = {
+        nodeB,
+        curve0AtB,
+        curve0AtA,
+        nodeA
+    };
+
+    CutChain curve1;
+    curve1.curveId = 1;
+    curve1.closed = false;
+    curve1.vertexIds = {
+        nodeC,
+        curve1AtC,
+        curve1AtD,
+        nodeD
+    };
+
+    CutChain curve2;
+    curve2.curveId = 2;
+    curve2.closed = true;
+    curve2.vertexIds = {
+        nodeA,
+        curve2FirstAtA,
+        curve2FirstAtD,
+        nodeD,
+        curve2SecondAtD,
+        curve2SecondAtA
+    };
+
+    CutChain curve3;
+    curve3.curveId = 3;
+    curve3.closed = true;
+    curve3.vertexIds = {
+        nodeB,
+        curve3FirstAtB,
+        curve3FirstAtC,
+        nodeC,
+        curve3SecondAtC,
+        curve3SecondAtB
+    };
+
+    CutChain curve4;
+    curve4.curveId = 4;
+    curve4.closed = false;
+    curve4.vertexIds = {
+        nodeB,
+        curve4AtB,
+        curve4AtD,
+        nodeD
+    };
+
+    cutResult.cutChainsByCurveId[0] =
+        curve0;
+
+    cutResult.cutChainsByCurveId[1] =
+        curve1;
+
+    cutResult.cutChainsByCurveId[2] =
+        curve2;
+
+    cutResult.cutChainsByCurveId[3] =
+        curve3;
+
+    cutResult.cutChainsByCurveId[4] =
+        curve4;
+
+    SharedCurvenetNode sharedNodeA;
+    sharedNodeA.meshVertexId = nodeA;
+    sharedNodeA.connectedCurveIds = {
+        0,
+        2
+    };
+
+    SharedCurvenetNode sharedNodeB;
+    sharedNodeB.meshVertexId = nodeB;
+    sharedNodeB.connectedCurveIds = {
+        0,
+        3,
+        4
+    };
+
+    SharedCurvenetNode sharedNodeC;
+    sharedNodeC.meshVertexId = nodeC;
+    sharedNodeC.connectedCurveIds = {
+        1,
+        3
+    };
+
+    SharedCurvenetNode sharedNodeD;
+    sharedNodeD.meshVertexId = nodeD;
+    sharedNodeD.connectedCurveIds = {
+        1,
+        2,
+        4
+    };
+
+    cutResult.sharedCurvenetNodes = {
+        sharedNodeA,
+        sharedNodeB,
+        sharedNodeC,
+        sharedNodeD
+    };
+
+    /*
+        Store outgoing half-edges in their intended
+        cyclic order around each shared node.
+
+        Their face IDs remain invalid because this test
+        needs only the local ordering of curve directions.
+    */
+    const auto addOutgoingHalfEdge =
+        [&cutResult](
+            int startVertexId,
+            int endVertexId
+        )
+        {
+            HalfEdge halfEdge;
+
+            halfEdge.startVertex =
+                startVertexId;
+
+            halfEdge.endVertex =
+                endVertexId;
+
+            halfEdge.face = -1;
+            halfEdge.twin = -1;
+            halfEdge.next = -1;
+
+            cutResult.mesh.halfEdges.push_back(
+                halfEdge
+            );
+        };
+
+    /*
+        Cyclic order at node A.
+    */
+    addOutgoingHalfEdge(
+        nodeA,
+        curve2SecondAtA
+    );
+
+    addOutgoingHalfEdge(
+        nodeA,
+        curve0AtA
+    );
+
+    addOutgoingHalfEdge(
+        nodeA,
+        curve2FirstAtA
+    );
+
+    /*
+        Cyclic order at node B.
+    */
+    addOutgoingHalfEdge(
+        nodeB,
+        curve3FirstAtB
+    );
+
+    addOutgoingHalfEdge(
+        nodeB,
+        curve4AtB
+    );
+
+    addOutgoingHalfEdge(
+        nodeB,
+        curve0AtB
+    );
+
+    addOutgoingHalfEdge(
+        nodeB,
+        curve3SecondAtB
+    );
+
+    /*
+        Cyclic order at node C.
+    */
+    addOutgoingHalfEdge(
+        nodeC,
+        curve3SecondAtC
+    );
+
+    addOutgoingHalfEdge(
+        nodeC,
+        curve1AtC
+    );
+
+    addOutgoingHalfEdge(
+        nodeC,
+        curve3FirstAtC
+    );
+
+    /*
+        Cyclic order at node D.
+    */
+    addOutgoingHalfEdge(
+        nodeD,
+        curve2FirstAtD
+    );
+
+    addOutgoingHalfEdge(
+        nodeD,
+        curve4AtD
+    );
+
+    addOutgoingHalfEdge(
+        nodeD,
+        curve1AtD
+    );
+
+    addOutgoingHalfEdge(
+        nodeD,
+        curve2SecondAtD
+    );
+
+    const std::vector<CurvenetFace> faces =
+        CurvenetFaceBuilder::build(
+            cutResult
+        );
+
+    ASSERT_EQ(
+        faces.size(),
+        3
+    );
+
+    std::set<std::set<int>>
+        actualFaceCurveSets;
+
+    for (const CurvenetFace& face :
+         faces)
+    {
+        ASSERT_GE(
+            face.boundary.size(),
+            3
+        );
+
+        std::set<int> curveIds;
+
+        for (int boundaryIndex = 0;
+             boundaryIndex <
+                 static_cast<int>(
+                     face.boundary.size()
+                 );
+             ++boundaryIndex)
+        {
+            const CurvenetFaceBoundary&
+                currentBoundary =
+                    face.boundary[
+                        boundaryIndex
+                    ];
+
+            const CurvenetFaceBoundary&
+                nextBoundary =
+                    face.boundary[
+                        (
+                            boundaryIndex + 1
+                        ) %
+                        face.boundary.size()
+                    ];
+
+            curveIds.insert(
+                currentBoundary.curveId
+            );
+
+            /*
+                Every candidate must be a continuous,
+                closed boundary loop.
+            */
+            EXPECT_EQ(
+                currentBoundary.endVertexId,
+                nextBoundary.startVertexId
+            );
+        }
+
+        actualFaceCurveSets.insert(
+            curveIds
+        );
+    }
+
+    const std::set<std::set<int>>
+        expectedFaceCurveSets = {
+            {
+                0,
+                1,
+                2,
+                3
+            },
+            {
+                1,
+                3,
+                4
+            },
+            {
+                0,
+                2,
+                4
+            }
+        };
+
+    EXPECT_EQ(
+        actualFaceCurveSets,
+        expectedFaceCurveSets
+    );
+}

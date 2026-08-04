@@ -2,15 +2,611 @@
 
 #include <unordered_map>
 #include <unordered_set>
+#include <algorithm>
 
 namespace
 {
-struct BoundarySection
-{
-    int curveId = -1;
-    int startVertexId = -1;
-    int endVertexId = -1;
-};
+    struct BoundarySection
+    {
+        int curveId = -1;
+
+        int startVertexId = -1;
+        int endVertexId = -1;
+
+        /*
+            The first CutChain vertex after the start node
+            and the final CutChain vertex before the end node.
+
+            These identify the local direction in which the
+            section leaves each shared Curvenet node.
+        */
+        int startNeighbourVertexId = -1;
+        int endNeighbourVertexId = -1;
+    };
+
+    struct DirectedBoundarySection
+    {
+        int sectionId = -1;
+
+        bool reversed = false;
+
+        bool visited = false;
+    };
+
+    std::vector<int> buildCanonicalSectionLoop(
+        const std::vector<int>& sectionIds
+    )
+    {
+        if (sectionIds.empty())
+        {
+            return {};
+        }
+
+        const auto findSmallestRotation =
+            [](
+                const std::vector<int>& values
+            )
+            {
+                std::vector<int> smallest =
+                    values;
+
+                for (int offset = 1;
+                     offset <
+                         static_cast<int>(
+                             values.size()
+                         );
+                     ++offset)
+                {
+                    std::vector<int> rotated;
+
+                    rotated.reserve(
+                        values.size()
+                    );
+
+                    for (int index = 0;
+                         index <
+                             static_cast<int>(
+                                 values.size()
+                             );
+                         ++index)
+                    {
+                        rotated.push_back(
+                            values[
+                                (
+                                    offset + index
+                                ) %
+                                values.size()
+                            ]
+                        );
+                    }
+
+                    if (rotated < smallest)
+                    {
+                        smallest =
+                            rotated;
+                    }
+                }
+
+                return smallest;
+            };
+
+        const std::vector<int> forward =
+            findSmallestRotation(
+                sectionIds
+            );
+
+        std::vector<int> reversed =
+            sectionIds;
+
+        std::reverse(
+            reversed.begin(),
+            reversed.end()
+        );
+
+        reversed =
+            findSmallestRotation(
+                reversed
+            );
+
+        return reversed < forward
+            ? reversed
+            : forward;
+    }
+
+    std::vector<CurvenetFace>
+    buildLegacyFaces(
+        const std::vector<BoundarySection>& sections
+    )
+    {
+        std::vector<CurvenetFace> faces;
+
+        std::vector<
+            std::vector<int>
+        > acceptedSectionLoops;
+
+        std::unordered_map<
+            int,
+            std::vector<int>
+        > sectionIdsByVertex;
+
+        for (int sectionId = 0;
+             sectionId <
+                 static_cast<int>(
+                     sections.size()
+                 );
+             ++sectionId)
+        {
+            const BoundarySection& section =
+                sections[sectionId];
+
+            sectionIdsByVertex[
+                section.startVertexId
+            ].push_back(
+                sectionId
+            );
+
+            sectionIdsByVertex[
+                section.endVertexId
+            ].push_back(
+                sectionId
+            );
+        }
+
+        std::unordered_set<int>
+            visitedSectionIds;
+
+        /*
+            A connected boundary component whose nodes
+            all have degree two forms one simple loop.
+        */
+        for (int startingSectionId = 0;
+             startingSectionId <
+                 static_cast<int>(
+                     sections.size()
+                 );
+             ++startingSectionId)
+        {
+            if (
+                visitedSectionIds.find(
+                    startingSectionId
+                ) != visitedSectionIds.end()
+            )
+            {
+                continue;
+            }
+
+            const BoundarySection& startingSection =
+                sections[startingSectionId];
+
+            const int startingVertexId =
+                startingSection.startVertexId;
+
+            int currentVertexId =
+                startingVertexId;
+
+            int currentSectionId =
+                startingSectionId;
+
+            CurvenetFace face;
+
+            face.id =
+                static_cast<int>(
+                    faces.size()
+                );
+
+            bool validLoop = true;
+
+            while (true)
+            {
+                if (
+                    visitedSectionIds.find(
+                        currentSectionId
+                    ) != visitedSectionIds.end()
+                )
+                {
+                    validLoop =
+                        currentVertexId ==
+                        startingVertexId;
+
+                    break;
+                }
+
+                const BoundarySection& section =
+                    sections[currentSectionId];
+
+                CurvenetFaceBoundary boundary;
+
+                boundary.curveId =
+                    section.curveId;
+
+                if (currentVertexId ==
+                    section.startVertexId)
+                {
+                    boundary.startVertexId =
+                        section.startVertexId;
+
+                    boundary.endVertexId =
+                        section.endVertexId;
+
+                    boundary.reversed = false;
+                }
+                else if (currentVertexId ==
+                         section.endVertexId)
+                {
+                    boundary.startVertexId =
+                        section.endVertexId;
+
+                    boundary.endVertexId =
+                        section.startVertexId;
+
+                    boundary.reversed = true;
+                }
+                else
+                {
+                    validLoop = false;
+                    break;
+                }
+
+                face.boundary.push_back(
+                    boundary
+                );
+
+                visitedSectionIds.insert(
+                    currentSectionId
+                );
+
+                currentVertexId =
+                    boundary.endVertexId;
+
+                if (currentVertexId ==
+                    startingVertexId)
+                {
+                    break;
+                }
+
+                const auto adjacencyIterator =
+                    sectionIdsByVertex.find(
+                        currentVertexId
+                    );
+
+                if (
+                    adjacencyIterator ==
+                        sectionIdsByVertex.end() ||
+                    adjacencyIterator
+                        ->second
+                        .size() != 2
+                )
+                {
+                    validLoop = false;
+                    break;
+                }
+
+                const std::vector<int>&
+                    adjacentSections =
+                        adjacencyIterator->second;
+
+                currentSectionId =
+                    adjacentSections[0] ==
+                        currentSectionId
+                        ? adjacentSections[1]
+                        : adjacentSections[0];
+            }
+
+            if (
+                validLoop &&
+                face.boundary.size() >= 3 &&
+                currentVertexId ==
+                    startingVertexId
+            )
+            {
+                faces.push_back(
+                    face
+                );
+            }
+        }
+
+        return faces;
+    }
+
+    int getDirectedStartVertexId(
+        const BoundarySection& section,
+        bool reversed
+    )
+    {
+        return reversed
+            ? section.endVertexId
+            : section.startVertexId;
+    }
+
+    int getDirectedEndVertexId(
+        const BoundarySection& section,
+        bool reversed
+    )
+    {
+        return reversed
+            ? section.startVertexId
+            : section.endVertexId;
+    }
+
+    int getDirectedStartNeighbourVertexId(
+        const BoundarySection& section,
+        bool reversed
+    )
+    {
+        return reversed
+            ? section.endNeighbourVertexId
+            : section.startNeighbourVertexId;
+    }
+
+    std::vector<CurvenetFace>
+    buildDirectedFaces(
+        const std::vector<BoundarySection>& sections,
+        const std::unordered_map<
+            int,
+            std::vector<DirectedBoundarySection>
+        >& orderedOutgoingSectionsByVertex
+    )
+    {
+        std::vector<CurvenetFace> faces;
+
+        std::vector<
+            std::vector<int>
+        > acceptedSectionLoops;
+
+        std::unordered_set<int>
+            visitedDirectedSectionIds;
+
+        const auto makeDirectedId =
+            [](
+                int sectionId,
+                bool reversed
+            )
+            {
+                return sectionId * 2 +
+                    (reversed ? 1 : 0);
+            };
+
+        for (int sectionId = 0;
+             sectionId <
+                 static_cast<int>(
+                     sections.size()
+                 );
+             ++sectionId)
+        {
+            for (int direction = 0;
+                 direction < 2;
+                 ++direction)
+            {
+                const bool startingReversed =
+                    direction == 1;
+
+                const int startingDirectedId =
+                    makeDirectedId(
+                        sectionId,
+                        startingReversed
+                    );
+
+                if (
+                    visitedDirectedSectionIds.find(
+                        startingDirectedId
+                    ) !=
+                    visitedDirectedSectionIds.end()
+                )
+                {
+                    continue;
+                }
+
+                int currentSectionId =
+                    sectionId;
+
+                bool currentReversed =
+                    startingReversed;
+
+                CurvenetFace face;
+
+                face.id =
+                    static_cast<int>(
+                        faces.size()
+                    );
+
+                std::vector<int>
+                    traversedSectionIds;
+
+                bool validLoop = true;
+
+                while (true)
+                {
+                    const int currentDirectedId =
+                        makeDirectedId(
+                            currentSectionId,
+                            currentReversed
+                        );
+
+                    if (
+                        visitedDirectedSectionIds.find(
+                            currentDirectedId
+                        ) !=
+                        visitedDirectedSectionIds.end()
+                    )
+                    {
+                        validLoop =
+                            currentDirectedId ==
+                            startingDirectedId;
+
+                        break;
+                    }
+
+                    visitedDirectedSectionIds.insert(
+                        currentDirectedId
+                    );
+
+                    const BoundarySection& section =
+                        sections[
+                            currentSectionId
+                        ];
+
+                    traversedSectionIds.push_back(
+                        currentSectionId
+                    );
+
+                    CurvenetFaceBoundary boundary;
+
+                    boundary.curveId =
+                        section.curveId;
+
+                    boundary.startVertexId =
+                        getDirectedStartVertexId(
+                            section,
+                            currentReversed
+                        );
+
+                    boundary.endVertexId =
+                        getDirectedEndVertexId(
+                            section,
+                            currentReversed
+                        );
+
+                    boundary.reversed =
+                        currentReversed;
+
+                    face.boundary.push_back(
+                        boundary
+                    );
+
+                    const int arrivalVertexId =
+                        boundary.endVertexId;
+
+                    const auto outgoingIterator =
+                        orderedOutgoingSectionsByVertex.find(
+                            arrivalVertexId
+                        );
+
+                    if (
+                        outgoingIterator ==
+                        orderedOutgoingSectionsByVertex.end() ||
+                        outgoingIterator->second.empty()
+                    )
+                    {
+                        validLoop = false;
+                        break;
+                    }
+
+                    const std::vector<
+                        DirectedBoundarySection
+                    >& outgoingSections =
+                        outgoingIterator->second;
+
+                    const int reverseSectionId =
+                        currentSectionId;
+
+                    const bool reverseDirection =
+                        !currentReversed;
+
+                    int reverseIndex = -1;
+
+                    for (int outgoingIndex = 0;
+                         outgoingIndex <
+                             static_cast<int>(
+                                 outgoingSections.size()
+                             );
+                         ++outgoingIndex)
+                    {
+                        const DirectedBoundarySection&
+                            outgoingSection =
+                                outgoingSections[
+                                    outgoingIndex
+                                ];
+
+                        if (
+                            outgoingSection.sectionId ==
+                                reverseSectionId &&
+                            outgoingSection.reversed ==
+                                reverseDirection
+                        )
+                        {
+                            reverseIndex =
+                                outgoingIndex;
+
+                            break;
+                        }
+                    }
+
+                    if (reverseIndex < 0)
+                    {
+                        validLoop = false;
+                        break;
+                    }
+
+                    const int nextIndex =
+                        (
+                            reverseIndex + 1
+                        ) %
+                        static_cast<int>(
+                            outgoingSections.size()
+                        );
+
+                    currentSectionId =
+                        outgoingSections[
+                            nextIndex
+                        ].sectionId;
+
+                    currentReversed =
+                        outgoingSections[
+                            nextIndex
+                        ].reversed;
+
+                    if (
+                        currentSectionId ==
+                            sectionId &&
+                        currentReversed ==
+                            startingReversed
+                    )
+                    {
+                        break;
+                    }
+                }
+
+                if (
+                    validLoop &&
+                    face.boundary.size() >= 3
+                )
+                {
+                    const std::vector<int>
+                        canonicalLoop =
+                            buildCanonicalSectionLoop(
+                                traversedSectionIds
+                            );
+
+                    const bool alreadyStored =
+                        std::find(
+                            acceptedSectionLoops.begin(),
+                            acceptedSectionLoops.end(),
+                            canonicalLoop
+                        ) !=
+                        acceptedSectionLoops.end();
+
+                    if (!alreadyStored)
+                    {
+                        face.id =
+                            static_cast<int>(
+                                faces.size()
+                            );
+
+                        acceptedSectionLoops.push_back(
+                            canonicalLoop
+                        );
+
+                        faces.push_back(
+                            face
+                        );
+                    }
+                }
+            }
+        }
+
+        return faces;
+    }
+
 }
 
 std::vector<CurvenetFace>
@@ -18,7 +614,6 @@ CurvenetFaceBuilder::build(
     const CurvenetCutResult& cutResult
 )
 {
-    std::vector<CurvenetFace> faces;
 
     std::unordered_set<int> sharedVertexIds;
 
@@ -96,6 +691,25 @@ CurvenetFaceBuilder::build(
                     sharedIndices[sharedIndex + 1]
                 ];
 
+            const int startIndex =
+                sharedIndices[sharedIndex];
+
+            const int endIndex =
+                sharedIndices[sharedIndex + 1];
+
+            if (startIndex + 1 < endIndex)
+            {
+                section.startNeighbourVertexId =
+                    cutChain.vertexIds[
+                        startIndex + 1
+                    ];
+
+                section.endNeighbourVertexId =
+                    cutChain.vertexIds[
+                        endIndex - 1
+                    ];
+            }
+
             if (section.startVertexId !=
                 section.endVertexId)
             {
@@ -127,6 +741,33 @@ CurvenetFaceBuilder::build(
                     sharedIndices.front()
                 ];
 
+            const int lastSharedIndex =
+                sharedIndices.back();
+
+            const int firstSharedIndex =
+                sharedIndices.front();
+
+            const int vertexCount =
+                static_cast<int>(
+                    cutChain.vertexIds.size()
+                );
+
+            if (vertexCount > 2)
+            {
+                closingSection.startNeighbourVertexId =
+                    cutChain.vertexIds[
+                        (lastSharedIndex + 1) %
+                        vertexCount
+                    ];
+
+                closingSection.endNeighbourVertexId =
+                    cutChain.vertexIds[
+                        (firstSharedIndex - 1 +
+                         vertexCount) %
+                        vertexCount
+                    ];
+            }
+
             if (closingSection.startVertexId !=
                 closingSection.endVertexId)
             {
@@ -137,8 +778,12 @@ CurvenetFaceBuilder::build(
         }
     }
 
-    std::unordered_map<int, std::vector<int>>
-        sectionIdsByVertex;
+    std::vector<DirectedBoundarySection>
+        directedSections;
+
+    directedSections.reserve(
+        sections.size() * 2
+    );
 
     for (int sectionId = 0;
          sectionId <
@@ -147,161 +792,161 @@ CurvenetFaceBuilder::build(
              );
          ++sectionId)
     {
-        const BoundarySection& section =
-            sections[sectionId];
+        DirectedBoundarySection forward;
 
-        sectionIdsByVertex[
-            section.startVertexId
-        ].push_back(sectionId);
+        forward.sectionId =
+            sectionId;
 
-        sectionIdsByVertex[
-            section.endVertexId
-        ].push_back(sectionId);
+        forward.reversed =
+            false;
+
+        directedSections.push_back(
+            forward
+        );
+
+        DirectedBoundarySection reverse;
+
+        reverse.sectionId =
+            sectionId;
+
+        reverse.reversed =
+            true;
+
+        directedSections.push_back(
+            reverse
+        );
     }
 
-    std::unordered_set<int> visitedSectionIds;
+    std::unordered_map<
+        int,
+        std::vector<DirectedBoundarySection>
+    > outgoingSectionsByVertex;
 
-    /*
-        A connected boundary component whose nodes
-        all have degree two forms one simple loop.
-    */
-    for (int startingSectionId = 0;
-         startingSectionId <
-             static_cast<int>(
-                 sections.size()
-             );
-         ++startingSectionId)
+    for (const DirectedBoundarySection& directedSection :
+         directedSections)
     {
-        if (
-            visitedSectionIds.find(
-                startingSectionId
-            ) != visitedSectionIds.end()
-        )
+        const BoundarySection& section =
+            sections[
+                directedSection.sectionId
+            ];
+
+        const int startVertexId =
+            directedSection.reversed
+                ? section.endVertexId
+                : section.startVertexId;
+
+        outgoingSectionsByVertex[
+            startVertexId
+        ].push_back(
+            directedSection
+        );
+    }
+
+    std::unordered_map<
+        int,
+        std::vector<DirectedBoundarySection>
+    > orderedOutgoingSectionsByVertex;
+
+    for (const auto& entry :
+         outgoingSectionsByVertex)
+    {
+        const int sharedVertexId =
+            entry.first;
+
+        const std::vector<DirectedBoundarySection>&
+            outgoingSections =
+                entry.second;
+
+        const std::vector<int>
+            orderedOutgoingHalfEdges =
+                cutResult.mesh
+                    .getOrderedOutgoingHalfEdgesAtVertex(
+                        sharedVertexId
+                    );
+
+        std::vector<DirectedBoundarySection>&
+            orderedSections =
+                orderedOutgoingSectionsByVertex[
+                    sharedVertexId
+                ];
+
+        for (int halfEdgeId :
+             orderedOutgoingHalfEdges)
         {
-            continue;
-        }
-
-        const BoundarySection& startingSection =
-            sections[startingSectionId];
-
-        const int startingVertexId =
-            startingSection.startVertexId;
-
-        int currentVertexId =
-            startingVertexId;
-
-        int currentSectionId =
-            startingSectionId;
-
-        CurvenetFace face;
-        face.id =
-            static_cast<int>(
-                faces.size()
-            );
-
-        bool validLoop = true;
-
-        while (true)
-        {
-            if (
-                visitedSectionIds.find(
-                    currentSectionId
-                ) != visitedSectionIds.end()
-            )
+            if (halfEdgeId < 0 ||
+                halfEdgeId >=
+                    static_cast<int>(
+                        cutResult.mesh.halfEdges.size()
+                    ))
             {
-                validLoop =
-                    currentVertexId ==
-                    startingVertexId;
-
-                break;
+                continue;
             }
 
-            const BoundarySection& section =
-                sections[currentSectionId];
+            const int neighbourVertexId =
+                cutResult.mesh.halfEdges[
+                    halfEdgeId
+                ].endVertex;
 
-            CurvenetFaceBoundary boundary;
-
-            boundary.curveId =
-                section.curveId;
-
-            if (currentVertexId ==
-                section.startVertexId)
+            for (const DirectedBoundarySection&
+                 directedSection :
+                 outgoingSections)
             {
-                boundary.startVertexId =
-                    section.startVertexId;
+                const BoundarySection& section =
+                    sections[
+                        directedSection.sectionId
+                    ];
 
-                boundary.endVertexId =
-                    section.endVertexId;
+                const int startNeighbourVertexId =
+                    getDirectedStartNeighbourVertexId(
+                        section,
+                        directedSection.reversed
+                    );
 
-                boundary.reversed = false;
-            }
-            else if (currentVertexId ==
-                     section.endVertexId)
-            {
-                boundary.startVertexId =
-                    section.endVertexId;
+                if (startNeighbourVertexId !=
+                    neighbourVertexId)
+                {
+                    continue;
+                }
 
-                boundary.endVertexId =
-                    section.startVertexId;
-
-                boundary.reversed = true;
-            }
-            else
-            {
-                validLoop = false;
-                break;
-            }
-
-            face.boundary.push_back(
-                boundary
-            );
-
-            visitedSectionIds.insert(
-                currentSectionId
-            );
-
-            currentVertexId =
-                boundary.endVertexId;
-
-            if (currentVertexId ==
-                startingVertexId)
-            {
-                break;
-            }
-
-            const auto adjacencyIterator =
-                sectionIdsByVertex.find(
-                    currentVertexId
+                orderedSections.push_back(
+                    directedSection
                 );
 
-            if (adjacencyIterator ==
-                    sectionIdsByVertex.end() ||
-                adjacencyIterator->second.size() != 2)
-            {
-                validLoop = false;
                 break;
             }
-
-            const std::vector<int>& adjacentSections =
-                adjacencyIterator->second;
-
-            currentSectionId =
-                adjacentSections[0] ==
-                    currentSectionId
-                    ? adjacentSections[1]
-                    : adjacentSections[0];
         }
 
-        if (validLoop &&
-            face.boundary.size() >= 3 &&
-            currentVertexId ==
-                startingVertexId)
+        for (const DirectedBoundarySection&
+             directedSection :
+             outgoingSections)
         {
-            faces.push_back(
-                face
-            );
+            const bool alreadyAdded =
+                std::find_if(
+                    orderedSections.begin(),
+                    orderedSections.end(),
+                    [&directedSection](
+                        const DirectedBoundarySection& existing
+                    )
+                    {
+                        return
+                            existing.sectionId ==
+                                directedSection.sectionId &&
+                            existing.reversed ==
+                                directedSection.reversed;
+                    }
+                ) != orderedSections.end();
+
+            if (!alreadyAdded)
+            {
+                orderedSections.push_back(
+                    directedSection
+                );
+            }
         }
     }
 
-    return faces;
+    return buildDirectedFaces(
+        sections,
+        orderedOutgoingSectionsByVertex
+    );
 }

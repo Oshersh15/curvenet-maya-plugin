@@ -7,6 +7,8 @@
 
 #include <algorithm>
 #include <unordered_map>
+#include <cmath>
+#include <limits>
 
 namespace
 {
@@ -307,14 +309,89 @@ CurvenetCutResult CurvenetMeshCutter::apply(
 
         CutPath cutPath;
 
-        cutPath.curveId =
-            profileInput.curveId;
+        cutPath.curveId = profileInput.curveId;
 
-        cutPath.closed =
-            profileInput.closed;
+        cutPath.closed = profileInput.closed;
 
-        cutPath.crossings =
-            crossings;
+        cutPath.crossings = crossings;
+
+        int connectedStartMeshVertexId = -1;
+        int connectedEndMeshVertexId = -1;
+
+        for (const ProfileCurveConnection& connection :
+             profileInput.connections)
+        {
+            const auto curveIterator =
+                result.embeddedVerticesByCurveAndSegment.find(
+                    connection.targetCurveId
+                );
+
+            if (curveIterator ==
+                result.embeddedVerticesByCurveAndSegment.end())
+            {
+                continue;
+            }
+
+            const auto segmentIterator =
+                curveIterator->second.find(
+                    connection.targetSegmentId
+                );
+
+            if (segmentIterator ==
+                curveIterator->second.end())
+            {
+                continue;
+            }
+
+            const std::vector<EmbeddedSegmentVertex>&
+                candidates =
+                    segmentIterator->second;
+
+            if (candidates.empty())
+            {
+                continue;
+            }
+
+            const EmbeddedSegmentVertex*
+                closestCandidate = nullptr;
+
+            double closestDistance =
+                std::numeric_limits<double>::max();
+
+            for (const EmbeddedSegmentVertex& candidate :
+                 candidates)
+            {
+                const double distance =
+                    std::abs(
+                        candidate.segmentT -
+                        connection.targetSegmentT
+                    );
+
+                if (distance < closestDistance)
+                {
+                    closestDistance = distance;
+                    closestCandidate = &candidate;
+                }
+            }
+
+            if (closestCandidate == nullptr ||
+                closestCandidate->meshVertexId < 0)
+            {
+                continue;
+            }
+
+            if (connection.endpoint ==
+                CurveEndpoint::Start)
+            {
+                connectedStartMeshVertexId =
+                    closestCandidate->meshVertexId;
+            }
+            else
+            {
+                connectedEndMeshVertexId =
+                    closestCandidate->meshVertexId;
+            }
+        }
 
         /*
             A profile passing extremely close to a mesh corner can
@@ -728,6 +805,71 @@ CurvenetCutResult CurvenetMeshCutter::apply(
             }
         }
 
+        /*
+            Apply explicit endpoint-to-curve connections after
+            all CutVertex rebuilding and general reuse checks.
+
+            This ensures the detected profile connection takes
+            precedence for the incoming profile endpoint.
+        */
+        if (!cutPath.closed &&
+            !cutPath.cutVertices.empty())
+        {
+            int firstEndpointIndex = -1;
+            int lastEndpointIndex = -1;
+
+            for (int cutVertexIndex = 0;
+                 cutVertexIndex <
+                     static_cast<int>(
+                         cutPath.cutVertices.size()
+                     );
+                 ++cutVertexIndex)
+            {
+                const int cutPathOrder =
+                    cutPath.cutVertices[
+                        cutVertexIndex
+                    ].cutPathOrder;
+
+                if (firstEndpointIndex < 0 ||
+                    cutPathOrder <
+                        cutPath.cutVertices[
+                            firstEndpointIndex
+                        ].cutPathOrder)
+                {
+                    firstEndpointIndex =
+                        cutVertexIndex;
+                }
+
+                if (lastEndpointIndex < 0 ||
+                    cutPathOrder >
+                        cutPath.cutVertices[
+                            lastEndpointIndex
+                        ].cutPathOrder)
+                {
+                    lastEndpointIndex =
+                        cutVertexIndex;
+                }
+            }
+
+            if (firstEndpointIndex >= 0 &&
+                connectedStartMeshVertexId >= 0)
+            {
+                cutPath.cutVertices[
+                    firstEndpointIndex
+                ].existingMeshVertexId =
+                    connectedStartMeshVertexId;
+            }
+
+            if (lastEndpointIndex >= 0 &&
+                connectedEndMeshVertexId >= 0)
+            {
+                cutPath.cutVertices[
+                    lastEndpointIndex
+                ].existingMeshVertexId =
+                    connectedEndMeshVertexId;
+            }
+        }
+
         result.attemptedCutPaths.push_back(
             cutPath
         );
@@ -766,6 +908,56 @@ CurvenetCutResult CurvenetMeshCutter::apply(
         result.cutChainsByCurveId[
             profileInput.curveId
         ] = profileResult.cutChain;
+
+        std::unordered_map<
+            int,
+            std::vector<EmbeddedSegmentVertex>
+        >& verticesBySegment =
+            result
+                .embeddedVerticesByCurveAndSegment[
+                    profileInput.curveId
+                ];
+
+        const int mappedCount =
+            std::min(
+                static_cast<int>(
+                    cutPath.cutVertices.size()
+                ),
+                static_cast<int>(
+                    profileResult
+                        .cutChain
+                        .vertexIds
+                        .size()
+                )
+            );
+
+        for (int cutVertexIndex = 0;
+             cutVertexIndex < mappedCount;
+             ++cutVertexIndex)
+        {
+            const CutVertex& cutVertex =
+                cutPath.cutVertices[
+                    cutVertexIndex
+                ];
+
+            EmbeddedSegmentVertex embeddedVertex;
+
+            embeddedVertex.segmentT =
+                cutVertex.curveSegmentT;
+
+            embeddedVertex.meshVertexId =
+                profileResult
+                    .cutChain
+                    .vertexIds[
+                        cutVertexIndex
+                    ];
+
+            verticesBySegment[
+                cutVertex.curveSegmentId
+            ].push_back(
+                embeddedVertex
+            );
+        }
 
         for (int meshVertexId :
              profileResult.cutChain.vertexIds)
