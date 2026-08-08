@@ -52,6 +52,58 @@ TEST(
 
 TEST(
     CurvenetSharedNodeDetector,
+    FindsMatchingEmbeddedCurvePoint
+)
+{
+    CurvenetCutResult curvenetResult;
+
+    curvenetResult.mesh.vertices.resize(2);
+
+    curvenetResult.mesh.vertices[0].position =
+        Point3{0.0, 0.0, 0.0};
+
+    curvenetResult.mesh.vertices[1].position =
+        Point3{1.0, 0.0, 0.0};
+
+    CutChain existingChain;
+    existingChain.curveId = 0;
+
+    EmbeddedCurvePoint embeddedPoint;
+    embeddedPoint.meshVertexId = 1;
+    embeddedPoint.position =
+        Point3{1.0, 0.0, 0.0};
+
+    existingChain.points.push_back(
+        embeddedPoint
+    );
+
+    curvenetResult.cutChainsByCurveId[0] =
+        existingChain;
+
+    CutVertex incomingEndpoint;
+    incomingEndpoint.position =
+        Point3{1.00001, 0.0, 0.0};
+
+    const std::optional<int> sharedVertexId =
+        CurvenetSharedNodeDetector::
+            findSharedMeshVertex(
+                incomingEndpoint,
+                curvenetResult,
+                0.001
+            );
+
+    ASSERT_TRUE(
+        sharedVertexId.has_value()
+    );
+
+    EXPECT_EQ(
+        sharedVertexId.value(),
+        1
+    );
+}
+
+TEST(
+    CurvenetSharedNodeDetector,
     ReturnsNoMatchWhenEndpointIsOutsideTolerance
 )
 {
