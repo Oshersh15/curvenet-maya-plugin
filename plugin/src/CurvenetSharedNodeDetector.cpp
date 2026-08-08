@@ -15,48 +15,79 @@ CurvenetSharedNodeDetector::findSharedMeshVertex(
         const CutChain& cutChain =
             entry.second;
 
-        for (
-            const EmbeddedCurvePoint& point :
-            cutChain.points
-        )
-        {
-            const int meshVertexId =
-                point.meshVertexId;
-
-            if (
-                meshVertexId < 0 ||
-                meshVertexId >=
-                    static_cast<int>(
-                        curvenetResult
-                            .mesh
-                            .vertices
-                            .size()
-                    )
-            )
+        const auto matchingMeshVertex =
+            [&](int meshVertexId) -> std::optional<int>
             {
-                continue;
-            }
+                if (
+                    meshVertexId < 0 ||
+                    meshVertexId >=
+                        static_cast<int>(
+                            curvenetResult
+                                .mesh
+                                .vertices
+                                .size()
+                        )
+                )
+                {
+                    return std::nullopt;
+                }
 
-            const Point3& existingPosition =
-                curvenetResult
-                    .mesh
-                    .vertices[
-                        meshVertexId
-                    ]
-                    .position;
+                const Point3& existingPosition =
+                    curvenetResult
+                        .mesh
+                        .vertices[
+                            meshVertexId
+                        ]
+                        .position;
 
-            const double positionDistance =
-                GeometryUtils::pointToPointDistance(
-                    endpoint.position,
-                    existingPosition
+                const double positionDistance =
+                    GeometryUtils::pointToPointDistance(
+                        endpoint.position,
+                        existingPosition
+                    );
+
+                if (
+                    positionDistance <=
+                    positionTolerance
+                )
+                {
+                    return meshVertexId;
+                }
+
+                return std::nullopt;
+            };
+
+        for (const EmbeddedCurvePoint& point :
+             cutChain.points)
+        {
+            const std::optional<int> match =
+                matchingMeshVertex(
+                    point.meshVertexId
                 );
 
-            if (
-                positionDistance <=
-                positionTolerance
-            )
+            if (match.has_value())
             {
-                return meshVertexId;
+                return match;
+            }
+        }
+
+        /*
+        Legacy and manually constructed CutChains may only provide vertexIds.
+        */
+        if (cutChain.points.empty())
+        {
+            for (int meshVertexId :
+                 cutChain.vertexIds)
+            {
+                const std::optional<int> match =
+                    matchingMeshVertex(
+                        meshVertexId
+                    );
+
+                if (match.has_value())
+                {
+                    return match;
+                }
             }
         }
     }
