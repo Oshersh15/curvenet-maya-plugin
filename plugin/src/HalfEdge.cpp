@@ -1,5 +1,6 @@
 #include "HalfEdge.h"
 
+#include <algorithm>
 #include <cmath>
 #include <unordered_set>
 
@@ -954,5 +955,175 @@ HalfEdgeMesh::splitInternalHalfEdge(
     result.twinNewHalfEdgeId =
         twinNewHalfEdgeId;
 
+    return result;
+}
+
+InteriorFaceSplitResult
+HalfEdgeMesh::splitFaceWithInteriorVertex(
+    int faceId,
+    int interiorVertexId,
+    const std::vector<int>& boundaryVertexIds
+)
+{
+    InteriorFaceSplitResult result;
+
+    if (faceId < 0 ||
+        faceId >= static_cast<int>(faces.size()) ||
+        interiorVertexId < 0 ||
+        interiorVertexId >= static_cast<int>(vertices.size()) ||
+        boundaryVertexIds.size() < 2)
+    {
+        return result;
+    }
+
+    const std::vector<int> originalFaceHalfEdges =
+        traverseFace(faceId);
+
+    struct BoundaryEntry
+    {
+        int inputIndex = -1;
+        int vertexId = -1;
+        int outgoingHalfEdgeId = -1;
+        int incomingHalfEdgeId = -1;
+        int traversalIndex = -1;
+        int boundaryToInteriorHalfEdgeId = -1;
+        int interiorToBoundaryHalfEdgeId = -1;
+    };
+
+    std::vector<BoundaryEntry> entries;
+    entries.reserve(boundaryVertexIds.size());
+
+    for (int inputIndex = 0;
+         inputIndex < static_cast<int>(boundaryVertexIds.size());
+         ++inputIndex)
+    {
+        const int vertexId = boundaryVertexIds[inputIndex];
+        int traversalIndex = -1;
+
+        for (int index = 0;
+             index < static_cast<int>(originalFaceHalfEdges.size());
+             ++index)
+        {
+            if (halfEdges[originalFaceHalfEdges[index]].startVertex ==
+                vertexId)
+            {
+                traversalIndex = index;
+                break;
+            }
+        }
+
+        if (traversalIndex < 0)
+        {
+            return result;
+        }
+
+        BoundaryEntry entry;
+        entry.inputIndex = inputIndex;
+        entry.vertexId = vertexId;
+        entry.traversalIndex = traversalIndex;
+        entry.outgoingHalfEdgeId =
+            originalFaceHalfEdges[traversalIndex];
+        entry.incomingHalfEdgeId =
+            originalFaceHalfEdges[
+                (traversalIndex - 1 +
+                 static_cast<int>(originalFaceHalfEdges.size())) %
+                static_cast<int>(originalFaceHalfEdges.size())
+            ];
+        entries.push_back(entry);
+    }
+
+    std::sort(
+        entries.begin(),
+        entries.end(),
+        [](const BoundaryEntry& first, const BoundaryEntry& second)
+        {
+            return first.traversalIndex < second.traversalIndex;
+        }
+    );
+
+    result.boundaryToInteriorHalfEdgeIds.assign(
+        boundaryVertexIds.size(),
+        -1
+    );
+    result.interiorToBoundaryHalfEdgeIds.assign(
+        boundaryVertexIds.size(),
+        -1
+    );
+
+    for (BoundaryEntry& entry : entries)
+    {
+        const int boundaryToInteriorId =
+            static_cast<int>(halfEdges.size());
+        const int interiorToBoundaryId =
+            boundaryToInteriorId + 1;
+
+        HalfEdge boundaryToInterior;
+        boundaryToInterior.startVertex = entry.vertexId;
+        boundaryToInterior.endVertex = interiorVertexId;
+        boundaryToInterior.twin = interiorToBoundaryId;
+
+        HalfEdge interiorToBoundary;
+        interiorToBoundary.startVertex = interiorVertexId;
+        interiorToBoundary.endVertex = entry.vertexId;
+        interiorToBoundary.twin = boundaryToInteriorId;
+
+        halfEdges.push_back(boundaryToInterior);
+        halfEdges.push_back(interiorToBoundary);
+
+        entry.boundaryToInteriorHalfEdgeId =
+            boundaryToInteriorId;
+        entry.interiorToBoundaryHalfEdgeId =
+            interiorToBoundaryId;
+
+        result.boundaryToInteriorHalfEdgeIds[entry.inputIndex] =
+            boundaryToInteriorId;
+        result.interiorToBoundaryHalfEdgeIds[entry.inputIndex] =
+            interiorToBoundaryId;
+    }
+
+    for (int regionIndex = 0;
+         regionIndex < static_cast<int>(entries.size());
+         ++regionIndex)
+    {
+        BoundaryEntry& current = entries[regionIndex];
+        BoundaryEntry& next = entries[
+            (regionIndex + 1) % entries.size()
+        ];
+
+        const int regionFaceId =
+            regionIndex == 0
+                ? faceId
+                : static_cast<int>(faces.size());
+
+        if (regionIndex > 0)
+        {
+            faces.push_back(Face{});
+        }
+
+        halfEdges[next.incomingHalfEdgeId].next =
+            next.boundaryToInteriorHalfEdgeId;
+        halfEdges[next.boundaryToInteriorHalfEdgeId].next =
+            current.interiorToBoundaryHalfEdgeId;
+        halfEdges[current.interiorToBoundaryHalfEdgeId].next =
+            current.outgoingHalfEdgeId;
+
+        faces[regionFaceId].halfEdge =
+            current.outgoingHalfEdgeId;
+
+        int halfEdgeId = current.outgoingHalfEdgeId;
+        do
+        {
+            halfEdges[halfEdgeId].face = regionFaceId;
+            halfEdgeId = halfEdges[halfEdgeId].next;
+        }
+        while (halfEdgeId != current.outgoingHalfEdgeId &&
+               halfEdgeId >= 0 &&
+               halfEdgeId < static_cast<int>(halfEdges.size()));
+    }
+
+    vertices[interiorVertexId].outgoingHalfEdge =
+        entries.front().interiorToBoundaryHalfEdgeId;
+
+    result.success = true;
     return result;
 }

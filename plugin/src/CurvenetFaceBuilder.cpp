@@ -687,6 +687,56 @@ namespace
             : smallest;
     }
 
+    bool hasGraphChord(
+        const std::vector<int>& nodeLoop,
+        const std::vector<GraphBoundaryEdge>& graphEdges,
+        const std::unordered_map<int, std::vector<int>>& edgeIdsByNode
+    )
+    {
+        for (int nodeIndex = 0;
+             nodeIndex < static_cast<int>(nodeLoop.size());
+             ++nodeIndex)
+        {
+            const int nodeId = nodeLoop[nodeIndex];
+            const int previousNodeId = nodeLoop[
+                (nodeIndex - 1 + nodeLoop.size()) % nodeLoop.size()
+            ];
+            const int nextNodeId = nodeLoop[
+                (nodeIndex + 1) % nodeLoop.size()
+            ];
+
+            const auto adjacencyIterator =
+                edgeIdsByNode.find(nodeId);
+
+            if (adjacencyIterator == edgeIdsByNode.end())
+            {
+                continue;
+            }
+
+            for (int edgeId : adjacencyIterator->second)
+            {
+                const GraphBoundaryEdge& edge = graphEdges[edgeId];
+                const int adjacentNodeId =
+                    edge.startNodeId == nodeId
+                        ? edge.endNodeId
+                        : edge.startNodeId;
+
+                if (adjacentNodeId != previousNodeId &&
+                    adjacentNodeId != nextNodeId &&
+                    std::find(
+                        nodeLoop.begin(),
+                        nodeLoop.end(),
+                        adjacentNodeId
+                    ) != nodeLoop.end())
+                {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
     void findGraphCyclesFromNode(
         int startNodeId,
         int currentNodeId,
@@ -726,7 +776,12 @@ namespace
 
             if (nextNodeId == startNodeId)
             {
-                if (nodeStack.size() >= 3)
+                if (nodeStack.size() >= 3 &&
+                    !hasGraphChord(
+                        nodeStack,
+                        graphEdges,
+                        edgeIdsByNode
+                    ))
                 {
                     const std::vector<int> canonicalLoop =
                         buildCanonicalNodeLoop(nodeStack);
@@ -1280,7 +1335,28 @@ CurvenetFaceBuilder::build(
     std::vector<CurvenetFace> graphCycleFaces =
         buildGraphCycleFaces(cutResult);
 
-    return graphCycleFaces.size() > directedFaces.size()
+    const bool hasClosedCutChain =
+        std::any_of(
+            cutResult.cutChainsByCurveId.begin(),
+            cutResult.cutChainsByCurveId.end(),
+            [](const auto& entry)
+            {
+                return entry.second.closed;
+            }
+        );
+
+    /*
+        Open authored grids define their cells by chordless graph
+        cycles. Directed traversal also finds the unbounded exterior.
+        Closed profiles can partition the entire surface, so their
+        directed regions must be retained.
+    */
+    if (!hasClosedCutChain && !graphCycleFaces.empty())
+    {
+        return graphCycleFaces;
+    }
+
+    return directedFaces.empty()
         ? graphCycleFaces
         : directedFaces;
 }

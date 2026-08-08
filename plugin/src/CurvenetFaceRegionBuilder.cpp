@@ -3,6 +3,7 @@
 #include <unordered_set>
 #include <algorithm>
 #include <queue>
+#include <utility>
 
 namespace
 {
@@ -17,6 +18,8 @@ namespace
             the flood-fill seed.
         */
         int seedHalfEdgeId = -1;
+
+        bool containsClosedCutChain = false;
     };
 
     bool collectBoundaryHalfEdges(
@@ -41,6 +44,10 @@ namespace
 
         const CutChain& cutChain =
             chainIterator->second;
+
+        boundaryCollection.containsClosedCutChain =
+            boundaryCollection.containsClosedCutChain ||
+            cutChain.closed;
 
         if (cutChain.vertexIds.size() < 2 ||
             cutChain.halfEdgeIds.empty())
@@ -254,16 +261,6 @@ void CurvenetFaceRegionBuilder::build(
             continue;
         }
 
-        /*
-            Prefer the face on the opposite side of the
-            oriented boundary half-edge.
-
-            Some valid test and boundary-mesh cases do not
-            provide a twin with a valid owning face. In that
-            case, fall back to the oriented half-edge's face.
-        */
-        int seedFaceId = -1;
-
         const HalfEdge& seedBoundaryHalfEdge =
             cutResult.mesh.halfEdges[
                 firstBoundaryHalfEdgeId
@@ -272,147 +269,97 @@ void CurvenetFaceRegionBuilder::build(
         const int seedTwinHalfEdgeId =
             seedBoundaryHalfEdge.twin;
 
-        if (
-            seedTwinHalfEdgeId >= 0 &&
-            seedTwinHalfEdgeId <
-                static_cast<int>(
-                    cutResult.mesh.halfEdges.size()
-                )
-        )
-        {
-            const int twinFaceId =
-                cutResult.mesh.halfEdges[
-                    seedTwinHalfEdgeId
-                ].face;
-
-            if (
-                twinFaceId >= 0 &&
-                twinFaceId <
-                    static_cast<int>(
-                        cutResult.mesh.faces.size()
-                    )
-            )
+        const auto floodFill =
+            [&cutResult, &boundaryCollection](int seedFaceId)
             {
-                seedFaceId =
-                    twinFaceId;
-            }
-        }
+                std::unordered_set<int> visitedFaceIds;
 
-        if (seedFaceId < 0)
-        {
-            seedFaceId =
-                seedBoundaryHalfEdge.face;
-        }
-
-        if (
-            seedFaceId < 0 ||
-            seedFaceId >=
-                static_cast<int>(
-                    cutResult.mesh.faces.size()
-                )
-        )
-        {
-            continue;
-        }
-
-        std::queue<int> pendingFaceIds;
-        std::unordered_set<int> visitedFaceIds;
-
-        pendingFaceIds.push(seedFaceId);
-        visitedFaceIds.insert(seedFaceId);
-
-        while (!pendingFaceIds.empty())
-        {
-            const int currentFaceId =
-                pendingFaceIds.front();
-
-            pendingFaceIds.pop();
-
-            const int startingHalfEdgeId =
-                cutResult.mesh.faces[
-                    currentFaceId
-                ].halfEdge;
-
-            if (startingHalfEdgeId < 0 ||
-                startingHalfEdgeId >=
-                    static_cast<int>(
-                        cutResult.mesh.halfEdges.size()
-                    ))
-            {
-                continue;
-            }
-
-            int currentHalfEdgeId =
-                startingHalfEdgeId;
-
-            do
-            {
-                if (currentHalfEdgeId < 0 ||
-                    currentHalfEdgeId >=
-                        static_cast<int>(
-                            cutResult.mesh.halfEdges.size()
-                        ))
+                if (seedFaceId < 0 ||
+                    seedFaceId >=
+                        static_cast<int>(cutResult.mesh.faces.size()))
                 {
-                    break;
+                    return visitedFaceIds;
                 }
 
-                const HalfEdge& currentHalfEdge =
-                    cutResult.mesh.halfEdges[
-                        currentHalfEdgeId
-                    ];
+                std::queue<int> pendingFaceIds;
+                pendingFaceIds.push(seedFaceId);
+                visitedFaceIds.insert(seedFaceId);
 
-                const int twinHalfEdgeId =
-                    currentHalfEdge.twin;
-
-                /*
-                    Do not cross a Curvenet boundary edge.
-
-                    Check both directions because the current
-                    mesh face may reference either half-edge
-                    of the same physical boundary edge.
-                */
-                const bool boundaryEdge =
-                    boundaryCollection.boundaryHalfEdgeIds.find(
-                        currentHalfEdgeId
-                    ) != boundaryCollection.boundaryHalfEdgeIds.end() ||
-                    boundaryCollection.boundaryHalfEdgeIds.find(
-                        twinHalfEdgeId
-                    ) != boundaryCollection.boundaryHalfEdgeIds.end();
-
-                if (!boundaryEdge &&
-                    twinHalfEdgeId >= 0 &&
-                    twinHalfEdgeId <
-                        static_cast<int>(
-                            cutResult.mesh.halfEdges.size()
-                        ))
+                while (!pendingFaceIds.empty())
                 {
-                    const int neighbouringFaceId =
-                        cutResult.mesh.halfEdges[
-                            twinHalfEdgeId
-                        ].face;
+                    const int currentFaceId = pendingFaceIds.front();
+                    pendingFaceIds.pop();
 
-                    if (neighbouringFaceId >= 0 &&
-                        neighbouringFaceId <
-                            static_cast<int>(
+                    for (int currentHalfEdgeId :
+                         cutResult.mesh.getFaceHalfEdges(currentFaceId))
+                    {
+                        const HalfEdge& currentHalfEdge =
+                            cutResult.mesh.halfEdges[currentHalfEdgeId];
+                        const int twinHalfEdgeId = currentHalfEdge.twin;
+
+                        const bool boundaryEdge =
+                            boundaryCollection.boundaryHalfEdgeIds.count(
+                                currentHalfEdgeId
+                            ) > 0 ||
+                            boundaryCollection.boundaryHalfEdgeIds.count(
+                                twinHalfEdgeId
+                            ) > 0;
+
+                        if (boundaryEdge || twinHalfEdgeId < 0 ||
+                            twinHalfEdgeId >= static_cast<int>(
+                                cutResult.mesh.halfEdges.size()
+                            ))
+                        {
+                            continue;
+                        }
+
+                        const int neighbouringFaceId =
+                            cutResult.mesh.halfEdges[twinHalfEdgeId].face;
+
+                        if (neighbouringFaceId >= 0 &&
+                            neighbouringFaceId < static_cast<int>(
                                 cutResult.mesh.faces.size()
                             ) &&
-                        visitedFaceIds.insert(
-                            neighbouringFaceId
-                        ).second)
-                    {
-                        pendingFaceIds.push(
-                            neighbouringFaceId
-                        );
+                            visitedFaceIds.insert(neighbouringFaceId).second)
+                        {
+                            pendingFaceIds.push(neighbouringFaceId);
+                        }
                     }
                 }
 
-                currentHalfEdgeId =
-                    currentHalfEdge.next;
+                return visitedFaceIds;
+            };
+
+        const int orientedFaceId = seedBoundaryHalfEdge.face;
+        const int oppositeFaceId =
+            seedTwinHalfEdgeId >= 0 &&
+                    seedTwinHalfEdgeId < static_cast<int>(
+                        cutResult.mesh.halfEdges.size()
+                    )
+                ? cutResult.mesh.halfEdges[seedTwinHalfEdgeId].face
+                : -1;
+
+        std::unordered_set<int> visitedFaceIds =
+            floodFill(oppositeFaceId);
+
+        if (boundaryCollection.containsClosedCutChain)
+        {
+            if (visitedFaceIds.empty())
+            {
+                visitedFaceIds = floodFill(orientedFaceId);
             }
-            while (
-                currentHalfEdgeId !=
-                startingHalfEdgeId
-            );
+        }
+        else
+        {
+            std::unordered_set<int> orientedRegion =
+                floodFill(orientedFaceId);
+
+            if (visitedFaceIds.empty() ||
+                (!orientedRegion.empty() &&
+                 orientedRegion.size() < visitedFaceIds.size()))
+            {
+                visitedFaceIds = std::move(orientedRegion);
+            }
         }
 
         curvenetFace.meshFaceIds.assign(

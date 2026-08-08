@@ -51,6 +51,13 @@ struct InternalHalfEdgeSplitResult
     int twinNewHalfEdgeId = -1;
 };
 
+struct InteriorFaceSplitResult
+{
+    bool success = false;
+    std::vector<int> boundaryToInteriorHalfEdgeIds;
+    std::vector<int> interiorToBoundaryHalfEdgeIds;
+};
+
 class HalfEdgeMesh
 {
 public:
@@ -108,6 +115,12 @@ public:
     InternalHalfEdgeSplitResult splitInternalHalfEdge(
         int halfEdgeIndex,
         const Point3& cutPosition
+    );
+
+    InteriorFaceSplitResult splitFaceWithInteriorVertex(
+        int faceId,
+        int interiorVertexId,
+        const std::vector<int>& boundaryVertexIds
     );
 
     std::vector<int> getOutgoingHalfEdgesAtVertex(
