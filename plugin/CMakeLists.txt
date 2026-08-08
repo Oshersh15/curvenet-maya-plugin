@@ -41,6 +41,7 @@ add_library(CurvenetPlugin SHARED
     src/CurvenetFaceRegionBuilder.cpp
     src/CurvenetEdgeBuilder.cpp
     src/CurvenetSceneBuilder.cpp
+    src/CurvenetRegionPreviewBuilder.cpp
 )
 
 target_include_directories(CurvenetPlugin PRIVATE
@@ -83,6 +84,7 @@ add_executable(HalfEdgeTests
     src/CutPathMeshSplitter.cpp
     src/CurvenetMeshCutter.cpp
     tests/test_curvenet_mesh_cutter.cpp
+    tests/test_curvenet_authored_grid.cpp
     src/CurvenetSharedNodeDetector.cpp
     tests/test_curvenet_shared_node_detector.cpp
     src/CurvenetFaceBuilder.cpp

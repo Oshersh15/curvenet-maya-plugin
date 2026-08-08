@@ -1,5 +1,6 @@
 #include "CurvenetSceneBuilder.h"
 #include "CurvenetEdge.h"
+#include "CurvenetRegionPreviewBuilder.h"
 
 #include <maya/MGlobal.h>
 #include <maya/MString.h>
@@ -632,6 +633,11 @@ void CurvenetSceneBuilder::build(
             curvenetCutResult
         );
     }
+
+    CurvenetRegionPreviewBuilder::build(
+        owner,
+        curvenetCutResult
+    );
 
     createSharedNodeExpression(
         owner,
