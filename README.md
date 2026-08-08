@@ -80,10 +80,16 @@ The current implementation focuses on constructing the Curvenet and its relation
 ### Testing
 
 - GoogleTest unit tests.
-- Face traversal tests.
-- Twin assignment tests.
-- Profile curve sampling tests.
-- Invalid input tests.
+- Half-edge construction and traversal tests.
+- Profile-curve sampling and geometry tests.
+- Curve-mesh intersection tests.
+- CutPath edge-splitting and face-splitting tests.
+- Open and closed CutChain tests.
+- Multi-profile Curvenet cutting tests.
+- Shared Curvenet node tests.
+- Curvenet face construction tests.
+- Curvenet face-region mapping tests.
+- 134 automated tests currently passing.
 
 ### Debug Visualisation
 
@@ -218,6 +224,32 @@ The region builder:
 
 This mapping connects the high-level Curvenet structure with the underlying cut-mesh geometry required for later correspondence and deformation.
 
+### Drawn and Projected Curvenet Scene Building
+
+The plugin can generate a Maya scene representation from drawn and projected profile curves.
+
+Implemented functionality includes:
+
+- Detection of explicit endpoint-to-curve connections from authored profile inputs.
+- Logical shared-node construction for connected endpoints.
+- Support for authored endpoints that represent the same Curvenet node even when cutting produces different mesh vertices.
+- Generated controls positioned from authored sampled endpoint positions.
+- Degree-1 preview curves constructed from sampled profile-edge points.
+- Grouped controls and preview curves owned by the relevant Curvenet node.
+- Automatic replacement of previously generated Curvenet scene objects.
+- Concise cutting, node, edge, face and region summary output.
+
+The drawn/projected workflow has been manually validated on Tube A:
+
+```text
+Curvenet cutting: SUCCESS
+Shared Curvenet nodes: 8
+Curvenet edges: 10
+Curvenet faces: 6
+```
+
+Manual validation of this authoring workflow on additional meshes remains in progress.
+
 ---
 
 ## Technologies
@@ -231,22 +263,21 @@ This mapping connects the high-level Curvenet structure with the underlying cut-
 
 ## Building
 
-```bash
-mkdir build
-cd build
+From the project root:
 
-cmake ..
-cmake --build .
+```bash
+cmake -S plugin -B plugin/build
+cmake --build plugin/build
 ```
 
 ---
 
 ## Running Tests
 
-```bash
-cd build
+From the project root:
 
-ctest --output-on-failure
+```bash
+ctest --test-dir plugin/build --output-on-failure
 ```
 
 ---
@@ -255,45 +286,34 @@ ctest --output-on-failure
 
 ### Implemented
 
-- Curvenet representation
-- Uniform arc-length curve sampling
-- Adaptive sampling density
-- Curve connectivity
-- Half-edge topology
-- Maya mesh conversion
-- Geometry utility library
-- Closest point on a segment
-- Segment-to-segment distance
-- Initial curve-mesh crossing detection
-- Twin detection
-- Unit testing
-- First curve-mesh crossing detection
-- CutCrossing data representation
-- First crossing record storage
-- Multiple curve-mesh crossing detection
-- Duplicate crossing filtering
-- Ordered CutCrossing storage
-- Curvenet debug visualiser
-- Sampled polyline viewport display
-- Curve-mesh crossing markers
-- CutPath representation
-- Ordered CutCrossing storage
-- Multiple CutPath support
-- Vertex-to-curve binding
-- Neutral curve-offset storage
+- Multiple profile-curve input and connectivity detection.
+- Uniform arc-length sampling with adaptive mesh-based density.
+- Half-edge mesh construction and traversal.
+- Curve-mesh crossing detection.
+- CutVertex, CutPath and ordered CutChain representations.
+- Mesh-edge splitting and face-level cut insertion.
+- Incremental multi-profile Curvenet cutting.
+- Reuse of existing embedded vertices.
+- Shared logical Curvenet node construction.
+- Embedded Curvenet edge and face construction.
+- Curvenet face-region mapping.
+- Drawn/projected Curvenet scene controls and preview curves.
+- Curve-driven deformation prototype.
+- Maya debug visualisation.
+- GoogleTest coverage for the geometry and topology layers.
 
 ### In Progress
 
-- Crossing record generation
-- Cut-point generation
-- Cut-path construction
+- Validation of drawn/projected Curvenet authoring on additional meshes.
+- Curvenet correspondence between different mesh topologies.
+- Refinement of the authoring and scene-management workflow.
 
 ### Planned
 
-- Cut-mesh representation
-- Curvenet articulation
-- Mesh binding
-- Topology-independent deformation
+- Curvenet-driven articulation.
+- Cross-topology deformation transfer.
+- Improved deformation weighting and offset transport.
+- Evaluation on meshes with different resolutions and topology.
 
 ---
 
