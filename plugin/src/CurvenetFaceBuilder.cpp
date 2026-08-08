@@ -3,6 +3,7 @@
 #include <unordered_map>
 #include <unordered_set>
 #include <algorithm>
+#include <set>
 
 namespace
 {
@@ -31,6 +32,21 @@ namespace
         bool reversed = false;
 
         bool visited = false;
+    };
+
+    struct GraphBoundaryEdge
+    {
+        int curveId = -1;
+        int startNodeId = -1;
+        int endNodeId = -1;
+        int startVertexId = -1;
+        int endVertexId = -1;
+    };
+
+    struct GraphCycle
+    {
+        std::vector<int> nodeLoop;
+        std::vector<int> edgeLoop;
     };
 
     std::vector<int> buildCanonicalSectionLoop(
@@ -412,6 +428,7 @@ namespace
                 std::vector<int>
                     traversedSectionIds;
 
+
                 bool validLoop = true;
 
                 while (true)
@@ -436,9 +453,7 @@ namespace
                         break;
                     }
 
-                    visitedDirectedSectionIds.insert(
-                        currentDirectedId
-                    );
+                    visitedDirectedSectionIds.insert(currentDirectedId);
 
                     const BoundarySection& section =
                         sections[
@@ -601,6 +616,327 @@ namespace
                         );
                     }
                 }
+            }
+        }
+
+        return faces;
+    }
+
+    std::vector<int> buildCanonicalNodeLoop(
+        const std::vector<int>& nodeIds
+    )
+    {
+        if (nodeIds.empty())
+        {
+            return {};
+        }
+
+        std::vector<int> smallest = nodeIds;
+
+        for (int offset = 1;
+             offset < static_cast<int>(nodeIds.size());
+             ++offset)
+        {
+            std::vector<int> rotated;
+            rotated.reserve(nodeIds.size());
+
+            for (int index = 0;
+                 index < static_cast<int>(nodeIds.size());
+                 ++index)
+            {
+                rotated.push_back(
+                    nodeIds[(offset + index) % nodeIds.size()]
+                );
+            }
+
+            if (rotated < smallest)
+            {
+                smallest = rotated;
+            }
+        }
+
+        std::vector<int> reversed = nodeIds;
+        std::reverse(reversed.begin(), reversed.end());
+
+        std::vector<int> smallestReversed = reversed;
+
+        for (int offset = 1;
+             offset < static_cast<int>(reversed.size());
+             ++offset)
+        {
+            std::vector<int> rotated;
+            rotated.reserve(reversed.size());
+
+            for (int index = 0;
+                 index < static_cast<int>(reversed.size());
+                 ++index)
+            {
+                rotated.push_back(
+                    reversed[(offset + index) % reversed.size()]
+                );
+            }
+
+            if (rotated < smallestReversed)
+            {
+                smallestReversed = rotated;
+            }
+        }
+
+        return smallestReversed < smallest
+            ? smallestReversed
+            : smallest;
+    }
+
+    void findGraphCyclesFromNode(
+        int startNodeId,
+        int currentNodeId,
+        const std::vector<GraphBoundaryEdge>& graphEdges,
+        const std::unordered_map<int, std::vector<int>>& edgeIdsByNode,
+        std::vector<int>& nodeStack,
+        std::vector<int>& edgeStack,
+        std::unordered_set<int>& nodesInStack,
+        std::set<std::vector<int>>& acceptedNodeLoops,
+        std::vector<GraphCycle>& acceptedCycles
+    )
+    {
+        const auto adjacencyIterator =
+            edgeIdsByNode.find(currentNodeId);
+
+        if (adjacencyIterator == edgeIdsByNode.end())
+        {
+            return;
+        }
+
+        for (int edgeId : adjacencyIterator->second)
+        {
+            if (std::find(edgeStack.begin(),
+                          edgeStack.end(),
+                          edgeId) != edgeStack.end())
+            {
+                continue;
+            }
+
+            const GraphBoundaryEdge& edge =
+                graphEdges[edgeId];
+
+            const int nextNodeId =
+                edge.startNodeId == currentNodeId
+                    ? edge.endNodeId
+                    : edge.startNodeId;
+
+            if (nextNodeId == startNodeId)
+            {
+                if (nodeStack.size() >= 3)
+                {
+                    const std::vector<int> canonicalLoop =
+                        buildCanonicalNodeLoop(nodeStack);
+
+                    if (acceptedNodeLoops.insert(canonicalLoop).second)
+                    {
+                        GraphCycle cycle;
+                        cycle.nodeLoop = nodeStack;
+                        cycle.edgeLoop = edgeStack;
+                        cycle.edgeLoop.push_back(edgeId);
+                        acceptedCycles.push_back(cycle);
+                    }
+                }
+
+                continue;
+            }
+
+            if (nextNodeId < startNodeId ||
+                nodesInStack.find(nextNodeId) != nodesInStack.end())
+            {
+                continue;
+            }
+
+            nodeStack.push_back(nextNodeId);
+            edgeStack.push_back(edgeId);
+            nodesInStack.insert(nextNodeId);
+
+            findGraphCyclesFromNode(
+                startNodeId,
+                nextNodeId,
+                graphEdges,
+                edgeIdsByNode,
+                nodeStack,
+                edgeStack,
+                nodesInStack,
+                acceptedNodeLoops,
+                acceptedCycles
+            );
+
+            nodesInStack.erase(nextNodeId);
+            edgeStack.pop_back();
+            nodeStack.pop_back();
+        }
+    }
+
+    std::vector<CurvenetFace> buildGraphCycleFaces(
+        const CurvenetCutResult& cutResult
+    )
+    {
+        std::unordered_map<int, int> nodeIdByMeshVertexId;
+
+        for (int nodeId = 0;
+             nodeId <
+                 static_cast<int>(
+                     cutResult.sharedCurvenetNodes.size()
+                 );
+             ++nodeId)
+        {
+            const int meshVertexId =
+                cutResult.sharedCurvenetNodes[nodeId]
+                    .meshVertexId;
+
+            if (meshVertexId >= 0)
+            {
+                nodeIdByMeshVertexId[meshVertexId] =
+                    nodeId;
+            }
+        }
+
+        std::vector<GraphBoundaryEdge> graphEdges;
+
+        for (const auto& entry :
+             cutResult.cutChainsByCurveId)
+        {
+            const CutChain& cutChain = entry.second;
+
+            std::vector<int> sharedNodeIds;
+
+            for (int meshVertexId : cutChain.vertexIds)
+            {
+                const auto nodeIterator =
+                    nodeIdByMeshVertexId.find(meshVertexId);
+
+                if (nodeIterator !=
+                    nodeIdByMeshVertexId.end())
+                {
+                    if (sharedNodeIds.empty() ||
+                        sharedNodeIds.back() !=
+                            nodeIterator->second)
+                    {
+                        sharedNodeIds.push_back(
+                            nodeIterator->second
+                        );
+                    }
+                }
+            }
+
+            if (sharedNodeIds.size() < 2)
+            {
+                continue;
+            }
+
+            GraphBoundaryEdge edge;
+            edge.curveId = cutChain.curveId;
+            edge.startNodeId = sharedNodeIds.front();
+            edge.endNodeId = sharedNodeIds.back();
+            edge.startVertexId =
+                cutResult.sharedCurvenetNodes[
+                    edge.startNodeId
+                ].meshVertexId;
+            edge.endVertexId =
+                cutResult.sharedCurvenetNodes[
+                    edge.endNodeId
+                ].meshVertexId;
+
+            if (edge.startNodeId != edge.endNodeId)
+            {
+                graphEdges.push_back(edge);
+            }
+        }
+
+        std::unordered_map<int, std::vector<int>>
+            edgeIdsByNode;
+
+        for (int edgeId = 0;
+             edgeId < static_cast<int>(graphEdges.size());
+             ++edgeId)
+        {
+            edgeIdsByNode[
+                graphEdges[edgeId].startNodeId
+            ].push_back(edgeId);
+
+            edgeIdsByNode[
+                graphEdges[edgeId].endNodeId
+            ].push_back(edgeId);
+        }
+
+        std::set<std::vector<int>> acceptedNodeLoops;
+        std::vector<GraphCycle> acceptedCycles;
+
+        for (const auto& entry : edgeIdsByNode)
+        {
+            const int startNodeId = entry.first;
+
+            std::vector<int> nodeStack{ startNodeId };
+            std::vector<int> edgeStack;
+            std::unordered_set<int> nodesInStack{ startNodeId };
+
+            findGraphCyclesFromNode(
+                startNodeId,
+                startNodeId,
+                graphEdges,
+                edgeIdsByNode,
+                nodeStack,
+                edgeStack,
+                nodesInStack,
+                acceptedNodeLoops,
+                acceptedCycles
+            );
+        }
+
+        std::vector<CurvenetFace> faces;
+
+        for (const GraphCycle& cycle :
+             acceptedCycles)
+        {
+            CurvenetFace face;
+            face.id = static_cast<int>(faces.size());
+
+            if (cycle.edgeLoop.empty() ||
+                cycle.nodeLoop.empty())
+            {
+                continue;
+            }
+
+            int currentNodeId = cycle.nodeLoop.front();
+
+            for (int edgeId : cycle.edgeLoop)
+            {
+                const GraphBoundaryEdge& edge =
+                    graphEdges[edgeId];
+
+                CurvenetFaceBoundary boundary;
+                boundary.curveId = edge.curveId;
+
+                if (edge.startNodeId == currentNodeId)
+                {
+                    boundary.startVertexId =
+                        edge.startVertexId;
+                    boundary.endVertexId =
+                        edge.endVertexId;
+                    boundary.reversed = false;
+                    currentNodeId = edge.endNodeId;
+                }
+                else
+                {
+                    boundary.startVertexId =
+                        edge.endVertexId;
+                    boundary.endVertexId =
+                        edge.startVertexId;
+                    boundary.reversed = true;
+                    currentNodeId = edge.startNodeId;
+                }
+
+                face.boundary.push_back(boundary);
+            }
+
+            if (face.boundary.size() >= 3)
+            {
+                faces.push_back(face);
             }
         }
 
@@ -908,45 +1244,43 @@ CurvenetFaceBuilder::build(
                     continue;
                 }
 
-                orderedSections.push_back(
-                    directedSection
-                );
+                const bool alreadyAdded =
+                    std::find_if(
+                        orderedSections.begin(),
+                        orderedSections.end(),
+                        [&directedSection](
+                            const DirectedBoundarySection&
+                                existing
+                        )
+                        {
+                            return
+                                existing.sectionId ==
+                                    directedSection.sectionId &&
+                                existing.reversed ==
+                                    directedSection.reversed;
+                        }
+                    ) != orderedSections.end();
 
-                break;
-            }
-        }
-
-        for (const DirectedBoundarySection&
-             directedSection :
-             outgoingSections)
-        {
-            const bool alreadyAdded =
-                std::find_if(
-                    orderedSections.begin(),
-                    orderedSections.end(),
-                    [&directedSection](
-                        const DirectedBoundarySection& existing
-                    )
-                    {
-                        return
-                            existing.sectionId ==
-                                directedSection.sectionId &&
-                            existing.reversed ==
-                                directedSection.reversed;
-                    }
-                ) != orderedSections.end();
-
-            if (!alreadyAdded)
-            {
-                orderedSections.push_back(
-                    directedSection
-                );
+                if (!alreadyAdded)
+                {
+                    orderedSections.push_back(
+                        directedSection
+                    );
+                }
             }
         }
     }
 
-    return buildDirectedFaces(
+    std::vector<CurvenetFace> directedFaces =
+        buildDirectedFaces(
         sections,
         orderedOutgoingSectionsByVertex
     );
+
+    std::vector<CurvenetFace> graphCycleFaces =
+        buildGraphCycleFaces(cutResult);
+
+    return graphCycleFaces.size() > directedFaces.size()
+        ? graphCycleFaces
+        : directedFaces;
 }

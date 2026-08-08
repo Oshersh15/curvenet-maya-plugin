@@ -32,9 +32,17 @@ namespace
             const CutChain& cutChain =
                 entry.second;
 
-            for (int meshVertexId :
-                 cutChain.vertexIds)
+            for (const EmbeddedCurvePoint& point :
+                 cutChain.points)
             {
+                const int meshVertexId =
+                    point.meshVertexId;
+
+                if (meshVertexId < 0)
+                {
+                    continue;
+                }
+
                 std::vector<int>& connectedCurveIds =
                     curveIdsByMeshVertex[
                         meshVertexId
@@ -75,12 +83,476 @@ namespace
             sharedNode.meshVertexId =
                 meshVertexId;
 
+            if (meshVertexId >= 0 &&
+                meshVertexId <
+                    static_cast<int>(
+                        result.mesh.vertices.size()
+                    ))
+            {
+                sharedNode.position =
+                    result.mesh
+                        .vertices[meshVertexId]
+                        .position;
+            }
+
             sharedNode.connectedCurveIds =
                 connectedCurveIds;
 
             result.sharedCurvenetNodes.push_back(
                 sharedNode
             );
+        }
+    }
+
+    void applyExplicitProfileConnections(
+        CurvenetCutResult& result,
+        const std::vector<ProfileCutInput>& profileInputs
+    )
+    {
+        std::unordered_map<int, int> parentByEndpointKey;
+
+        const auto findProfileInput =
+            [&profileInputs](
+                int curveId
+            ) -> const ProfileCutInput*
+            {
+                for (const ProfileCutInput& input :
+                     profileInputs)
+                {
+                    if (input.curveId == curveId)
+                    {
+                        return &input;
+                    }
+                }
+
+                return nullptr;
+            };
+
+        const auto endpointKey =
+            [](int curveId, CurveEndpoint endpoint)
+            {
+                return curveId * 2 +
+                    (
+                        endpoint == CurveEndpoint::Start
+                            ? 0
+                            : 1
+                    );
+            };
+
+        auto findRoot =
+            [&parentByEndpointKey](int key)
+            {
+                int currentKey = key;
+
+                while (
+                    parentByEndpointKey.find(currentKey) !=
+                        parentByEndpointKey.end() &&
+                    parentByEndpointKey[currentKey] !=
+                        currentKey)
+                {
+                    currentKey =
+                        parentByEndpointKey[currentKey];
+                }
+
+                int rootKey = currentKey;
+                currentKey = key;
+
+                while (
+                    parentByEndpointKey.find(currentKey) !=
+                        parentByEndpointKey.end() &&
+                    parentByEndpointKey[currentKey] !=
+                        currentKey)
+                {
+                    const int nextKey =
+                        parentByEndpointKey[currentKey];
+
+                    parentByEndpointKey[currentKey] =
+                        rootKey;
+
+                    currentKey = nextKey;
+                }
+
+                return rootKey;
+            };
+
+        auto ensureEndpoint =
+            [&parentByEndpointKey](int key)
+            {
+                if (parentByEndpointKey.find(key) ==
+                    parentByEndpointKey.end())
+                {
+                    parentByEndpointKey[key] = key;
+                }
+            };
+
+        auto uniteEndpoints =
+            [&](
+                int firstKey,
+                int secondKey
+            )
+            {
+                ensureEndpoint(firstKey);
+                ensureEndpoint(secondKey);
+
+                const int firstRoot =
+                    findRoot(firstKey);
+
+                const int secondRoot =
+                    findRoot(secondKey);
+
+                if (firstRoot != secondRoot)
+                {
+                    parentByEndpointKey[secondRoot] =
+                        firstRoot;
+                }
+            };
+
+        const auto sourceEndpointPosition =
+            [](
+                const ProfileCutInput& profileInput,
+                CurveEndpoint endpoint,
+                const CutChain& fallbackChain,
+                int fallbackPointIndex
+            )
+            {
+                if (!profileInput.sampledSegments.empty())
+                {
+                    if (endpoint == CurveEndpoint::Start)
+                    {
+                        return profileInput
+                            .sampledSegments
+                            .front()
+                            .start;
+                    }
+
+                    return profileInput
+                        .sampledSegments
+                        .back()
+                        .end;
+                }
+
+                return fallbackChain
+                    .points[fallbackPointIndex]
+                    .position;
+            };
+
+        const auto targetEndpointKeyForConnection =
+            [&](
+                const ProfileCurveConnection& connection
+            ) -> int
+            {
+                const ProfileCutInput* targetInput =
+                    findProfileInput(
+                        connection.targetCurveId
+                    );
+
+                if (targetInput == nullptr)
+                {
+                    return -1;
+                }
+
+                const int lastSegmentId =
+                    static_cast<int>(
+                        targetInput
+                            ->sampledSegments
+                            .size()
+                    ) - 1;
+
+                const double tolerance = 0.000001;
+
+                if (connection.targetSegmentId == 0 &&
+                    connection.targetSegmentT <= tolerance)
+                {
+                    return endpointKey(
+                        connection.targetCurveId,
+                        CurveEndpoint::Start
+                    );
+                }
+
+                if (connection.targetSegmentId ==
+                        lastSegmentId &&
+                    connection.targetSegmentT >=
+                        1.0 - tolerance)
+                {
+                    return endpointKey(
+                        connection.targetCurveId,
+                        CurveEndpoint::End
+                    );
+                }
+
+                return -1;
+            };
+
+        for (const ProfileCutInput& profileInput :
+             profileInputs)
+        {
+            for (const ProfileCurveConnection& connection :
+                 profileInput.connections)
+            {
+                const int sourceKey =
+                    endpointKey(
+                        profileInput.curveId,
+                        connection.endpoint
+                    );
+
+                const int targetKey =
+                    targetEndpointKeyForConnection(
+                        connection
+                    );
+
+                if (targetKey >= 0)
+                {
+                    uniteEndpoints(
+                        sourceKey,
+                        targetKey
+                    );
+                }
+            }
+        }
+
+        std::unordered_map<int, int>
+            sharedMeshVertexIdByRootKey;
+
+        for (const ProfileCutInput& profileInput :
+             profileInputs)
+        {
+            auto endpointChainIterator =
+                result.cutChainsByCurveId.find(
+                    profileInput.curveId
+                );
+
+            if (endpointChainIterator ==
+                result.cutChainsByCurveId.end())
+            {
+                continue;
+            }
+
+            for (const ProfileCurveConnection& connection :
+                 profileInput.connections)
+            {
+                CutChain& endpointChain =
+                    endpointChainIterator->second;
+
+                if (endpointChain.points.empty())
+                {
+                    continue;
+                }
+
+                const int endpointPointIndex =
+                    connection.endpoint ==
+                            CurveEndpoint::Start
+                        ? 0
+                        : static_cast<int>(
+                              endpointChain.points.size()
+                          ) - 1;
+
+                if (endpointPointIndex < 0 ||
+                    endpointPointIndex >=
+                        static_cast<int>(
+                            endpointChain.points.size()
+                        ))
+                {
+                    continue;
+                }
+
+                const int sourceEndpointKey =
+                    endpointKey(
+                        profileInput.curveId,
+                        connection.endpoint
+                    );
+
+                ensureEndpoint(sourceEndpointKey);
+
+                const int rootEndpointKey =
+                    findRoot(sourceEndpointKey);
+
+                const Point3 sharedPosition =
+                    sourceEndpointPosition(
+                        profileInput,
+                        connection.endpoint,
+                        endpointChain,
+                        endpointPointIndex
+                    );
+
+                auto targetChainIterator =
+                    result.cutChainsByCurveId.find(
+                        connection.targetCurveId
+                    );
+
+                if (targetChainIterator ==
+                    result.cutChainsByCurveId.end())
+                {
+                    continue;
+                }
+
+                CutChain& targetChain =
+                    targetChainIterator->second;
+
+                int closestPointIndex = -1;
+                double closestDistance =
+                    std::numeric_limits<double>::max();
+
+                for (int pointIndex = 0;
+                     pointIndex <
+                         static_cast<int>(
+                             targetChain.points.size()
+                         );
+                     ++pointIndex)
+                {
+                    const EmbeddedCurvePoint& point =
+                        targetChain.points[
+                            pointIndex
+                        ];
+
+                    if (point.curveSegmentId !=
+                        connection.targetSegmentId)
+                    {
+                        continue;
+                    }
+
+                    const double distance =
+                        std::abs(
+                            point.curveSegmentT -
+                            connection.targetSegmentT
+                        );
+
+                    if (distance < closestDistance)
+                    {
+                        closestDistance = distance;
+                        closestPointIndex = pointIndex;
+                    }
+                }
+
+                int sharedMeshVertexId = -1;
+
+                const auto existingSharedIterator =
+                    sharedMeshVertexIdByRootKey.find(
+                        rootEndpointKey
+                    );
+
+                if (existingSharedIterator !=
+                    sharedMeshVertexIdByRootKey.end())
+                {
+                    sharedMeshVertexId =
+                        existingSharedIterator->second;
+                }
+                else
+                {
+                    /*
+                    Authored endpoints can be one logical node even when
+                    separate cuts produced different mesh vertices.
+                    */
+                    Vertex sharedVertex;
+
+                    sharedVertex.position =
+                        sharedPosition;
+
+                    sharedMeshVertexId =
+                        static_cast<int>(
+                            result.mesh.vertices.size()
+                        );
+
+                    result.mesh.vertices.push_back(
+                        sharedVertex
+                    );
+
+                    sharedMeshVertexIdByRootKey[
+                        rootEndpointKey
+                    ] = sharedMeshVertexId;
+                }
+
+                endpointChain.points[
+                    endpointPointIndex
+                ].meshVertexId =
+                    sharedMeshVertexId;
+
+                if (endpointPointIndex <
+                    static_cast<int>(
+                        endpointChain.vertexIds.size()
+                    ))
+                {
+                    endpointChain.vertexIds[
+                        endpointPointIndex
+                    ] = sharedMeshVertexId;
+                }
+
+                if (closestPointIndex >= 0)
+                {
+                    targetChain.points[
+                        closestPointIndex
+                    ].meshVertexId =
+                        sharedMeshVertexId;
+
+                    if (closestPointIndex <
+                        static_cast<int>(
+                            targetChain.vertexIds.size()
+                        ))
+                    {
+                        targetChain.vertexIds[
+                            closestPointIndex
+                        ] = sharedMeshVertexId;
+                    }
+                }
+                else
+                {
+                    EmbeddedCurvePoint insertedPoint;
+
+                    insertedPoint.meshVertexId =
+                        sharedMeshVertexId;
+
+                    insertedPoint.curveSegmentId =
+                        connection.targetSegmentId;
+
+                    insertedPoint.curveSegmentT =
+                        connection.targetSegmentT;
+
+                    insertedPoint.position =
+                        sharedPosition;
+
+                    int insertionIndex = 0;
+
+                    while (
+                        insertionIndex <
+                        static_cast<int>(
+                            targetChain.points.size()
+                        ))
+                    {
+                        const EmbeddedCurvePoint& point =
+                            targetChain.points[
+                                insertionIndex
+                            ];
+
+                        if (point.curveSegmentId >
+                                insertedPoint
+                                    .curveSegmentId ||
+                            (
+                                point.curveSegmentId ==
+                                    insertedPoint
+                                        .curveSegmentId &&
+                                point.curveSegmentT >
+                                    insertedPoint
+                                        .curveSegmentT
+                            ))
+                        {
+                            break;
+                        }
+
+                        ++insertionIndex;
+                    }
+
+                    targetChain.points.insert(
+                        targetChain.points.begin()
+                            + insertionIndex,
+                        insertedPoint
+                    );
+
+                    targetChain.vertexIds.insert(
+                        targetChain.vertexIds.begin()
+                            + insertionIndex,
+                        sharedMeshVertexId
+                    );
+                }
+            }
         }
     }
 }
@@ -975,6 +1447,15 @@ CurvenetCutResult CurvenetMeshCutter::apply(
             );
         }
     }
+
+    /*
+    Cutting must finish first so authored endpoint relationships can be
+    applied to the final cut chains and their generated mesh vertices.
+    */
+    applyExplicitProfileConnections(
+        result,
+        profileInputs
+    );
 
     buildSharedCurvenetNodes(
         result

@@ -15,17 +15,24 @@ CurvenetSharedNodeDetector::findSharedMeshVertex(
         const CutChain& cutChain =
             entry.second;
 
-        for (int meshVertexId :
-             cutChain.vertexIds)
+        for (
+            const EmbeddedCurvePoint& point :
+            cutChain.points
+        )
         {
-            if (meshVertexId < 0 ||
+            const int meshVertexId =
+                point.meshVertexId;
+
+            if (
+                meshVertexId < 0 ||
                 meshVertexId >=
                     static_cast<int>(
                         curvenetResult
                             .mesh
                             .vertices
                             .size()
-                    ))
+                    )
+            )
             {
                 continue;
             }
@@ -33,7 +40,9 @@ CurvenetSharedNodeDetector::findSharedMeshVertex(
             const Point3& existingPosition =
                 curvenetResult
                     .mesh
-                    .vertices[meshVertexId]
+                    .vertices[
+                        meshVertexId
+                    ]
                     .position;
 
             const double positionDistance =
@@ -42,8 +51,10 @@ CurvenetSharedNodeDetector::findSharedMeshVertex(
                     existingPosition
                 );
 
-            if (positionDistance <=
-                positionTolerance)
+            if (
+                positionDistance <=
+                positionTolerance
+            )
             {
                 return meshVertexId;
             }

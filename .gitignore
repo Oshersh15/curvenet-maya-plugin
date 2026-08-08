@@ -29,3 +29,7 @@ Makefile
 # Python
 __pycache__/
 *.pyc
+
+# Maya scene files
+maya/*.ma
+maya/*.mb

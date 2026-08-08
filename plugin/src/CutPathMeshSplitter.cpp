@@ -1,7 +1,9 @@
 #include "CutPathMeshSplitter.h"
 #include <algorithm>
 #include "GeometryUtils.h"
+#include <queue>
 #include <unordered_map>
+#include <unordered_set>
 #include <iostream>
 
 
@@ -43,6 +45,155 @@ namespace
         }
 
         return -1;
+    }
+
+    std::vector<int> findExistingHalfEdgePath(
+        const HalfEdgeMesh& mesh,
+        int startVertexId,
+        int endVertexId,
+        int maximumDepth
+    )
+    {
+        std::vector<int> emptyPath;
+
+        if (startVertexId < 0 ||
+            startVertexId >=
+                static_cast<int>(
+                    mesh.vertices.size()
+                ) ||
+            endVertexId < 0 ||
+            endVertexId >=
+                static_cast<int>(
+                    mesh.vertices.size()
+                ) ||
+            maximumDepth <= 0)
+        {
+            return emptyPath;
+        }
+
+        struct QueueEntry
+        {
+            int vertexId = -1;
+            int depth = 0;
+        };
+
+        std::queue<QueueEntry> queue;
+        std::unordered_set<int> visitedVertices;
+        std::unordered_map<int, int> predecessorVertexByVertex;
+        std::unordered_map<int, int> predecessorHalfEdgeByVertex;
+
+        queue.push({startVertexId, 0});
+        visitedVertices.insert(startVertexId);
+
+        while (!queue.empty())
+        {
+            const QueueEntry current =
+                queue.front();
+            queue.pop();
+
+            if (current.depth >= maximumDepth)
+            {
+                continue;
+            }
+
+            for (int halfEdgeId = 0;
+                 halfEdgeId <
+                     static_cast<int>(
+                         mesh.halfEdges.size()
+                     );
+                 ++halfEdgeId)
+            {
+                const HalfEdge& halfEdge =
+                    mesh.halfEdges[
+                        halfEdgeId
+                    ];
+
+                if (halfEdge.startVertex !=
+                    current.vertexId)
+                {
+                    continue;
+                }
+
+                const int nextVertexId =
+                    halfEdge.endVertex;
+
+                if (nextVertexId < 0 ||
+                    nextVertexId >=
+                        static_cast<int>(
+                            mesh.vertices.size()
+                        ) ||
+                    visitedVertices.find(
+                        nextVertexId
+                    ) != visitedVertices.end())
+                {
+                    continue;
+                }
+
+                visitedVertices.insert(
+                    nextVertexId
+                );
+
+                predecessorVertexByVertex[
+                    nextVertexId
+                ] = current.vertexId;
+
+                predecessorHalfEdgeByVertex[
+                    nextVertexId
+                ] = halfEdgeId;
+
+                if (nextVertexId == endVertexId)
+                {
+                    std::vector<int> path;
+                    int walkedVertexId =
+                        endVertexId;
+
+                    while (walkedVertexId !=
+                           startVertexId)
+                    {
+                        const auto halfEdgeIterator =
+                            predecessorHalfEdgeByVertex
+                                .find(walkedVertexId);
+
+                        const auto vertexIterator =
+                            predecessorVertexByVertex
+                                .find(walkedVertexId);
+
+                        if (halfEdgeIterator ==
+                                predecessorHalfEdgeByVertex
+                                    .end() ||
+                            vertexIterator ==
+                                predecessorVertexByVertex
+                                    .end())
+                        {
+                            return emptyPath;
+                        }
+
+                        path.push_back(
+                            halfEdgeIterator->second
+                        );
+
+                        walkedVertexId =
+                            vertexIterator->second;
+                    }
+
+                    std::reverse(
+                        path.begin(),
+                        path.end()
+                    );
+
+                    return path;
+                }
+
+                queue.push(
+                    {
+                        nextVertexId,
+                        current.depth + 1
+                    }
+                );
+            }
+        }
+
+        return emptyPath;
     }
 }
 
@@ -413,6 +564,36 @@ CutPathMeshSplitter::apply(
             result.cutChain.vertexIds.push_back(
                 meshVertexId
             );
+
+            EmbeddedCurvePoint point;
+
+            point.meshVertexId =
+                meshVertexId;
+
+            point.curveSegmentId =
+                orderedCutVertex
+                    .cutVertex
+                    ->curveSegmentId;
+
+            point.curveSegmentT =
+                orderedCutVertex
+                    .cutVertex
+                    ->curveSegmentT;
+
+            point.position =
+                orderedCutVertex
+                    .cutVertex
+                    ->position;
+
+            result.cutChain
+                .points
+                .push_back(
+                    point
+                );
+
+            result.cutChain.cutVertexIndices.push_back(
+                orderedCutVertex.originalIndex
+            );
         }
 
         result.cutChain.closed = false;
@@ -496,31 +677,24 @@ CutPathMeshSplitter::apply(
             continue;
         }
 
-        int existingHalfEdgeId = -1;
+        int existingHalfEdgeId =
+            mesh.findHalfEdge(
+                firstVertexId,
+                secondVertexId
+            );
 
-        for (int halfEdgeId = 0;
-             halfEdgeId <
-                 static_cast<int>(
-                     mesh.halfEdges.size()
-                 );
-             ++halfEdgeId)
+        if (existingHalfEdgeId < 0)
         {
-            const HalfEdge& halfEdge =
-                mesh.halfEdges[
-                    halfEdgeId
-                ];
+            const int reverseHalfEdgeId =
+                mesh.findHalfEdge(
+                    secondVertexId,
+                    firstVertexId
+                );
 
-            if (
-                halfEdge.startVertex ==
-                    firstVertexId &&
-                halfEdge.endVertex ==
-                    secondVertexId
-            )
+            if (reverseHalfEdgeId >= 0)
             {
                 existingHalfEdgeId =
-                    halfEdgeId;
-
-                break;
+                    reverseHalfEdgeId;
             }
         }
 
@@ -535,14 +709,83 @@ CutPathMeshSplitter::apply(
             continue;
         }
 
-        const int currentFaceId =
-            mesh.findFaceContainingVertices(
-                firstVertexId,
-                secondVertexId
-            );
+        int currentFaceId = -1;
+
+        /*
+            Prefer the face interval computed from the original
+            curve/mesh crossings when that face still contains
+            both resolved endpoints in the already-cut mesh.
+
+            Free-drawn Curvenet segments can pass through small
+            corner cases where previous cuts change the first
+            matching face returned by a global search. The interval
+            hint preserves the intended local face when it remains
+            topologically valid.
+        */
+        if (intervalIndex >= 0 &&
+            intervalIndex <
+                static_cast<int>(
+                    cutPath.faceIntervalIds.size()
+                ))
+        {
+            const int hintedFaceId =
+                cutPath.faceIntervalIds[
+                    intervalIndex
+                ];
+
+            if (hintedFaceId >= 0 &&
+                hintedFaceId <
+                    static_cast<int>(
+                        mesh.faces.size()
+                    ) &&
+                mesh.findOutgoingHalfEdgeInFace(
+                    hintedFaceId,
+                    firstVertexId
+                ) >= 0 &&
+                mesh.findOutgoingHalfEdgeInFace(
+                    hintedFaceId,
+                    secondVertexId
+                ) >= 0)
+            {
+                currentFaceId =
+                    hintedFaceId;
+            }
+        }
 
         if (currentFaceId < 0)
         {
+            currentFaceId =
+                mesh.findFaceContainingVertices(
+                    firstVertexId,
+                    secondVertexId
+                );
+        }
+
+        if (currentFaceId < 0)
+        {
+            const std::vector<int> existingPath =
+                findExistingHalfEdgePath(
+                    mesh,
+                    firstVertexId,
+                    secondVertexId,
+                    8
+                );
+
+            if (!existingPath.empty())
+            {
+                result.cutChain
+                    .halfEdgeIds
+                    .insert(
+                        result.cutChain
+                            .halfEdgeIds
+                            .end(),
+                        existingPath.begin(),
+                        existingPath.end()
+                    );
+
+                continue;
+            }
+
             result.failure =
                 CutPathSplitFailure::
                     VerticesNotOnSameFace;
@@ -648,6 +891,32 @@ CutPathMeshSplitter::apply(
             .vertexIds
             .push_back(
                 meshVertexId
+            );
+
+        EmbeddedCurvePoint point;
+
+        point.meshVertexId =
+            meshVertexId;
+
+        point.curveSegmentId =
+            orderedCutVertex
+                .cutVertex
+                ->curveSegmentId;
+
+        point.curveSegmentT =
+            orderedCutVertex
+                .cutVertex
+                ->curveSegmentT;
+
+        point.position =
+            orderedCutVertex
+                .cutVertex
+                ->position;
+
+        result.cutChain
+            .points
+            .push_back(
+                point
             );
     }
 

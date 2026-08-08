@@ -7,6 +7,8 @@
 #include "CutPathMeshSplitter.h"
 #include "SharedCurvenetNode.h"
 #include "CurvenetFace.h"
+#include "CurvenetEdge.h"
+#include "ProfileCurveSampler.h"
 
 struct EmbeddedSegmentVertex
 {
@@ -57,9 +59,9 @@ struct CurvenetCutResult
         >
     > embeddedVerticesByCurveAndSegment;
 
-    std::vector<SharedCurvenetNode>
-        sharedCurvenetNodes;
+    std::vector<SharedCurvenetNode> sharedCurvenetNodes;
 
-    std::vector<CurvenetFace>
-        curvenetFaces;
+    std::vector<CurvenetFace> curvenetFaces;
+
+    std::vector<CurvenetEdge> curvenetEdges;
 };

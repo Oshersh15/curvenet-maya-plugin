@@ -39,6 +39,8 @@ add_library(CurvenetPlugin SHARED
     src/CurvenetSharedNodeDetector.cpp
     src/CurvenetFaceBuilder.cpp
     src/CurvenetFaceRegionBuilder.cpp
+    src/CurvenetEdgeBuilder.cpp
+    src/CurvenetSceneBuilder.cpp
 )
 
 target_include_directories(CurvenetPlugin PRIVATE

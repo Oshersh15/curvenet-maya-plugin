@@ -17,6 +17,7 @@
 #include <maya/MObject.h>
 #include <maya/MMatrix.h>
 #include <maya/MFnMesh.h>
+#include <maya/MFnDependencyNode.h>
 #include "HalfEdge.h"
 #include "MayaMeshConverter.h"
 #include "ProfileCurveSampler.h"
@@ -35,6 +36,8 @@
 #include "CurvenetFaceBuilder.h"
 #include "CurvenetFaceRegionBuilder.h"
 #include "CurvenetMeshCutter.h"
+#include "CurvenetSceneBuilder.h"
+#include "CurvenetEdgeBuilder.h"
 
 #include <vector>
 #include <algorithm>
@@ -552,11 +555,17 @@ unsigned int geometryIndex
         Detect profile endpoint connections before
         the curves are embedded into the mesh.
     */
+    const double connectionTolerance =
+        std::max(
+            0.001,
+            meanMeshEdgeLength * 0.35
+        );
+
     const std::vector<DetectedCurveConnection>
         detectedProfileConnections =
             CurveConnectionDetector::detect(
                 currentSampledCurves,
-                0.001
+                connectionTolerance
             );
 
     for (const DetectedCurveConnection& detected :
@@ -623,36 +632,6 @@ unsigned int geometryIndex
                 mayaHalfEdgeMesh.faces.size()
             );
 
-        for (int cutPathIndex = 0;
-             cutPathIndex <
-                 static_cast<int>(
-                     cutPaths.size()
-                 );
-             ++cutPathIndex)
-        {
-            const CutPath& cutPath =
-                cutPaths[cutPathIndex];
-
-            MGlobal::displayInfo(
-                MString("CutPath ")
-                + cutPathIndex
-                + " curve ID: "
-                + cutPath.curveId
-                + ", CutVertices: "
-                + static_cast<int>(
-                    cutPath.cutVertices.size()
-                )
-                + ", face intervals: "
-                + static_cast<int>(
-                    cutPath.faceIntervalIds.size()
-                )
-                + ", closed: "
-                + (cutPath.closed
-                    ? "true"
-                    : "false")
-            );
-        }
-
         const double crossingTolerance =
             0.01;
 
@@ -673,62 +652,6 @@ unsigned int geometryIndex
                 ? "SUCCESS"
                 : "FAILED")
         );
-
-        MGlobal::displayInfo(
-            MString("Processed CutPaths: ")
-            + static_cast<int>(
-                cutPaths.size()
-            )
-        );
-
-        MGlobal::displayInfo(
-            MString("Stored CutChains: ")
-            + static_cast<int>(
-                curvenetCutResult
-                    .cutChainsByCurveId
-                    .size()
-            )
-        );
-
-        for (const CutPath& attemptedCutPath :
-             curvenetCutResult.attemptedCutPaths)
-        {
-            MGlobal::displayInfo(
-                MString("Fresh CutPath curve ID: ")
-                + attemptedCutPath.curveId
-                + ", CutVertices: "
-                + static_cast<int>(
-                    attemptedCutPath
-                        .cutVertices
-                        .size()
-                )
-                + ", face intervals: "
-                + static_cast<int>(
-                    attemptedCutPath
-                        .faceIntervalIds
-                        .size()
-                )
-                + ", closed: "
-                + (attemptedCutPath.closed
-                    ? "true"
-                    : "false")
-            );
-
-            MString message =
-                MString("CutPath ")
-                + attemptedCutPath.curveId
-                + " source half-edges:";
-
-            for (const CutVertex& cutVertex :
-                 attemptedCutPath.cutVertices)
-            {
-                message +=
-                    MString(" ")
-                    + cutVertex.sourceHalfEdgeId;
-            }
-
-            MGlobal::displayInfo(message);
-        }
 
         if (curvenetCutResult.failedCurveId >= 0)
         {
@@ -820,60 +743,6 @@ unsigned int geometryIndex
         }
 
         MGlobal::displayInfo(
-            MString("Vertices: ")
-            + originalVertexCount
-            + " -> "
-            + static_cast<int>(
-                curvenetCutResult
-                    .mesh
-                    .vertices
-                    .size()
-            )
-        );
-
-        MGlobal::displayInfo(
-            MString("Half-edges: ")
-            + originalHalfEdgeCount
-            + " -> "
-            + static_cast<int>(
-                curvenetCutResult
-                    .mesh
-                    .halfEdges
-                    .size()
-            )
-        );
-
-        MGlobal::displayInfo(
-            MString("Faces: ")
-            + originalFaceCount
-            + " -> "
-            + static_cast<int>(
-                curvenetCutResult
-                    .mesh
-                    .faces
-                    .size()
-            )
-        );
-
-        MGlobal::displayInfo(
-            MString("Embedded vertices: ")
-            + static_cast<int>(
-                curvenetCutResult
-                    .embeddedVertexIds
-                    .size()
-            )
-        );
-
-        MGlobal::displayInfo(
-            MString("Embedded half-edges: ")
-            + static_cast<int>(
-                curvenetCutResult
-                    .embeddedHalfEdgeIds
-                    .size()
-            )
-        );
-
-        MGlobal::displayInfo(
             MString("Shared Curvenet nodes: ")
             + static_cast<int>(
                 curvenetCutResult
@@ -891,6 +760,20 @@ unsigned int geometryIndex
 
             CurvenetFaceRegionBuilder::build(
                 curvenetCutResult
+            );
+
+            CurvenetEdgeBuilder::build(
+                curvenetCutResult,
+                profileInputs
+            );
+
+            MFnDependencyNode dependencyNode(
+                thisMObject()
+            );
+
+            CurvenetSceneBuilder::build(
+                curvenetCutResult,
+                dependencyNode.name()
             );
 
             MGlobal::displayInfo(
@@ -926,19 +809,11 @@ unsigned int geometryIndex
     {
         vertexBindingsCaptured = true;
 
-        MGlobal::displayInfo(
-            MString("Vertex bindings captured: ")
-            + static_cast<int>(vertexBindings.size())
-        );
     }
 
     if (!neutralSamplesCaptured)
     {
         neutralSamplesCaptured = true;
-
-        MGlobal::displayInfo(
-            "Neutral sampled curves captured."
-        );
     }
 
     geoIterator.reset();
