@@ -293,7 +293,7 @@ Both meshes recover the same logical Curvenet structure:
 ```text
 Shared Curvenet nodes: 8
 Curvenet edges: 10
-Curvenet faces: 3 ```
+Curvenet faces: 3
 
 ---
 
