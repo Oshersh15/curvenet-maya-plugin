@@ -35,5 +35,6 @@ private:
     std::vector<std::vector<int>> adjacentVertexIds;
     std::vector<std::vector<CurveConstraint>> constraintsByVertex;
     std::vector<std::vector<Point3>> neutralCurves;
+    std::vector<Point3> neutralVertexPositions;
     std::vector<Point3> displacements;
 };

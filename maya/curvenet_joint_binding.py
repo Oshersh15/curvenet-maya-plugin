@@ -6,6 +6,7 @@ import maya.cmds as cmds
 CONSTRAINT_ATTRIBUTE = "curvenetJointConstraint"
 BIND_MATRIX_ATTRIBUTE = "curvenetBindWorldMatrix"
 CURVE_SKIN_ATTRIBUTE = "curvenetJointSkinCluster"
+JOINT_WEIGHTS_ATTRIBUTE = "curvenetJointWeights"
 NODE_MARKER_ATTRIBUTES = (
     "curvenetNode",
     "transferredCurvenetNode",
@@ -107,6 +108,72 @@ def _nearest_bone_weights(node, joints):
     )
 
 
+def _stored_joint_weights(node):
+    if not cmds.attributeQuery(JOINT_WEIGHTS_ATTRIBUTE, node=node, exists=True):
+        return None
+
+    values = cmds.getAttr(node + "." + JOINT_WEIGHTS_ATTRIBUTE)
+
+    if values and len(values) == 1 and isinstance(values[0], (list, tuple)):
+        values = values[0]
+
+    return list(values) if values else None
+
+
+def _store_joint_weights(node, weights):
+    if not cmds.attributeQuery(JOINT_WEIGHTS_ATTRIBUTE, node=node, exists=True):
+        cmds.addAttr(
+            node,
+            longName=JOINT_WEIGHTS_ATTRIBUTE,
+            dataType="doubleArray",
+        )
+
+    cmds.setAttr(
+        node + "." + JOINT_WEIGHTS_ATTRIBUTE,
+        list(weights),
+        type="doubleArray",
+    )
+
+
+def _source_weights_for_transferred_node(node):
+    logical_attribute = node + ".curvenetLogicalNodeId"
+
+    if not cmds.objExists(logical_attribute):
+        return None
+
+    logical_node_id = cmds.getAttr(logical_attribute)
+
+    for attribute in cmds.ls("*.curvenetLogicalNodeId", long=True) or []:
+        candidate = attribute.rsplit(".", 1)[0]
+
+        if candidate == node or not cmds.attributeQuery(
+            "curvenetNode",
+            node=candidate,
+            exists=True,
+        ):
+            continue
+
+        if cmds.getAttr(attribute) == logical_node_id:
+            return _stored_joint_weights(candidate)
+
+    return None
+
+
+def _binding_weights(node, joints):
+    weights = None
+    copied = False
+
+    if cmds.attributeQuery("transferredCurvenetNode", node=node, exists=True):
+        weights = _source_weights_for_transferred_node(node)
+        copied = weights is not None and len(weights) == len(joints)
+
+    if weights is None or len(weights) != len(joints):
+        weights = _nearest_bone_weights(node, joints)
+
+    _store_joint_weights(node, weights)
+    return weights, copied
+
+
 def _curve_endpoint_controls(curve):
     expression = curve.rsplit("|", 1)[-1] + "_endpointExpr"
 
@@ -152,8 +219,12 @@ def _connected_curve_skin(curve):
     return connections[0] if connections else None
 
 
-def _skin_projected_curves(curves, joints):
+def _skin_projected_curves(curves, joints, nodes):
     joint_positions = [_world_position(joint) for joint in joints]
+    node_by_name = {
+        node.rsplit("|", 1)[-1]: node
+        for node in nodes
+    }
 
     for curve in curves:
         existing_skin = _connected_curve_skin(curve)
@@ -161,6 +232,7 @@ def _skin_projected_curves(curves, joints):
         if existing_skin:
             cmds.delete(existing_skin)
 
+        endpoint_controls = _curve_endpoint_controls(curve)
         expression = curve.rsplit("|", 1)[-1] + "_endpointExpr"
 
         if cmds.objExists(expression):
@@ -187,11 +259,40 @@ def _skin_projected_curves(curves, joints):
 
         for control_index in range(control_count):
             component = f"{curve}.cv[{control_index}]"
-            position = cmds.pointPosition(component, world=True)
-            weights = _nearest_bone_weights_at_position(
-                position,
-                joint_positions,
-            )
+            weights = None
+
+            if len(endpoint_controls) == 2:
+                start_node = node_by_name.get(endpoint_controls[0])
+                end_node = node_by_name.get(endpoint_controls[1])
+                start_weights = (
+                    _stored_joint_weights(start_node)
+                    if start_node else None
+                )
+                end_weights = (
+                    _stored_joint_weights(end_node)
+                    if end_node else None
+                )
+
+                if start_weights and end_weights:
+                    parameter = (
+                        control_index / float(control_count - 1)
+                        if control_count > 1 else 0.0
+                    )
+                    weights = [
+                        (1.0 - parameter) * start_weight
+                        + parameter * end_weight
+                        for start_weight, end_weight in zip(
+                            start_weights,
+                            end_weights,
+                        )
+                    ]
+
+            if weights is None:
+                position = cmds.pointPosition(component, world=True)
+                weights = _nearest_bone_weights_at_position(
+                    position,
+                    joint_positions,
+                )
             cmds.skinPercent(
                 skin,
                 component,
@@ -291,6 +392,8 @@ def bind_selected_curvenet_nodes_to_joints():
     if not nodes:
         raise RuntimeError("Select Curvenet spheres or their nodes group.")
 
+    copied_weight_count = 0
+
     for node in nodes:
         existing_constraint = _connected_constraint(node)
 
@@ -304,7 +407,8 @@ def bind_selected_curvenet_nodes_to_joints():
             maintainOffset=True,
             name=node.rsplit("|", 1)[-1] + "_curvenetJointConstraint",
         )[0]
-        weights = _nearest_bone_weights(node, joints)
+        weights, copied = _binding_weights(node, joints)
+        copied_weight_count += int(copied)
         aliases = cmds.parentConstraint(
             constraint,
             query=True,
@@ -330,11 +434,45 @@ def bind_selected_curvenet_nodes_to_joints():
     skinned_curves = _skin_projected_curves(
         _projected_curves_for_nodes(nodes),
         joints,
+        nodes,
     )
     print("Bound Curvenet nodes:", len(nodes))
+    print("Copied source node weights:", copied_weight_count)
     print("Skinned projected curves:", len(skinned_curves))
     print("Joint influences:", len(joints))
     return nodes
+
+
+def bind_curvenet_group_to_joint_hierarchy(root_joint, nodes_group):
+    root_matches = cmds.ls(root_joint, long=True, type="joint") or []
+
+    if len(root_matches) != 1:
+        raise RuntimeError(
+            "Expected exactly one root joint: " + str(root_joint)
+        )
+
+    group_matches = cmds.ls(nodes_group, long=True, type="transform") or []
+
+    if len(group_matches) != 1:
+        raise RuntimeError(
+            "Expected exactly one Curvenet nodes group: " + str(nodes_group)
+        )
+
+    root_joint = root_matches[0]
+    joints = [root_joint]
+    joints.extend(
+        cmds.listRelatives(
+            root_joint,
+            allDescendents=True,
+            fullPath=True,
+            type="joint",
+        )
+        or []
+    )
+
+    cmds.select(joints, replace=True)
+    cmds.select(group_matches[0], add=True)
+    return bind_selected_curvenet_nodes_to_joints()
 
 
 def unbind_selected_curvenet_nodes():

@@ -89,7 +89,7 @@ The current implementation focuses on constructing the Curvenet and its relation
 - Shared Curvenet node tests.
 - Curvenet face construction tests.
 - Curvenet face-region mapping tests.
-- 139 automated tests currently passing.
+- 145 automated tests currently passing.
 
 ### Debug Visualisation
 
@@ -325,6 +325,46 @@ V - E + F = 2
 
 When cutting places connected authored endpoints on different physical mesh vertices that cannot be merged safely, the plugin preserves their shared logical Curvenet node without altering the valid physical CutChains.
 
+### Joint-Driven Curvenet Deformation
+
+Curvenet nodes can be bound to a Maya joint hierarchy, allowing a sparse rig to pose the profile-curve network instead of skinning every mesh vertex directly.
+
+The binding workflow:
+
+- collects the complete hierarchy below a selected root joint;
+- assigns joint weights to the authored Curvenet nodes using their position relative to the joint bones;
+- stores the sparse node weights on the Curvenet controls;
+- interpolates the endpoint weights along each projected profile curve;
+- skins the projected curve control points to the joint hierarchy;
+- transfers stored node weights to corresponding logical Curvenet nodes on another mesh.
+
+The deformer uses the physically embedded CutChains as positional constraints for a harmonic surface deformation. Constraint displacement is propagated across the cut half-edge mesh using a uniform graph Laplacian.
+
+Global rigid motion is separated from local deformation. A best-fit rigid transform is recovered from the neutral and posed profile curves and applied directly to the mesh. The harmonic system then propagates only the remaining local deformation. This prevents a root-joint rotation from introducing an unwanted bend and ensures that resetting the joints returns the mesh to its neutral state.
+
+The joint hierarchy can be transferred into another mesh's local coordinate frame. Joint rotation and scale channels may be connected to the source hierarchy so both meshes receive the same pose while preserving their different polygon topology.
+
+The complete authoring and transfer workflow is exposed through:
+
+```python
+start_tube_a_curvenet()
+finish_tube_a_curvenet()
+setup_tube_a_and_tube_b() 
+```
+
+A complete fresh-scene workflow was manually validated on two geometrically identical tubes with different polygon topology.
+Both tubes recovered the same logical Curvenet:
+
+Shared Curvenet nodes: 14
+Curvenet edges: 28
+Curvenet faces: 16
+
+The following deformation behaviour was verified on both meshes:
+- root-joint rotation produces matching rigid motion;
+- middle-joint rotation produces corresponding local bending;
+- resetting joint rotations returns both meshes to their neutral state;
+- all 14 logical Curvenet-node weights transfer from Tube A to Tube B.
+
 ---
 
 ## Technologies
@@ -381,17 +421,21 @@ ctest --test-dir plugin/build --output-on-failure
 - Filtering of generated shared nodes to explicitly authored Curvenet junctions.
 - Scale-relative merging of near-zero-area numerical surface regions.
 - Deterministic distinct colours for Curvenet region previews.
+- Joint binding for authored Curvenet nodes and projected profile curves.
+- Sparse Curvenet-node weight storage and logical-node weight transfer.
+- Joint-hierarchy transfer between meshes in their local coordinate frames.
+- Harmonic mesh deformation constrained by embedded Curvenet CutChains.
+- Rigid-motion separation for stable root rotation and neutral reset.
+- Consolidated fresh-scene Maya authoring, binding and transfer workflow.
 
 ### In Progress
 
 - Validation of complete surface Curvenets on additional meshes and topology variants.
-- Curvenet correspondence between different mesh topologies.
-- Refinement of the authoring and scene-management workflow.
+- Evaluation of joint-driven Curvenet deformation on hand meshes.
+- Refinement of local deformation quality around articulated joints.
 
 ### Planned
 
-- Curvenet-driven articulation.
-- Cross-topology deformation transfer.
 - Improved deformation weighting and offset transport.
 - Evaluation on meshes with different resolutions and topology.
 

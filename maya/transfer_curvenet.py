@@ -131,6 +131,108 @@ def _transfer_world_point(
     return [target_world.x, target_world.y, target_world.z]
 
 
+def _joint_hierarchy(root):
+    joints = []
+
+    def visit(joint):
+        joints.append(joint)
+
+        for child in cmds.listRelatives(
+            joint,
+            children=True,
+            type="joint",
+            fullPath=True,
+        ) or []:
+            visit(child)
+
+    visit(cmds.ls(root, long=True)[0])
+    return joints
+
+
+def transfer_joint_hierarchy_to_mesh(
+    source_root_joint,
+    target_mesh,
+    source_mesh="tubeA",
+    connect_pose=True,
+):
+    """Duplicate a source skeleton into a target mesh's local frame."""
+    if not cmds.objExists(source_root_joint):
+        raise RuntimeError(f"Source root joint does not exist: {source_root_joint}")
+
+    if not cmds.objExists(source_mesh):
+        raise RuntimeError(f"Source mesh does not exist: {source_mesh}")
+
+    if not cmds.objExists(target_mesh):
+        raise RuntimeError(f"Target mesh does not exist: {target_mesh}")
+
+    target_prefix = _short_name(target_mesh)
+    target_root_name = target_prefix + "_skeleton_root"
+    target_group_name = target_prefix + "_transferredSkeleton_GRP"
+
+    if cmds.objExists(target_root_name) or cmds.objExists(target_group_name):
+        raise RuntimeError(
+            f"Target skeleton already exists for: {target_prefix}"
+        )
+
+    source_joints = _joint_hierarchy(source_root_joint)
+    duplicated_root = cmds.duplicate(
+        source_root_joint,
+        renameChildren=True,
+        returnRootsOnly=True,
+    )[0]
+    duplicated_root = cmds.rename(duplicated_root, target_root_name)
+    target_group = cmds.group(empty=True, name=target_group_name)
+    duplicated_root = cmds.parent(
+        duplicated_root,
+        target_group,
+        absolute=True,
+    )[0]
+    target_joints = _joint_hierarchy(duplicated_root)
+
+    if len(source_joints) != len(target_joints):
+        cmds.delete(duplicated_root)
+        raise RuntimeError("Duplicated joint hierarchy does not match the source.")
+
+    source_inverse_matrix = _world_matrix(source_mesh).inverse()
+    target_world_matrix = _world_matrix(target_mesh)
+    transfer_matrix = source_inverse_matrix * target_world_matrix
+    cmds.xform(
+        target_group,
+        worldSpace=True,
+        matrix=list(transfer_matrix),
+    )
+    duplicated_root = cmds.ls(duplicated_root, long=True)[0]
+    target_joints = _joint_hierarchy(duplicated_root)
+
+    if connect_pose:
+        for source_joint, target_joint in zip(source_joints, target_joints):
+            cmds.connectAttr(
+                source_joint + ".rotate",
+                target_joint + ".rotate",
+                force=True,
+            )
+            cmds.connectAttr(
+                source_joint + ".scale",
+                target_joint + ".scale",
+                force=True,
+            )
+
+    cmds.addAttr(
+        target_group,
+        longName="transferredCurvenetSkeleton",
+        attributeType="bool",
+        defaultValue=True,
+    )
+    cmds.setAttr(
+        target_group + ".transferredCurvenetSkeleton",
+        lock=True,
+    )
+    print("Transferred skeleton to:", target_mesh)
+    print("Transferred joints:", len(target_joints))
+    print("Target root:", duplicated_root)
+    return duplicated_root, target_joints
+
+
 def _project_world_point(point, target_mesh):
     target_shape = _mesh_shape(target_mesh)
     closest_point = cmds.createNode("closestPointOnMesh")
@@ -211,7 +313,28 @@ def _create_node_marker(target_prefix, node_id, position, node_group):
         defaultValue=True,
     )
     cmds.setAttr(marker + ".transferredCurvenetNode", lock=True)
+    cmds.addAttr(
+        marker,
+        longName="curvenetLogicalNodeId",
+        attributeType="long",
+    )
+    cmds.setAttr(marker + ".curvenetLogicalNodeId", node_id)
+    cmds.setAttr(marker + ".curvenetLogicalNodeId", lock=True)
     return marker
+
+
+def _source_logical_node_id(control):
+    attribute = control + ".curvenetLogicalNodeId"
+
+    if cmds.objExists(attribute):
+        return cmds.getAttr(attribute)
+
+    match = re.search(r"(\d+)$", control.rsplit("|", 1)[-1])
+
+    if not match:
+        raise RuntimeError(f"No logical Curvenet node ID found for {control}.")
+
+    return int(match.group(1))
 
 
 def _create_endpoint_expression(curve, start_marker, end_marker):
@@ -296,13 +419,14 @@ def attach_existing_curvenet_to_mesh(
                 transferred,
                 target_mesh,
             )
+            logical_node_id = _source_logical_node_id(control)
             marker_by_control[control] = _create_node_marker(
                 target_prefix,
-                len(projected_endpoint_by_control) - 1,
+                logical_node_id,
                 projected_endpoint_by_control[control],
                 node_group,
             )
-            node_id_by_control[control] = len(node_id_by_control)
+            node_id_by_control[control] = logical_node_id
 
         return projected_endpoint_by_control[control]
 
