@@ -213,6 +213,38 @@ def _create_node_marker(target_prefix, node_id, position, node_group):
     return marker
 
 
+def _create_endpoint_expression(curve, start_marker, end_marker):
+    shape = cmds.listRelatives(
+        curve,
+        shapes=True,
+        noIntermediate=True,
+        fullPath=False,
+    )[0]
+    last_control = cmds.getAttr(shape + ".controlPoints", size=True) - 1
+
+    lines = []
+
+    for control_index, marker in (
+        (0, start_marker),
+        (last_control, end_marker),
+    ):
+        lines.extend([
+            f"{shape}.controlPoints[{control_index}].xValue = "
+            f"{marker}.translateX;",
+            f"{shape}.controlPoints[{control_index}].yValue = "
+            f"{marker}.translateY;",
+            f"{shape}.controlPoints[{control_index}].zValue = "
+            f"{marker}.translateZ;",
+        ])
+
+    cmds.expression(
+        name=curve + "_endpointExpr",
+        string="\n".join(lines),
+        alwaysEvaluate=True,
+        unitConversion="all",
+    )
+
+
 def attach_existing_curvenet_to_mesh(
     target_mesh,
     source_mesh="tubeA",
@@ -232,6 +264,7 @@ def attach_existing_curvenet_to_mesh(
     source_inverse_matrix = _world_matrix(source_mesh).inverse()
     target_world_matrix = _world_matrix(target_mesh)
     projected_endpoint_by_control = {}
+    marker_by_control = {}
     projected_curves = []
 
     def projected_endpoint(control):
@@ -251,7 +284,7 @@ def attach_existing_curvenet_to_mesh(
                 transferred,
                 target_mesh,
             )
-            _create_node_marker(
+            marker_by_control[control] = _create_node_marker(
                 target_prefix,
                 len(projected_endpoint_by_control) - 1,
                 projected_endpoint_by_control[control],
@@ -293,6 +326,11 @@ def attach_existing_curvenet_to_mesh(
         cmds.setAttr(
             projected_curve + ".projectedCurvenetProfile",
             lock=True,
+        )
+        _create_endpoint_expression(
+            projected_curve,
+            marker_by_control[start_control],
+            marker_by_control[end_control],
         )
         projected_curves.append(projected_curve)
 

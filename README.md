@@ -323,6 +323,8 @@ The result is consistent with Euler's formula for a connected graph embedded on 
 V - E + F = 2
 14 - 28 + 16 = 2
 
+When cutting places connected authored endpoints on different physical mesh vertices that cannot be merged safely, the plugin preserves their shared logical Curvenet node without altering the valid physical CutChains.
+
 ---
 
 ## Technologies

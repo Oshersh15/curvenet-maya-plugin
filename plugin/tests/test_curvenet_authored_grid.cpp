@@ -424,6 +424,66 @@ TEST(
 
 TEST(
     CurvenetMeshCutter,
+    PreservesLogicalJunctionWhenCutEndpointsDoNotShareAFace
+)
+{
+    HalfEdgeMesh inputMesh = createQuadGrid(4, 4);
+
+    ProfileCutInput lowerProfile;
+    lowerProfile.curveId = 0;
+    lowerProfile.sampledSegments = {
+        PolylineSegment{
+            Point3{0.0, 0.5, 0.0},
+            Point3{4.0, 0.5, 0.0}
+        }
+    };
+
+    ProfileCutInput upperProfile;
+    upperProfile.curveId = 1;
+    upperProfile.sampledSegments = {
+        PolylineSegment{
+            Point3{0.0, 3.5, 0.0},
+            Point3{4.0, 3.5, 0.0}
+        }
+    };
+
+    ProfileCurveConnection authoredConnection;
+    authoredConnection.endpoint = CurveEndpoint::Start;
+    authoredConnection.targetCurveId = 1;
+    authoredConnection.targetSegmentId = 0;
+    authoredConnection.targetSegmentT = 0.0;
+    lowerProfile.connections.push_back(authoredConnection);
+
+    const CurvenetCutResult result = CurvenetMeshCutter::apply(
+        inputMesh,
+        {lowerProfile, upperProfile},
+        0.0001,
+        0.0001
+    );
+
+    ASSERT_TRUE(result.success);
+
+    const auto logicalNode = std::find_if(
+        result.sharedCurvenetNodes.begin(),
+        result.sharedCurvenetNodes.end(),
+        [](const SharedCurvenetNode& node)
+        {
+            return node.meshVertexId < 0 &&
+                node.connectedCurveIds.size() == 2;
+        }
+    );
+
+    ASSERT_NE(logicalNode, result.sharedCurvenetNodes.end());
+    const std::set<int> connectedCurveIds(
+        logicalNode->connectedCurveIds.begin(),
+        logicalNode->connectedCurveIds.end()
+    );
+    EXPECT_EQ(connectedCurveIds, (std::set<int>{0, 1}));
+    EXPECT_DOUBLE_EQ(logicalNode->position.x, 0.0);
+}
+
+TEST(
+    CurvenetMeshCutter,
     BuildsThreeFacesForThreeCellAuthoredGrid
 )
 {
