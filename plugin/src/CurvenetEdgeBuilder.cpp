@@ -1,5 +1,6 @@
 #include "CurvenetEdgeBuilder.h"
 #include "CurvenetCutResult.h"
+#include "GeometryUtils.h"
 #include "ProfileCutInput.h"
 
 #include <maya/MGlobal.h>
@@ -82,6 +83,38 @@ void CurvenetEdgeBuilder::build(
                         static_cast<int>(pointIndex)
                     );
                 }
+            }
+
+            if (node.meshVertexId < 0 &&
+                std::find(
+                    node.connectedCurveIds.begin(),
+                    node.connectedCurveIds.end(),
+                    cutChain.curveId
+                ) != node.connectedCurveIds.end() &&
+                !cutChain.points.empty() &&
+                !profileInput->sampledSegments.empty())
+            {
+                const Point3& startPosition =
+                    profileInput->sampledSegments.front().start;
+                const Point3& endPosition =
+                    profileInput->sampledSegments.back().end;
+                const double startDistance =
+                    GeometryUtils::pointToPointDistance(
+                        node.position,
+                        startPosition
+                    );
+                const double endDistance =
+                    GeometryUtils::pointToPointDistance(
+                        node.position,
+                        endPosition
+                    );
+
+                sharedNodes.push_back(static_cast<int>(i));
+                sharedPointIndices.push_back(
+                    startDistance <= endDistance
+                        ? 0
+                        : static_cast<int>(cutChain.points.size()) - 1
+                );
             }
         }
 

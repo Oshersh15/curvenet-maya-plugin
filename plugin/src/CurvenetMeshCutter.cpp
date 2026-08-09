@@ -13,7 +13,9 @@
 namespace
 {
     void buildSharedCurvenetNodes(
-        CurvenetCutResult& result
+        CurvenetCutResult& result,
+        const std::unordered_set<int>* authoredNodeVertexIds,
+        const std::vector<SharedCurvenetNode>& logicalEndpointNodes
     )
     {
         result.sharedCurvenetNodes.clear();
@@ -70,6 +72,12 @@ namespace
             const int meshVertexId =
                 entry.first;
 
+            if (authoredNodeVertexIds != nullptr &&
+                authoredNodeVertexIds->count(meshVertexId) == 0)
+            {
+                continue;
+            }
+
             const std::vector<int>& connectedCurveIds =
                 entry.second;
 
@@ -102,13 +110,22 @@ namespace
                 sharedNode
             );
         }
+
+        result.sharedCurvenetNodes.insert(
+            result.sharedCurvenetNodes.end(),
+            logicalEndpointNodes.begin(),
+            logicalEndpointNodes.end()
+        );
     }
 
-    void applyPhysicalEndpointJunctions(
+    std::unordered_set<int> applyPhysicalEndpointJunctions(
         CurvenetCutResult& result,
-        const std::vector<ProfileCutInput>& profileInputs
+        const std::vector<ProfileCutInput>& profileInputs,
+        std::vector<SharedCurvenetNode>& logicalEndpointNodes
     )
     {
+        std::unordered_set<int> authoredNodeVertexIds;
+
         struct EndpointRef
         {
             int curveId = -1;
@@ -302,11 +319,38 @@ namespace
                 }
             }
 
-            if (boundaryVertexIds.size() < 2 ||
-                !hasSharedPosition)
+            if (boundaryVertexIds.size() == 1)
+            {
+                authoredNodeVertexIds.insert(boundaryVertexIds.front());
+                continue;
+            }
+
+            if (boundaryVertexIds.size() < 2 || !hasSharedPosition)
             {
                 continue;
             }
+
+            const auto preserveLogicalJunction = [&]()
+            {
+                SharedCurvenetNode logicalNode;
+                logicalNode.position = sharedPosition;
+
+                for (const EndpointRef& endpoint : group)
+                {
+                    if (std::find(
+                            logicalNode.connectedCurveIds.begin(),
+                            logicalNode.connectedCurveIds.end(),
+                            endpoint.curveId
+                        ) == logicalNode.connectedCurveIds.end())
+                    {
+                        logicalNode.connectedCurveIds.push_back(
+                            endpoint.curveId
+                        );
+                    }
+                }
+
+                logicalEndpointNodes.push_back(std::move(logicalNode));
+            };
 
             int commonFaceId = -1;
 
@@ -337,6 +381,13 @@ namespace
 
             if (commonFaceId < 0)
             {
+                /*
+                    Authored endpoints can represent one logical node even
+                    when cutting leaves their mesh vertices on different
+                    faces. Preserve that authored junction without changing
+                    the valid physical CutChains.
+                */
+                preserveLogicalJunction();
                 continue;
             }
 
@@ -355,10 +406,12 @@ namespace
 
             if (!splitResult.success)
             {
+                preserveLogicalJunction();
                 continue;
             }
 
             result.embeddedVertexIds.insert(sharedVertexId);
+            authoredNodeVertexIds.insert(sharedVertexId);
 
             for (int halfEdgeId :
                  splitResult.boundaryToInteriorHalfEdgeIds)
@@ -416,6 +469,8 @@ namespace
                 }
             }
         }
+
+        return authoredNodeVertexIds;
     }
 }
 
@@ -609,7 +664,9 @@ CurvenetCutResult CurvenetMeshCutter::apply(
     }
 
     buildSharedCurvenetNodes(
-        result
+        result,
+        nullptr,
+        {}
     );
 
 
@@ -1171,13 +1228,30 @@ CurvenetCutResult CurvenetMeshCutter::apply(
     Cutting must finish first so authored endpoint relationships can be
     applied to the final cut chains and their generated mesh vertices.
     */
-    applyPhysicalEndpointJunctions(
+    std::vector<SharedCurvenetNode> logicalEndpointNodes;
+    const std::unordered_set<int> authoredNodeVertexIds =
+        applyPhysicalEndpointJunctions(
         result,
-        profileInputs
+        profileInputs,
+        logicalEndpointNodes
     );
 
+    const bool hasExplicitEndpointConnections =
+        std::any_of(
+            profileInputs.begin(),
+            profileInputs.end(),
+            [](const ProfileCutInput& input)
+            {
+                return !input.connections.empty();
+            }
+        );
+
     buildSharedCurvenetNodes(
-        result
+        result,
+        hasExplicitEndpointConnections
+            ? &authoredNodeVertexIds
+            : nullptr,
+        logicalEndpointNodes
     );
 
     result.success = true;

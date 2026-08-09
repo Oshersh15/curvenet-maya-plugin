@@ -10,7 +10,37 @@
 #include <maya/MPointArray.h>
 #include <maya/MString.h>
 
+#include <cmath>
 #include <vector>
+
+namespace
+{
+MColor regionColor(int regionId)
+{
+    const float hue = std::fmod(
+        static_cast<float>(regionId) * 0.61803398875f,
+        1.0f
+    );
+    const float saturation = 0.72f;
+    const float value = 0.95f;
+    const float scaledHue = hue * 6.0f;
+    const int sector = static_cast<int>(std::floor(scaledHue));
+    const float fraction = scaledHue - static_cast<float>(sector);
+    const float minimum = value * (1.0f - saturation);
+    const float descending = value * (1.0f - saturation * fraction);
+    const float ascending = value * (1.0f - saturation * (1.0f - fraction));
+
+    switch (sector % 6)
+    {
+        case 0: return MColor(value, ascending, minimum, 1.0f);
+        case 1: return MColor(descending, value, minimum, 1.0f);
+        case 2: return MColor(minimum, value, ascending, 1.0f);
+        case 3: return MColor(minimum, descending, value, 1.0f);
+        case 4: return MColor(ascending, minimum, value, 1.0f);
+        default: return MColor(value, minimum, descending, 1.0f);
+    }
+}
+}
 
 void CurvenetRegionPreviewBuilder::build(
     const std::string& ownerName,
@@ -117,14 +147,6 @@ void CurvenetRegionPreviewBuilder::build(
     meshFn.createColorSetWithName(colorSetName);
     meshFn.setCurrentColorSetName(colorSetName);
 
-    const std::vector<MColor> palette = {
-        MColor(0.95f, 0.25f, 0.20f, 1.0f),
-        MColor(0.20f, 0.75f, 0.30f, 1.0f),
-        MColor(0.20f, 0.45f, 0.95f, 1.0f),
-        MColor(0.90f, 0.65f, 0.15f, 1.0f),
-        MColor(0.65f, 0.30f, 0.90f, 1.0f)
-    };
-
     MColorArray faceColors;
     MIntArray faceIds;
     faceColors.setLength(polygonCounts.length());
@@ -145,9 +167,8 @@ void CurvenetRegionPreviewBuilder::build(
          );
          ++curvenetFaceId)
     {
-        const MColor& color = palette[
-            curvenetFaceId % palette.size()
-        ];
+        const MColor color =
+            regionColor(curvenetFaceId);
 
         for (int meshFaceId :
              curvenetCutResult

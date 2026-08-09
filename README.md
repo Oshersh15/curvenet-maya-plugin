@@ -290,10 +290,40 @@ The transfer workflow:
 
 Both meshes recover the same logical Curvenet structure:
 
-```text
 Shared Curvenet nodes: 8
 Curvenet edges: 10
 Curvenet faces: 3
+
+### Surface-Aware Curvenet Authoring
+
+Drawn Curvenet nodes can be placed freely on the mesh surface without depending on the original polygon vertices. Near geometric feature edges, such as the rim of a capped tube, nodes snap continuously to the closest position along the feature rather than to a specific mesh vertex.
+
+Curves connecting feature-edge nodes follow the detected surface feature. This allows profile curves to follow boundaries such as circular rims while preserving topology-independent authoring elsewhere on the surface.
+
+For Curvenets intended to partition the complete mesh surface, the `fullSurfaceCurvenet` attribute is enabled by default. In this mode:
+
+- embedded Curvenet edges act as flood-fill barriers;
+- every connected surface region is recovered;
+- all original mesh faces are mapped to a Curvenet face;
+- authored endpoint connections define the logical Curvenet nodes;
+- incidental cut-mesh intersections are not promoted to authored nodes;
+- near-zero-area numerical regions are merged into an adjacent valid region;
+- preview regions receive distinct deterministic colours.
+
+A complete Curvenet wrapping a capped tube was manually validated with:
+
+Curvenet cutting: SUCCESS
+Shared Curvenet nodes: 14
+Curvenet edges: 28
+Curvenet faces: 16
+Mapped mesh faces: 1394
+
+The result is consistent with Euler's formula for a connected graph embedded on a closed genus-zero surface:
+
+V - E + F = 2
+14 - 28 + 16 = 2
+
+When cutting places connected authored endpoints on different physical mesh vertices that cannot be merged safely, the plugin preserves their shared logical Curvenet node without altering the valid physical CutChains.
 
 ---
 
@@ -346,10 +376,15 @@ ctest --test-dir plugin/build --output-on-failure
 - Curve-driven deformation prototype.
 - Maya debug visualisation.
 - GoogleTest coverage for the geometry and topology layers.
+- Surface-aware Curvenet authoring with continuous geometric feature-edge snapping.
+- Full-surface Curvenet partitioning using embedded curve edges as region barriers.
+- Filtering of generated shared nodes to explicitly authored Curvenet junctions.
+- Scale-relative merging of near-zero-area numerical surface regions.
+- Deterministic distinct colours for Curvenet region previews.
 
 ### In Progress
 
-- Validation of drawn/projected Curvenet authoring on additional meshes.
+- Validation of complete surface Curvenets on additional meshes and topology variants.
 - Curvenet correspondence between different mesh topologies.
 - Refinement of the authoring and scene-management workflow.
 

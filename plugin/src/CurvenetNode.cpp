@@ -11,6 +11,7 @@
 #include <maya/MTypeId.h>
 #include <maya/MStatus.h>
 #include <maya/MFnTypedAttribute.h>
+#include <maya/MFnNumericAttribute.h>
 #include <maya/MFnNurbsCurve.h>
 #include <maya/MGlobal.h>
 #include <maya/MString.h>
@@ -42,6 +43,7 @@
 
 #include <vector>
 #include <algorithm>
+#include <cmath>
 
 namespace
 {
@@ -269,6 +271,40 @@ MStatus CurveDeformerNode::initialize()
     if (!status)
     {
         status.perror("Failed to set attributeAffects for inputMesh");
+        return status;
+    }
+
+    MFnNumericAttribute numericAttr;
+    fullSurfaceCurvenet = numericAttr.create(
+        "fullSurfaceCurvenet",
+        "fsc",
+        MFnNumericData::kBoolean,
+        true,
+        &status
+    );
+
+    if (!status)
+    {
+        status.perror("Failed to create fullSurfaceCurvenet");
+        return status;
+    }
+
+    numericAttr.setStorable(true);
+    numericAttr.setKeyable(true);
+
+    status = addAttribute(fullSurfaceCurvenet);
+
+    if (!status)
+    {
+        status.perror("Failed to add fullSurfaceCurvenet");
+        return status;
+    }
+
+    status = attributeAffects(fullSurfaceCurvenet, outputGeom);
+
+    if (!status)
+    {
+        status.perror("Failed to set fullSurfaceCurvenet affects");
         return status;
     }
 
@@ -839,14 +875,30 @@ unsigned int geometryIndex
 
         if (curvenetCutResult.success)
         {
-            curvenetCutResult.curvenetFaces =
-                CurvenetFaceBuilder::build(
+            const bool buildFullSurface =
+                dataBlock.inputValue(
+                    fullSurfaceCurvenet,
+                    &status
+                ).asBool();
+
+            if (buildFullSurface)
+            {
+                CurvenetFaceRegionBuilder::
+                    buildFullSurfacePartitions(
+                        curvenetCutResult
+                    );
+            }
+            else
+            {
+                curvenetCutResult.curvenetFaces =
+                    CurvenetFaceBuilder::build(
+                        curvenetCutResult
+                    );
+
+                CurvenetFaceRegionBuilder::build(
                     curvenetCutResult
                 );
-
-            CurvenetFaceRegionBuilder::build(
-                curvenetCutResult
-            );
+            }
 
             CurvenetEdgeBuilder::build(
                 curvenetCutResult,
@@ -889,6 +941,7 @@ unsigned int geometryIndex
                 MString("Mapped mesh faces: ")
                 + mappedMeshFaceCount
             );
+
         }
     }
 
@@ -1017,6 +1070,7 @@ MTypeId CurveDeformerNode::id(0x001226C1);
 MString CurveDeformerNode::nodeName("curvenetNode");
 MObject CurveDeformerNode::inputCurves;
 MObject CurveDeformerNode::inputMesh;
+MObject CurveDeformerNode::fullSurfaceCurvenet;
 
 MStatus initializePlugin(MObject pluginObject)
 {
