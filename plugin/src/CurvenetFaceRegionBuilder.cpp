@@ -1,7 +1,11 @@
 #include "CurvenetFaceRegionBuilder.h"
+#include "GeometryUtils.h"
 
 #include <unordered_set>
+#include <unordered_map>
 #include <algorithm>
+#include <cmath>
+#include <limits>
 #include <queue>
 #include <utility>
 
@@ -382,4 +386,292 @@ void CurvenetFaceRegionBuilder::build(
             curvenetFace.meshFaceIds.end()
         );
     }
+}
+
+void CurvenetFaceRegionBuilder::buildFullSurfacePartitions(
+    CurvenetCutResult& cutResult
+)
+{
+    cutResult.curvenetFaces.clear();
+
+    std::unordered_set<int> visitedFaceIds;
+
+    for (int seedFaceId = 0;
+         seedFaceId < static_cast<int>(cutResult.mesh.faces.size());
+         ++seedFaceId)
+    {
+        if (visitedFaceIds.count(seedFaceId) > 0)
+        {
+            continue;
+        }
+
+        CurvenetFace face;
+        face.id = static_cast<int>(cutResult.curvenetFaces.size());
+
+        std::queue<int> pendingFaceIds;
+        pendingFaceIds.push(seedFaceId);
+        visitedFaceIds.insert(seedFaceId);
+
+        while (!pendingFaceIds.empty())
+        {
+            const int currentFaceId = pendingFaceIds.front();
+            pendingFaceIds.pop();
+            face.meshFaceIds.push_back(currentFaceId);
+
+            for (int halfEdgeId :
+                 cutResult.mesh.getFaceHalfEdges(currentFaceId))
+            {
+                if (halfEdgeId < 0 ||
+                    halfEdgeId >= static_cast<int>(
+                        cutResult.mesh.halfEdges.size()
+                    ))
+                {
+                    continue;
+                }
+
+                const int twinHalfEdgeId =
+                    cutResult.mesh.halfEdges[halfEdgeId].twin;
+
+                const bool curvenetBarrier =
+                    cutResult.embeddedHalfEdgeIds.count(halfEdgeId) > 0 ||
+                    cutResult.embeddedHalfEdgeIds.count(twinHalfEdgeId) > 0;
+
+                if (curvenetBarrier ||
+                    twinHalfEdgeId < 0 ||
+                    twinHalfEdgeId >= static_cast<int>(
+                        cutResult.mesh.halfEdges.size()
+                    ))
+                {
+                    continue;
+                }
+
+                const int neighbouringFaceId =
+                    cutResult.mesh.halfEdges[twinHalfEdgeId].face;
+
+                if (neighbouringFaceId >= 0 &&
+                    neighbouringFaceId < static_cast<int>(
+                        cutResult.mesh.faces.size()
+                    ) &&
+                    visitedFaceIds.insert(neighbouringFaceId).second)
+                {
+                    pendingFaceIds.push(neighbouringFaceId);
+                }
+            }
+        }
+
+        std::sort(face.meshFaceIds.begin(), face.meshFaceIds.end());
+
+        cutResult.curvenetFaces.push_back(std::move(face));
+    }
+
+    const auto meshFaceArea = [&cutResult](int meshFaceId)
+    {
+        const std::vector<int> halfEdgeIds =
+            cutResult.mesh.traverseFace(meshFaceId);
+
+        if (halfEdgeIds.size() < 3)
+        {
+            return 0.0;
+        }
+
+        const Point3& anchor = cutResult.mesh.vertices[
+            cutResult.mesh.halfEdges[halfEdgeIds[0]].startVertex
+        ].position;
+        double area = 0.0;
+
+        for (int vertexIndex = 1;
+             vertexIndex + 1 < static_cast<int>(halfEdgeIds.size());
+             ++vertexIndex)
+        {
+            const Point3& first = cutResult.mesh.vertices[
+                cutResult.mesh.halfEdges[
+                    halfEdgeIds[vertexIndex]
+                ].startVertex
+            ].position;
+            const Point3& second = cutResult.mesh.vertices[
+                cutResult.mesh.halfEdges[
+                    halfEdgeIds[vertexIndex + 1]
+                ].startVertex
+            ].position;
+            const double firstX = first.x - anchor.x;
+            const double firstY = first.y - anchor.y;
+            const double firstZ = first.z - anchor.z;
+            const double secondX = second.x - anchor.x;
+            const double secondY = second.y - anchor.y;
+            const double secondZ = second.z - anchor.z;
+            const double crossX = firstY * secondZ - firstZ * secondY;
+            const double crossY = firstZ * secondX - firstX * secondZ;
+            const double crossZ = firstX * secondY - firstY * secondX;
+
+            area += 0.5 * std::sqrt(
+                crossX * crossX + crossY * crossY + crossZ * crossZ
+            );
+        }
+
+        return area;
+    };
+
+    std::vector<double> regionAreas(
+        cutResult.curvenetFaces.size(),
+        0.0
+    );
+    double totalArea = 0.0;
+
+    for (int regionId = 0;
+         regionId < static_cast<int>(cutResult.curvenetFaces.size());
+         ++regionId)
+    {
+        for (int meshFaceId :
+             cutResult.curvenetFaces[regionId].meshFaceIds)
+        {
+            regionAreas[regionId] += meshFaceArea(meshFaceId);
+        }
+
+        totalArea += regionAreas[regionId];
+    }
+
+    const double degenerateAreaTolerance =
+        totalArea * 0.00001;
+    std::vector<int> regionByMeshFace(
+        cutResult.mesh.faces.size(),
+        -1
+    );
+
+    for (int regionId = 0;
+         regionId < static_cast<int>(cutResult.curvenetFaces.size());
+         ++regionId)
+    {
+        for (int meshFaceId :
+             cutResult.curvenetFaces[regionId].meshFaceIds)
+        {
+            regionByMeshFace[meshFaceId] = regionId;
+        }
+    }
+
+    std::vector<int> mergeTargetByRegion(
+        cutResult.curvenetFaces.size(),
+        -1
+    );
+
+    for (int regionId = 0;
+         regionId < static_cast<int>(cutResult.curvenetFaces.size());
+         ++regionId)
+    {
+        if (regionAreas[regionId] > degenerateAreaTolerance)
+        {
+            continue;
+        }
+
+        std::unordered_map<int, double> sharedBoundaryLength;
+
+        for (int meshFaceId :
+             cutResult.curvenetFaces[regionId].meshFaceIds)
+        {
+            for (int halfEdgeId :
+                 cutResult.mesh.getFaceHalfEdges(meshFaceId))
+            {
+                const HalfEdge& halfEdge =
+                    cutResult.mesh.halfEdges[halfEdgeId];
+
+                if (halfEdge.twin < 0 ||
+                    halfEdge.twin >= static_cast<int>(
+                        cutResult.mesh.halfEdges.size()
+                    ))
+                {
+                    continue;
+                }
+
+                const int neighbouringFaceId =
+                    cutResult.mesh.halfEdges[halfEdge.twin].face;
+
+                if (neighbouringFaceId < 0 ||
+                    neighbouringFaceId >= static_cast<int>(
+                        regionByMeshFace.size()
+                    ))
+                {
+                    continue;
+                }
+
+                const int neighbouringRegionId =
+                    regionByMeshFace[neighbouringFaceId];
+
+                if (neighbouringRegionId < 0 ||
+                    neighbouringRegionId == regionId ||
+                    regionAreas[neighbouringRegionId] <=
+                        degenerateAreaTolerance)
+                {
+                    continue;
+                }
+
+                const Point3& start =
+                    cutResult.mesh.vertices[
+                        halfEdge.startVertex
+                    ].position;
+                const Point3& end =
+                    cutResult.mesh.vertices[
+                        halfEdge.endVertex
+                    ].position;
+
+                sharedBoundaryLength[neighbouringRegionId] +=
+                    GeometryUtils::pointToPointDistance(start, end);
+            }
+        }
+
+        double longestBoundary = -std::numeric_limits<double>::infinity();
+
+        for (const auto& entry : sharedBoundaryLength)
+        {
+            if (entry.second > longestBoundary)
+            {
+                longestBoundary = entry.second;
+                mergeTargetByRegion[regionId] = entry.first;
+            }
+        }
+    }
+
+    for (int regionId = 0;
+         regionId < static_cast<int>(mergeTargetByRegion.size());
+         ++regionId)
+    {
+        const int targetRegionId = mergeTargetByRegion[regionId];
+
+        if (targetRegionId < 0)
+        {
+            continue;
+        }
+
+        CurvenetFace& targetFace =
+            cutResult.curvenetFaces[targetRegionId];
+        const CurvenetFace& sourceFace =
+            cutResult.curvenetFaces[regionId];
+        targetFace.meshFaceIds.insert(
+            targetFace.meshFaceIds.end(),
+            sourceFace.meshFaceIds.begin(),
+            sourceFace.meshFaceIds.end()
+        );
+    }
+
+    std::vector<CurvenetFace> nonDegenerateFaces;
+
+    for (int regionId = 0;
+         regionId < static_cast<int>(cutResult.curvenetFaces.size());
+         ++regionId)
+    {
+        if (mergeTargetByRegion[regionId] >= 0)
+        {
+            continue;
+        }
+
+        CurvenetFace face =
+            std::move(cutResult.curvenetFaces[regionId]);
+        std::sort(face.meshFaceIds.begin(), face.meshFaceIds.end());
+        face.meshFaceIds.erase(
+            std::unique(face.meshFaceIds.begin(), face.meshFaceIds.end()),
+            face.meshFaceIds.end()
+        );
+        face.id = static_cast<int>(nonDegenerateFaces.size());
+        nonDegenerateFaces.push_back(std::move(face));
+    }
+
+    cutResult.curvenetFaces = std::move(nonDegenerateFaces);
 }

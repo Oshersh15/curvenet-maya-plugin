@@ -60,6 +60,7 @@ public:
     static MString nodeName;
     static MObject inputCurves;
     static MObject inputMesh;
+    static MObject fullSurfaceCurvenet;
 
 private:
     CurvenetData curvenetData;

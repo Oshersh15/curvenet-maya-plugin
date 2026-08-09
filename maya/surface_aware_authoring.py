@@ -1,0 +1,376 @@
+"""Feature-edge support for the interactive Curvenet drawing script.
+
+Run the base drawing script first, then execute this file in the same Maya
+Python namespace. Clicks near hard or boundary edges snap to that feature,
+and connections between snapped nodes follow the shortest feature-edge path.
+"""
+
+import heapq
+import math
+
+import maya.api.OpenMaya as om
+import maya.cmds as cmds
+
+
+FEATURE_SNAP_DISTANCE = 0.22
+FEATURE_ANGLE_DEGREES = 45.0
+FEATURE_EDGE_ATTRIBUTE = "curvenetFeatureEdgeId"
+FEATURE_EDGE_T_ATTRIBUTE = "curvenetFeatureEdgeT"
+
+
+def _mesh_dag_path():
+    selection = om.MSelectionList()
+    selection.add(MESH_NAME)
+    path = selection.getDagPath(0)
+    path.extendToShape()
+    return path
+
+
+def _feature_graph():
+    path = _mesh_dag_path()
+    mesh_fn = om.MFnMesh(path)
+    edge_iterator = om.MItMeshEdge(path)
+    adjacency = {}
+    positions = {}
+    edges = {}
+
+    while not edge_iterator.isDone():
+        connected_faces = edge_iterator.getConnectedFaces()
+        feature_edge = len(connected_faces) == 1
+
+        if len(connected_faces) == 2:
+            first_normal = mesh_fn.getPolygonNormal(
+                connected_faces[0],
+                om.MSpace.kWorld,
+            )
+            second_normal = mesh_fn.getPolygonNormal(
+                connected_faces[1],
+                om.MSpace.kWorld,
+            )
+            normal_dot = max(
+                -1.0,
+                min(1.0, first_normal * second_normal),
+            )
+            angle = math.degrees(math.acos(normal_dot))
+            feature_edge = angle >= FEATURE_ANGLE_DEGREES
+
+        if feature_edge:
+            edge_id = edge_iterator.index()
+            first = edge_iterator.vertexId(0)
+            second = edge_iterator.vertexId(1)
+            first_point = mesh_fn.getPoint(first, om.MSpace.kWorld)
+            second_point = mesh_fn.getPoint(second, om.MSpace.kWorld)
+            first_position = [first_point.x, first_point.y, first_point.z]
+            second_position = [second_point.x, second_point.y, second_point.z]
+            edge_length = distance(first_position, second_position)
+
+            positions[first] = first_position
+            positions[second] = second_position
+            edges[edge_id] = (
+                first,
+                second,
+                first_position,
+                second_position,
+                edge_length,
+            )
+            adjacency.setdefault(first, []).append((second, edge_length))
+            adjacency.setdefault(second, []).append((first, edge_length))
+
+        edge_iterator.next()
+
+    return adjacency, positions, edges
+
+
+def _closest_point_on_segment(position, start, end):
+    direction = [end[index] - start[index] for index in range(3)]
+    length_squared = sum(component * component for component in direction)
+
+    if length_squared <= 1.0e-12:
+        return 0.0, list(start)
+
+    relative = [position[index] - start[index] for index in range(3)]
+    parameter = sum(
+        relative[index] * direction[index]
+        for index in range(3)
+    ) / length_squared
+    parameter = max(0.0, min(1.0, parameter))
+    closest = [
+        start[index] + direction[index] * parameter
+        for index in range(3)
+    ]
+    return parameter, closest
+
+
+def _nearest_feature_location(position):
+    _, _, edges = _feature_graph()
+    best_edge = -1
+    best_parameter = 0.0
+    best_position = None
+    best_distance = FEATURE_SNAP_DISTANCE
+
+    for edge_id, edge in edges.items():
+        parameter, closest = _closest_point_on_segment(
+            position,
+            edge[2],
+            edge[3],
+        )
+        candidate_distance = distance(position, closest)
+
+        if candidate_distance <= best_distance:
+            best_edge = edge_id
+            best_parameter = parameter
+            best_position = closest
+            best_distance = candidate_distance
+
+    return best_edge, best_parameter, best_position
+
+
+def _node_feature_location(node):
+    for attribute in (FEATURE_EDGE_ATTRIBUTE, FEATURE_EDGE_T_ATTRIBUTE):
+        if not cmds.attributeQuery(attribute, node=node, exists=True):
+            return -1, 0.0
+
+    return (
+        cmds.getAttr(node + "." + FEATURE_EDGE_ATTRIBUTE),
+        cmds.getAttr(node + "." + FEATURE_EDGE_T_ATTRIBUTE),
+    )
+
+
+def _shortest_vertex_path(start_vertex, end_vertex, adjacency):
+
+    if start_vertex not in adjacency or end_vertex not in adjacency:
+        return float("inf"), []
+
+    distances = {start_vertex: 0.0}
+    previous = {}
+    pending = [(0.0, start_vertex)]
+
+    while pending:
+        current_distance, current_vertex = heapq.heappop(pending)
+
+        if current_distance != distances.get(current_vertex):
+            continue
+
+        if current_vertex == end_vertex:
+            break
+
+        for neighbour, edge_length in adjacency[current_vertex]:
+            candidate_distance = current_distance + edge_length
+
+            if candidate_distance < distances.get(neighbour, float("inf")):
+                distances[neighbour] = candidate_distance
+                previous[neighbour] = current_vertex
+                heapq.heappush(pending, (candidate_distance, neighbour))
+
+    if end_vertex not in distances:
+        return float("inf"), []
+
+    vertex_path = [end_vertex]
+
+    while vertex_path[-1] != start_vertex:
+        vertex_path.append(previous[vertex_path[-1]])
+
+    vertex_path.reverse()
+    return distances[end_vertex], vertex_path
+
+
+def _shortest_feature_path(
+    start_edge_id,
+    start_parameter,
+    end_edge_id,
+    end_parameter,
+):
+    adjacency, positions, edges = _feature_graph()
+
+    if start_edge_id not in edges or end_edge_id not in edges:
+        return []
+
+    start_edge = edges[start_edge_id]
+    end_edge = edges[end_edge_id]
+    start_position = [
+        start_edge[2][index]
+        + (start_edge[3][index] - start_edge[2][index]) * start_parameter
+        for index in range(3)
+    ]
+    end_position = [
+        end_edge[2][index]
+        + (end_edge[3][index] - end_edge[2][index]) * end_parameter
+        for index in range(3)
+    ]
+
+    candidates = []
+
+    if start_edge_id == end_edge_id:
+        candidates.append((
+            abs(start_parameter - end_parameter) * start_edge[4],
+            [start_position, end_position],
+        ))
+
+    start_exits = (
+        (start_edge[0], start_parameter * start_edge[4]),
+        (start_edge[1], (1.0 - start_parameter) * start_edge[4]),
+    )
+    end_entries = (
+        (end_edge[0], end_parameter * end_edge[4]),
+        (end_edge[1], (1.0 - end_parameter) * end_edge[4]),
+    )
+
+    for start_vertex, start_cost in start_exits:
+        for end_vertex, end_cost in end_entries:
+            path_cost, vertex_ids = _shortest_vertex_path(
+                start_vertex,
+                end_vertex,
+                adjacency,
+            )
+
+            if not vertex_ids:
+                continue
+
+            points = [start_position]
+            points.extend(positions[vertex_id] for vertex_id in vertex_ids)
+            points.append(end_position)
+            unique_points = []
+
+            for point in points:
+                if not unique_points or distance(point, unique_points[-1]) > 1.0e-8:
+                    unique_points.append(point)
+
+            candidates.append((
+                start_cost + path_cost + end_cost,
+                unique_points,
+            ))
+
+    if not candidates:
+        return []
+
+    return min(candidates, key=lambda candidate: candidate[0])[1]
+
+
+def _surface_find_or_create_node(position):
+    feature_edge, feature_parameter, feature_position = (
+        _nearest_feature_location(position)
+    )
+
+    if feature_edge >= 0:
+        position = feature_position
+
+    node = _surface_authoring_base_find_or_create_node(position)
+
+    if feature_edge >= 0:
+        if not cmds.attributeQuery(FEATURE_EDGE_ATTRIBUTE, node=node, exists=True):
+            cmds.addAttr(node, longName=FEATURE_EDGE_ATTRIBUTE, attributeType="long")
+        if not cmds.attributeQuery(FEATURE_EDGE_T_ATTRIBUTE, node=node, exists=True):
+            cmds.addAttr(node, longName=FEATURE_EDGE_T_ATTRIBUTE, attributeType="double")
+
+        cmds.setAttr(node + "." + FEATURE_EDGE_ATTRIBUTE, lock=False)
+        cmds.setAttr(node + "." + FEATURE_EDGE_T_ATTRIBUTE, lock=False)
+        cmds.setAttr(node + "." + FEATURE_EDGE_ATTRIBUTE, feature_edge)
+        cmds.setAttr(node + "." + FEATURE_EDGE_T_ATTRIBUTE, feature_parameter)
+        cmds.setAttr(node + "." + FEATURE_EDGE_ATTRIBUTE, lock=True)
+        cmds.setAttr(node + "." + FEATURE_EDGE_T_ATTRIBUTE, lock=True)
+
+    return node
+
+
+def _surface_create_endpoint_expression(curve, start_node, end_node):
+    shape = cmds.listRelatives(
+        curve,
+        shapes=True,
+        noIntermediate=True,
+        fullPath=False,
+    )[0]
+    last_control = cmds.getAttr(shape + ".controlPoints", size=True) - 1
+    expression_name = curve + "_endpointExpr"
+
+    if cmds.objExists(expression_name):
+        cmds.delete(expression_name)
+
+    lines = []
+
+    for control_index, node in ((0, start_node), (last_control, end_node)):
+        lines.extend([
+            f"{shape}.controlPoints[{control_index}].xValue = {node}.translateX;",
+            f"{shape}.controlPoints[{control_index}].yValue = {node}.translateY;",
+            f"{shape}.controlPoints[{control_index}].zValue = {node}.translateZ;",
+        ])
+
+    cmds.expression(
+        name=expression_name,
+        string="\n".join(lines),
+        alwaysEvaluate=True,
+        unitConversion="all",
+    )
+
+
+def _surface_get_curve_endpoint_controls(curve):
+    expression = curve + "_endpointExpr"
+
+    if not cmds.objExists(expression):
+        raise RuntimeError(f"No endpoint expression found for {curve}.")
+
+    expression_text = cmds.expression(expression, query=True, string=True)
+    controls = []
+
+    for line in expression_text.splitlines():
+        if ".xValue" not in line or ".controlPoints[" not in line:
+            continue
+
+        control = line.split("=")[1].strip().split(".")[0]
+
+        if control not in controls:
+            controls.append(control)
+
+    if len(controls) != 2:
+        raise RuntimeError(f"Could not read endpoint controls for {curve}.")
+
+    return controls[0], controls[1]
+
+
+def _surface_create_curve_between_nodes(start_node, end_node):
+    start_edge, start_parameter = _node_feature_location(start_node)
+    end_edge, end_parameter = _node_feature_location(end_node)
+
+    if start_edge < 0 or end_edge < 0:
+        return _surface_authoring_base_create_curve(start_node, end_node)
+
+    points = _shortest_feature_path(
+        start_edge,
+        start_parameter,
+        end_edge,
+        end_parameter,
+    )
+
+    if len(points) < 2:
+        return _surface_authoring_base_create_curve(start_node, end_node)
+
+    ensure_groups()
+    curve_id = next_index(CURVE_PREFIX)
+    curve = cmds.curve(
+        name=f"{CURVE_PREFIX}{curve_id}",
+        degree=1,
+        point=points,
+    )
+    cmds.parent(curve, CURVE_GRP)
+    cmds.addAttr(
+        curve,
+        longName="curvenetSegment",
+        attributeType="bool",
+        defaultValue=True,
+    )
+    cmds.setAttr(curve + ".curvenetSegment", lock=True)
+    _surface_create_endpoint_expression(curve, start_node, end_node)
+    print("Created feature-following Curvenet segment:", curve)
+    return curve
+
+
+if "_surface_authoring_base_find_or_create_node" not in globals():
+    _surface_authoring_base_find_or_create_node = find_or_create_node
+    _surface_authoring_base_create_curve = create_curve_between_nodes
+
+find_or_create_node = _surface_find_or_create_node
+create_endpoint_expression = _surface_create_endpoint_expression
+get_curve_endpoint_controls = _surface_get_curve_endpoint_controls
+create_curve_between_nodes = _surface_create_curve_between_nodes
+
+print("Surface-aware Curvenet authoring enabled.")
+print("Clicks near hard mesh features now snap and follow their edge chains.")

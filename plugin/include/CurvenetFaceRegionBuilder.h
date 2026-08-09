@@ -8,4 +8,8 @@ public:
     static void build(
         CurvenetCutResult& cutResult
     );
+
+    static void buildFullSurfacePartitions(
+        CurvenetCutResult& cutResult
+    );
 };

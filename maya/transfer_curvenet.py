@@ -63,10 +63,13 @@ def _endpoint_controls(curve):
     controls = []
 
     for line in expression_text.splitlines():
-        if ".controlPoints[0].xValue" in line:
-            controls.append(line.split("=")[1].strip().split(".")[0])
-        elif ".controlPoints[3].xValue" in line:
-            controls.append(line.split("=")[1].strip().split(".")[0])
+        if ".xValue" not in line or ".controlPoints[" not in line:
+            continue
+
+        control = line.split("=")[1].strip().split(".")[0]
+
+        if control not in controls:
+            controls.append(control)
 
     if len(controls) != 2:
         raise RuntimeError(

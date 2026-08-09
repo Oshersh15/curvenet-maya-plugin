@@ -13,7 +13,8 @@
 namespace
 {
     void buildSharedCurvenetNodes(
-        CurvenetCutResult& result
+        CurvenetCutResult& result,
+        const std::unordered_set<int>* authoredNodeVertexIds = nullptr
     )
     {
         result.sharedCurvenetNodes.clear();
@@ -70,6 +71,12 @@ namespace
             const int meshVertexId =
                 entry.first;
 
+            if (authoredNodeVertexIds != nullptr &&
+                authoredNodeVertexIds->count(meshVertexId) == 0)
+            {
+                continue;
+            }
+
             const std::vector<int>& connectedCurveIds =
                 entry.second;
 
@@ -104,11 +111,13 @@ namespace
         }
     }
 
-    void applyPhysicalEndpointJunctions(
+    std::unordered_set<int> applyPhysicalEndpointJunctions(
         CurvenetCutResult& result,
         const std::vector<ProfileCutInput>& profileInputs
     )
     {
+        std::unordered_set<int> authoredNodeVertexIds;
+
         struct EndpointRef
         {
             int curveId = -1;
@@ -302,8 +311,13 @@ namespace
                 }
             }
 
-            if (boundaryVertexIds.size() < 2 ||
-                !hasSharedPosition)
+            if (boundaryVertexIds.size() == 1)
+            {
+                authoredNodeVertexIds.insert(boundaryVertexIds.front());
+                continue;
+            }
+
+            if (boundaryVertexIds.size() < 2 || !hasSharedPosition)
             {
                 continue;
             }
@@ -359,6 +373,7 @@ namespace
             }
 
             result.embeddedVertexIds.insert(sharedVertexId);
+            authoredNodeVertexIds.insert(sharedVertexId);
 
             for (int halfEdgeId :
                  splitResult.boundaryToInteriorHalfEdgeIds)
@@ -416,6 +431,8 @@ namespace
                 }
             }
         }
+
+        return authoredNodeVertexIds;
     }
 }
 
@@ -1171,13 +1188,27 @@ CurvenetCutResult CurvenetMeshCutter::apply(
     Cutting must finish first so authored endpoint relationships can be
     applied to the final cut chains and their generated mesh vertices.
     */
-    applyPhysicalEndpointJunctions(
+    const std::unordered_set<int> authoredNodeVertexIds =
+        applyPhysicalEndpointJunctions(
         result,
         profileInputs
     );
 
+    const bool hasExplicitEndpointConnections =
+        std::any_of(
+            profileInputs.begin(),
+            profileInputs.end(),
+            [](const ProfileCutInput& input)
+            {
+                return !input.connections.empty();
+            }
+        );
+
     buildSharedCurvenetNodes(
-        result
+        result,
+        hasExplicitEndpointConnections
+            ? &authoredNodeVertexIds
+            : nullptr
     );
 
     result.success = true;

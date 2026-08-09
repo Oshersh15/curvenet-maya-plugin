@@ -855,3 +855,88 @@ TEST(
         0
     );
 }
+
+TEST(
+    CurvenetFaceRegionBuilder,
+    BuildsEveryComponentForFullSurfaceCurvenet
+)
+{
+    CurvenetCutResult cutResult;
+    cutResult.mesh.createFourQuadGrid();
+
+    for (int halfEdgeId = 0;
+         halfEdgeId < static_cast<int>(cutResult.mesh.halfEdges.size());
+         ++halfEdgeId)
+    {
+        const HalfEdge& halfEdge =
+            cutResult.mesh.halfEdges[halfEdgeId];
+
+        const bool upperDivider =
+            (halfEdge.startVertex == 1 && halfEdge.endVertex == 4) ||
+            (halfEdge.startVertex == 4 && halfEdge.endVertex == 1);
+
+        const bool lowerDivider =
+            (halfEdge.startVertex == 4 && halfEdge.endVertex == 7) ||
+            (halfEdge.startVertex == 7 && halfEdge.endVertex == 4);
+
+        if (upperDivider || lowerDivider)
+        {
+            cutResult.embeddedHalfEdgeIds.insert(halfEdgeId);
+        }
+    }
+
+    CurvenetFaceRegionBuilder::buildFullSurfacePartitions(cutResult);
+
+    ASSERT_EQ(cutResult.curvenetFaces.size(), 2);
+    EXPECT_EQ(cutResult.curvenetFaces[0].meshFaceIds.size(), 2);
+    EXPECT_EQ(cutResult.curvenetFaces[1].meshFaceIds.size(), 2);
+}
+
+TEST(
+    CurvenetFaceRegionBuilder,
+    MergesNearZeroAreaFullSurfacePartition
+)
+{
+    CurvenetCutResult cutResult;
+    constexpr double sliverWidth = 0.0000001;
+
+    cutResult.mesh.vertices = {
+        Vertex{Point3{0.0, 0.0, 0.0}},
+        Vertex{Point3{sliverWidth, 0.0, 0.0}},
+        Vertex{Point3{1.0 + sliverWidth, 0.0, 0.0}},
+        Vertex{Point3{0.0, 1.0, 0.0}},
+        Vertex{Point3{sliverWidth, 1.0, 0.0}},
+        Vertex{Point3{1.0 + sliverWidth, 1.0, 0.0}}
+    };
+
+    cutResult.mesh.halfEdges = {
+        HalfEdge{0, 1, 1, -1, 0},
+        HalfEdge{1, 4, 2, -1, 0},
+        HalfEdge{4, 3, 3, -1, 0},
+        HalfEdge{3, 0, 0, -1, 0},
+        HalfEdge{1, 2, 5, -1, 1},
+        HalfEdge{2, 5, 6, -1, 1},
+        HalfEdge{5, 4, 7, -1, 1},
+        HalfEdge{4, 1, 4, -1, 1}
+    };
+    cutResult.mesh.faces = {
+        Face{0},
+        Face{4}
+    };
+    cutResult.mesh.assignTwins();
+
+    /*
+        Treat the shared edge as an embedded curve. The left
+        component is a numerical sliver and should be absorbed
+        into its normal-area neighbour.
+    */
+    cutResult.embeddedHalfEdgeIds.insert(1);
+    cutResult.embeddedHalfEdgeIds.insert(7);
+
+    CurvenetFaceRegionBuilder::buildFullSurfacePartitions(cutResult);
+
+    ASSERT_EQ(cutResult.curvenetFaces.size(), 1);
+    EXPECT_EQ(cutResult.curvenetFaces[0].meshFaceIds.size(), 2);
+    EXPECT_EQ(cutResult.curvenetFaces[0].meshFaceIds[0], 0);
+    EXPECT_EQ(cutResult.curvenetFaces[0].meshFaceIds[1], 1);
+}
