@@ -531,7 +531,7 @@ void CurvenetFaceRegionBuilder::buildFullSurfacePartitions(
     }
 
     const double degenerateAreaTolerance =
-        totalArea * 0.00001;
+        totalArea * 0.0001;
     std::vector<int> regionByMeshFace(
         cutResult.mesh.faces.size(),
         -1

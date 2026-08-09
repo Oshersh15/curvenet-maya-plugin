@@ -59,8 +59,11 @@ public:
     static MTypeId id;
     static MString nodeName;
     static MObject inputCurves;
+    static MObject inputCurveStartNodeIds;
+    static MObject inputCurveEndNodeIds;
     static MObject inputMesh;
     static MObject fullSurfaceCurvenet;
+    static MObject showGeneratedCurvenet;
 
 private:
     CurvenetData curvenetData;
@@ -75,4 +78,5 @@ private:
 
     std::vector<VertexCurveBinding> vertexBindings;
     bool vertexBindingsCaptured = false;
+    bool scenePreviewBuilt = false;
 };

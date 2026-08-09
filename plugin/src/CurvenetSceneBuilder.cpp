@@ -536,7 +536,8 @@ void createSharedNodeExpression(
 void CurvenetSceneBuilder::build(
     const CurvenetCutResult& curvenetCutResult,
     const MString& ownerName,
-    const MString& geometryTransformName
+    const MString& geometryTransformName,
+    bool showGeneratedCurvenet
 )
 {
     const std::string owner =
@@ -574,76 +575,60 @@ void CurvenetSceneBuilder::build(
         );
     }
 
-    MGlobal::executeCommand(
-        (
-            "group -em -name " + owner +
-            "_curvenet_controls -parent " + owner +
-            "_curvenet_group;"
-        ).c_str(),
-        false,
-        false
-    );
-
-    MGlobal::executeCommand(
-        (
-            "group -em -name " + owner +
-            "_curvenet_curves -parent " + owner +
-            "_curvenet_group;"
-        ).c_str(),
-        false,
-        false
-    );
-
-    for (
-        size_t i = 0;
-        i < curvenetCutResult.sharedCurvenetNodes.size();
-        ++i
-    )
+    if (showGeneratedCurvenet)
     {
-        const SharedCurvenetNode& sharedNode =
-            curvenetCutResult.sharedCurvenetNodes[i];
-
-        if (
-            sharedNode.meshVertexId < 0 ||
-            sharedNode.meshVertexId >=
-                static_cast<int>(
-                    curvenetCutResult.mesh.vertices.size()
-                )
-        )
-        {
-            continue;
-        }
-
-        const Point3& position =
-            curvenetCutResult
-                .mesh
-                .vertices[sharedNode.meshVertexId]
-                .position;
-
-        createCurvenetControl(
-            owner,
-            static_cast<int>(i),
-            sharedNode.meshVertexId,
-            position
+        MGlobal::executeCommand(
+            (
+                "group -em -name " + owner +
+                "_curvenet_controls -parent " + owner +
+                "_curvenet_group;"
+            ).c_str(),
+            false,
+            false
         );
-    }
 
-    for (
-        const CurvenetEdge& edge :
-        curvenetCutResult.curvenetEdges
-    )
-    {
-        if (
-            edge.startNode < 0 ||
-            edge.endNode < 0
-        )
+        MGlobal::executeCommand(
+            (
+                "group -em -name " + owner +
+                "_curvenet_curves -parent " + owner +
+                "_curvenet_group;"
+            ).c_str(),
+            false,
+            false
+        );
+
+        for (size_t i = 0;
+             i < curvenetCutResult.sharedCurvenetNodes.size();
+             ++i)
         {
-            continue;
+            const SharedCurvenetNode& sharedNode =
+                curvenetCutResult.sharedCurvenetNodes[i];
+
+            createCurvenetControl(
+                owner,
+                static_cast<int>(i),
+                sharedNode.meshVertexId,
+                sharedNode.position
+            );
         }
 
-        createCurvenetCurve(
+        for (const CurvenetEdge& edge :
+             curvenetCutResult.curvenetEdges)
+        {
+            if (edge.startNode < 0 || edge.endNode < 0)
+            {
+                continue;
+            }
+
+            createCurvenetCurve(
+                owner,
+                edge,
+                curvenetCutResult
+            );
+        }
+
+        createSharedNodeExpression(
             owner,
-            edge,
             curvenetCutResult
         );
     }
@@ -653,8 +638,4 @@ void CurvenetSceneBuilder::build(
         curvenetCutResult
     );
 
-    createSharedNodeExpression(
-        owner,
-        curvenetCutResult
-    );
 }

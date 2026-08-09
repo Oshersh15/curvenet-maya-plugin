@@ -265,6 +265,7 @@ def attach_existing_curvenet_to_mesh(
     target_world_matrix = _world_matrix(target_mesh)
     projected_endpoint_by_control = {}
     marker_by_control = {}
+    node_id_by_control = {}
     projected_curves = []
 
     def projected_endpoint(control):
@@ -290,6 +291,7 @@ def attach_existing_curvenet_to_mesh(
                 projected_endpoint_by_control[control],
                 node_group,
             )
+            node_id_by_control[control] = len(node_id_by_control)
 
         return projected_endpoint_by_control[control]
 
@@ -365,6 +367,16 @@ def attach_existing_curvenet_to_mesh(
             curve_shape + ".worldSpace[0]",
             f"{deformer}.inputCurves[{curve_id}]",
             force=True,
+        )
+        source_curve = source_segments[curve_id]
+        start_control, end_control = _endpoint_controls(source_curve)
+        cmds.setAttr(
+            f"{deformer}.inputCurveStartNodeIds[{curve_id}]",
+            node_id_by_control[start_control],
+        )
+        cmds.setAttr(
+            f"{deformer}.inputCurveEndNodeIds[{curve_id}]",
+            node_id_by_control[end_control],
         )
 
     print("Transferred Curvenet to:", target_mesh)

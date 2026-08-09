@@ -44,6 +44,8 @@
 #include <vector>
 #include <algorithm>
 #include <cmath>
+#include <limits>
+#include <unordered_map>
 
 namespace
 {
@@ -240,6 +242,34 @@ MStatus CurveDeformerNode::initialize()
         return status;
     }
 
+    MFnNumericAttribute numericAttr;
+
+    inputCurveStartNodeIds = numericAttr.create(
+        "inputCurveStartNodeIds",
+        "icsn",
+        MFnNumericData::kInt,
+        -1,
+        &status
+    );
+    numericAttr.setArray(true);
+    numericAttr.setUsesArrayDataBuilder(true);
+    numericAttr.setStorable(true);
+    addAttribute(inputCurveStartNodeIds);
+    attributeAffects(inputCurveStartNodeIds, outputGeom);
+
+    inputCurveEndNodeIds = numericAttr.create(
+        "inputCurveEndNodeIds",
+        "icen",
+        MFnNumericData::kInt,
+        -1,
+        &status
+    );
+    numericAttr.setArray(true);
+    numericAttr.setUsesArrayDataBuilder(true);
+    numericAttr.setStorable(true);
+    addAttribute(inputCurveEndNodeIds);
+    attributeAffects(inputCurveEndNodeIds, outputGeom);
+
     inputMesh = typedAttr.create(
         "inputMesh",
         "im",
@@ -274,7 +304,6 @@ MStatus CurveDeformerNode::initialize()
         return status;
     }
 
-    MFnNumericAttribute numericAttr;
     fullSurfaceCurvenet = numericAttr.create(
         "fullSurfaceCurvenet",
         "fsc",
@@ -305,6 +334,39 @@ MStatus CurveDeformerNode::initialize()
     if (!status)
     {
         status.perror("Failed to set fullSurfaceCurvenet affects");
+        return status;
+    }
+
+    showGeneratedCurvenet = numericAttr.create(
+        "showGeneratedCurvenet",
+        "sgc",
+        MFnNumericData::kBoolean,
+        false,
+        &status
+    );
+
+    if (!status)
+    {
+        status.perror("Failed to create showGeneratedCurvenet");
+        return status;
+    }
+
+    numericAttr.setStorable(true);
+    numericAttr.setKeyable(true);
+
+    status = addAttribute(showGeneratedCurvenet);
+
+    if (!status)
+    {
+        status.perror("Failed to add showGeneratedCurvenet");
+        return status;
+    }
+
+    status = attributeAffects(showGeneratedCurvenet, outputGeom);
+
+    if (!status)
+    {
+        status.perror("Failed to set showGeneratedCurvenet affects");
         return status;
     }
 
@@ -391,6 +453,21 @@ unsigned int geometryIndex
 
     std::vector<CutPath> cutPaths;
     std::vector<ProfileCutInput> profileInputs;
+
+    const auto authoredNodeId =
+        [&dataBlock](const MObject& attribute, unsigned int index)
+        {
+            MStatus handleStatus;
+            MArrayDataHandle handle =
+                dataBlock.inputArrayValue(attribute, &handleStatus);
+
+            if (!handleStatus || !handle.jumpToArrayElement(index))
+            {
+                return -1;
+            }
+
+            return handle.inputValue(&handleStatus).asInt();
+        };
 
     currentSampledCurves.clear();
 
@@ -628,6 +705,11 @@ unsigned int geometryIndex
                 curveIndex
             );
 
+        profileInput.authoredStartNodeId =
+            authoredNodeId(inputCurveStartNodeIds, curveIndex);
+        profileInput.authoredEndNodeId =
+            authoredNodeId(inputCurveEndNodeIds, curveIndex);
+
         profileInput.closed =
             curveClosed;
 
@@ -645,10 +727,75 @@ unsigned int geometryIndex
         );
     }
 
-    /*
-        Detect profile endpoint connections before
-        the curves are embedded into the mesh.
-    */
+    const bool hasExplicitAuthoredTopology =
+        !profileInputs.empty() &&
+        std::all_of(
+            profileInputs.begin(),
+            profileInputs.end(),
+            [](const ProfileCutInput& input)
+            {
+                return input.authoredStartNodeId >= 0 &&
+                    input.authoredEndNodeId >= 0;
+            }
+        );
+
+    if (hasExplicitAuthoredTopology)
+    {
+        struct AuthoredEndpoint
+        {
+            int curveId;
+            CurveEndpoint endpoint;
+        };
+
+        std::unordered_map<int, std::vector<AuthoredEndpoint>>
+            endpointsByNodeId;
+
+        for (const ProfileCutInput& input : profileInputs)
+        {
+            endpointsByNodeId[input.authoredStartNodeId].push_back(
+                {input.curveId, CurveEndpoint::Start}
+            );
+            endpointsByNodeId[input.authoredEndNodeId].push_back(
+                {input.curveId, CurveEndpoint::End}
+            );
+        }
+
+        for (const auto& entry : endpointsByNodeId)
+        {
+            const std::vector<AuthoredEndpoint>& endpoints = entry.second;
+
+            if (endpoints.size() < 2)
+            {
+                continue;
+            }
+
+            const AuthoredEndpoint& target = endpoints.front();
+
+            for (size_t endpointIndex = 1;
+                 endpointIndex < endpoints.size();
+                 ++endpointIndex)
+            {
+                const AuthoredEndpoint& source = endpoints[endpointIndex];
+                ProfileCurveConnection connection;
+                connection.endpoint = source.endpoint;
+                connection.targetCurveId = target.curveId;
+                connection.targetSegmentId =
+                    target.endpoint == CurveEndpoint::Start
+                        ? 0
+                        : static_cast<int>(
+                              profileInputs[target.curveId]
+                                  .sampledSegments.size()
+                          ) - 1;
+                connection.targetSegmentT =
+                    target.endpoint == CurveEndpoint::Start ? 0.0 : 1.0;
+                profileInputs[source.curveId].connections.push_back(
+                    connection
+                );
+            }
+        }
+    }
+
+    /* Fall back to geometric discovery for legacy curve inputs. */
     const double connectionTolerance =
         std::max(
             0.001,
@@ -657,10 +804,12 @@ unsigned int geometryIndex
 
     const std::vector<DetectedCurveConnection>
         detectedProfileConnections =
-            CurveConnectionDetector::detect(
-                currentSampledCurves,
-                connectionTolerance
-            );
+            hasExplicitAuthoredTopology
+                ? std::vector<DetectedCurveConnection>{}
+                : CurveConnectionDetector::detect(
+                      currentSampledCurves,
+                      connectionTolerance
+                  );
 
     for (const DetectedCurveConnection& detected :
          detectedProfileConnections)
@@ -905,15 +1054,140 @@ unsigned int geometryIndex
                 profileInputs
             );
 
+            if (buildFullSurface && hasExplicitAuthoredTopology)
+            {
+                int meshEdgeCount = 0;
+
+                for (int halfEdgeId = 0;
+                     halfEdgeId < static_cast<int>(
+                         mayaHalfEdgeMesh.halfEdges.size()
+                     );
+                     ++halfEdgeId)
+                {
+                    const int twinId =
+                        mayaHalfEdgeMesh.halfEdges[halfEdgeId].twin;
+
+                    if (twinId < 0 || halfEdgeId < twinId)
+                    {
+                        ++meshEdgeCount;
+                    }
+                }
+
+                const int surfaceEulerCharacteristic =
+                    static_cast<int>(mayaHalfEdgeMesh.vertices.size()) -
+                    meshEdgeCount +
+                    static_cast<int>(mayaHalfEdgeMesh.faces.size());
+                const int expectedFaceCount =
+                    static_cast<int>(
+                        curvenetCutResult.curvenetEdges.size()
+                    ) -
+                    static_cast<int>(
+                        curvenetCutResult.sharedCurvenetNodes.size()
+                    ) +
+                    surfaceEulerCharacteristic;
+                const int actualFaceCount = static_cast<int>(
+                    curvenetCutResult.curvenetFaces.size()
+                );
+
+                if (actualFaceCount != expectedFaceCount)
+                {
+                    int smallestRegionPolygonCount = -1;
+                    double smallestRegionArea =
+                        std::numeric_limits<double>::infinity();
+
+                    for (const CurvenetFace& face :
+                         curvenetCutResult.curvenetFaces)
+                    {
+                        double regionArea = 0.0;
+
+                        for (int meshFaceId : face.meshFaceIds)
+                        {
+                            const std::vector<int> halfEdgeIds =
+                                curvenetCutResult.mesh.traverseFace(meshFaceId);
+
+                            if (halfEdgeIds.size() < 3)
+                            {
+                                continue;
+                            }
+
+                            const Point3& anchor =
+                                curvenetCutResult.mesh.vertices[
+                                    curvenetCutResult.mesh.halfEdges[
+                                        halfEdgeIds[0]
+                                    ].startVertex
+                                ].position;
+
+                            for (int index = 1;
+                                 index + 1 < static_cast<int>(halfEdgeIds.size());
+                                 ++index)
+                            {
+                                const Point3& first =
+                                    curvenetCutResult.mesh.vertices[
+                                        curvenetCutResult.mesh.halfEdges[
+                                            halfEdgeIds[index]
+                                        ].startVertex
+                                    ].position;
+                                const Point3& second =
+                                    curvenetCutResult.mesh.vertices[
+                                        curvenetCutResult.mesh.halfEdges[
+                                            halfEdgeIds[index + 1]
+                                        ].startVertex
+                                    ].position;
+                                const double ax = first.x - anchor.x;
+                                const double ay = first.y - anchor.y;
+                                const double az = first.z - anchor.z;
+                                const double bx = second.x - anchor.x;
+                                const double by = second.y - anchor.y;
+                                const double bz = second.z - anchor.z;
+                                const double cx = ay * bz - az * by;
+                                const double cy = az * bx - ax * bz;
+                                const double cz = ax * by - ay * bx;
+                                regionArea += 0.5 * std::sqrt(
+                                    cx * cx + cy * cy + cz * cz
+                                );
+                            }
+                        }
+
+                        if (regionArea < smallestRegionArea)
+                        {
+                            smallestRegionArea = regionArea;
+                            smallestRegionPolygonCount = static_cast<int>(
+                                face.meshFaceIds.size()
+                            );
+                        }
+                    }
+
+                    MGlobal::displayError(
+                        MString("Curvenet topology validation failed: ") +
+                        "expected " + expectedFaceCount +
+                        " faces, actual " + actualFaceCount +
+                        ", smallest region: " +
+                        smallestRegionPolygonCount + " polygons, area " +
+                        smallestRegionArea
+                    );
+                }
+            }
+
             MFnDependencyNode dependencyNode(
                 thisMObject()
             );
 
-            CurvenetSceneBuilder::build(
-                curvenetCutResult,
-                dependencyNode.name(),
-                geometryTransformName
-            );
+            const bool showGeneratedScene =
+                dataBlock.inputValue(
+                    showGeneratedCurvenet,
+                    &status
+                ).asBool();
+
+            if (!scenePreviewBuilt)
+            {
+                CurvenetSceneBuilder::build(
+                    curvenetCutResult,
+                    dependencyNode.name(),
+                    geometryTransformName,
+                    showGeneratedScene
+                );
+                scenePreviewBuilt = true;
+            }
 
             MGlobal::displayInfo(
                 MString("Curvenet faces: ")
@@ -1069,8 +1343,11 @@ CurveDeformerNode::getDebugProfileCurves() const
 MTypeId CurveDeformerNode::id(0x001226C1);
 MString CurveDeformerNode::nodeName("curvenetNode");
 MObject CurveDeformerNode::inputCurves;
+MObject CurveDeformerNode::inputCurveStartNodeIds;
+MObject CurveDeformerNode::inputCurveEndNodeIds;
 MObject CurveDeformerNode::inputMesh;
 MObject CurveDeformerNode::fullSurfaceCurvenet;
+MObject CurveDeformerNode::showGeneratedCurvenet;
 
 MStatus initializePlugin(MObject pluginObject)
 {
