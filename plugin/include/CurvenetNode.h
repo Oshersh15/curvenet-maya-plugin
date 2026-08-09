@@ -1,6 +1,7 @@
 #pragma once
 
 #include "CurvenetData.h"
+#include "CurvenetHarmonicSolver.h"
 #include "CutCrossing.h"
 #include "HalfEdge.h"
 
@@ -77,6 +78,8 @@ private:
     std::vector<std::vector<Point3>> currentSampledCurves;
 
     std::vector<VertexCurveBinding> vertexBindings;
+    CurvenetHarmonicSolver harmonicSolver;
     bool vertexBindingsCaptured = false;
+    bool topologyCaptured = false;
     bool scenePreviewBuilt = false;
 };

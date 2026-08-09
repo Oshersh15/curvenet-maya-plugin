@@ -597,6 +597,15 @@ unsigned int geometryIndex
 
         debugSampledCurves.push_back(sampledPoints);
 
+        /*
+            Cutting and region discovery describe the neutral embedding. Once
+            captured, interactive evaluations only need the moving samples.
+        */
+        if (topologyCaptured)
+        {
+            continue;
+        }
+
         std::vector<PolylineSegment> sampledSegments =
             ProfileCurveSampler::buildPolylineSegments(
                 objectSampledPoints
@@ -1054,6 +1063,13 @@ unsigned int geometryIndex
                 profileInputs
             );
 
+            harmonicSolver.initialize(
+                curvenetCutResult.mesh,
+                curvenetCutResult.cutChainsByCurveId,
+                originalVertexCount,
+                neutralSampledCurves
+            );
+
             if (buildFullSurface && hasExplicitAuthoredTopology)
             {
                 int meshEdgeCount = 0;
@@ -1216,6 +1232,8 @@ unsigned int geometryIndex
                 + mappedMeshFaceCount
             );
 
+            topologyCaptured = true;
+
         }
     }
 
@@ -1232,10 +1250,25 @@ unsigned int geometryIndex
 
     geoIterator.reset();
 
+    const std::vector<Point3> harmonicDisplacements =
+        harmonicSolver.solve(currentSampledCurves);
+
     while (!geoIterator.isDone())
     {
         const int vertexId =
             static_cast<int>(geoIterator.index());
+
+        if (vertexId >= 0 &&
+            vertexId < static_cast<int>(harmonicDisplacements.size()))
+        {
+            MPoint vertexPosition = geoIterator.position();
+            vertexPosition.x += harmonicDisplacements[vertexId].x;
+            vertexPosition.y += harmonicDisplacements[vertexId].y;
+            vertexPosition.z += harmonicDisplacements[vertexId].z;
+            geoIterator.setPosition(vertexPosition);
+            geoIterator.next();
+            continue;
+        }
 
         const VertexCurveBinding* matchingBinding =
             nullptr;

@@ -1,3 +1,5 @@
+import re
+
 import maya.api.OpenMaya as om
 import maya.cmds as cmds
 
@@ -66,10 +68,9 @@ def _endpoint_controls(curve):
         if ".xValue" not in line or ".controlPoints[" not in line:
             continue
 
-        control = line.split("=")[1].strip().split(".")[0]
-
-        if control not in controls:
-            controls.append(control)
+        for control in re.findall(r"([|:\w]+)\.translate[XYZ]", line):
+            if control not in controls:
+                controls.append(control)
 
     if len(controls) != 2:
         raise RuntimeError(
@@ -220,27 +221,37 @@ def _create_endpoint_expression(curve, start_marker, end_marker):
         noIntermediate=True,
         fullPath=False,
     )[0]
-    last_control = cmds.getAttr(shape + ".controlPoints", size=True) - 1
+    control_count = cmds.getAttr(shape + ".controlPoints", size=True)
+    last_control = control_count - 1
+    start_rest = cmds.getAttr(start_marker + ".translate")[0]
+    end_rest = cmds.getAttr(end_marker + ".translate")[0]
 
     lines = []
 
-    for control_index, marker in (
-        (0, start_marker),
-        (last_control, end_marker),
-    ):
-        lines.extend([
-            f"{shape}.controlPoints[{control_index}].xValue = "
-            f"{marker}.translateX;",
-            f"{shape}.controlPoints[{control_index}].yValue = "
-            f"{marker}.translateY;",
-            f"{shape}.controlPoints[{control_index}].zValue = "
-            f"{marker}.translateZ;",
-        ])
+    for control_index in range(control_count):
+        parameter = control_index / float(last_control) if last_control else 0.0
+        start_weight = 1.0 - parameter
+        end_weight = parameter
+        rest = cmds.getAttr(
+            f"{shape}.controlPoints[{control_index}]"
+        )[0]
+
+        for axis, component in zip("XYZ", range(3)):
+            lines.append(
+                f"{shape}.controlPoints[{control_index}].{axis.lower()}Value = "
+                f"{rest[component]:.17g} + "
+                f"{start_weight:.17g} * "
+                f"({start_marker}.translate{axis} - "
+                f"{start_rest[component]:.17g}) + "
+                f"{end_weight:.17g} * "
+                f"({end_marker}.translate{axis} - "
+                f"{end_rest[component]:.17g});"
+            )
 
     cmds.expression(
         name=curve + "_endpointExpr",
         string="\n".join(lines),
-        alwaysEvaluate=True,
+        alwaysEvaluate=False,
         unitConversion="all",
     )
 

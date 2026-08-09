@@ -321,25 +321,42 @@ def _surface_create_endpoint_expression(curve, start_node, end_node):
         noIntermediate=True,
         fullPath=False,
     )[0]
-    last_control = cmds.getAttr(shape + ".controlPoints", size=True) - 1
+    control_count = cmds.getAttr(shape + ".controlPoints", size=True)
+    last_control = control_count - 1
     expression_name = curve + "_endpointExpr"
 
     if cmds.objExists(expression_name):
         cmds.delete(expression_name)
 
+    start_rest = cmds.getAttr(start_node + ".translate")[0]
+    end_rest = cmds.getAttr(end_node + ".translate")[0]
     lines = []
 
-    for control_index, node in ((0, start_node), (last_control, end_node)):
-        lines.extend([
-            f"{shape}.controlPoints[{control_index}].xValue = {node}.translateX;",
-            f"{shape}.controlPoints[{control_index}].yValue = {node}.translateY;",
-            f"{shape}.controlPoints[{control_index}].zValue = {node}.translateZ;",
-        ])
+    # Move every curve CV by the interpolated endpoint displacement. This
+    # preserves the authored edge shape instead of stretching only its first
+    # or last sampled segment when a Curvenet node moves.
+    for control_index in range(control_count):
+        parameter = control_index / float(last_control) if last_control else 0.0
+        start_weight = 1.0 - parameter
+        end_weight = parameter
+        rest = cmds.getAttr(
+            f"{shape}.controlPoints[{control_index}]"
+        )[0]
+
+        for axis, component in zip("XYZ", range(3)):
+            lines.append(
+                f"{shape}.controlPoints[{control_index}].{axis.lower()}Value = "
+                f"{rest[component]:.17g} + "
+                f"{start_weight:.17g} * "
+                f"({start_node}.translate{axis} - {start_rest[component]:.17g}) + "
+                f"{end_weight:.17g} * "
+                f"({end_node}.translate{axis} - {end_rest[component]:.17g});"
+            )
 
     cmds.expression(
         name=expression_name,
         string="\n".join(lines),
-        alwaysEvaluate=True,
+        alwaysEvaluate=False,
         unitConversion="all",
     )
 
@@ -357,10 +374,9 @@ def _surface_get_curve_endpoint_controls(curve):
         if ".xValue" not in line or ".controlPoints[" not in line:
             continue
 
-        control = line.split("=")[1].strip().split(".")[0]
-
-        if control not in controls:
-            controls.append(control)
+        for control in re.findall(r"([|:\w]+)\.translate[XYZ]", line):
+            if control not in controls:
+                controls.append(control)
 
     if len(controls) != 2:
         raise RuntimeError(f"Could not read endpoint controls for {curve}.")
@@ -447,6 +463,11 @@ def _surface_connect_drawn_curvenet_to_plugin():
         zip(source_curves, projected_curves)
     ):
         start_control, end_control = get_curve_endpoint_controls(source_curve)
+        _surface_create_endpoint_expression(
+            projected_curve,
+            start_control,
+            end_control,
+        )
         start_node_id = _logical_node_id(start_control)
         end_node_id = _logical_node_id(end_control)
         shape = cmds.listRelatives(

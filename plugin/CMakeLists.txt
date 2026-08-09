@@ -42,6 +42,7 @@ add_library(CurvenetPlugin SHARED
     src/CurvenetEdgeBuilder.cpp
     src/CurvenetSceneBuilder.cpp
     src/CurvenetRegionPreviewBuilder.cpp
+    src/CurvenetHarmonicSolver.cpp
 )
 
 target_include_directories(CurvenetPlugin PRIVATE
@@ -91,6 +92,8 @@ add_executable(HalfEdgeTests
     tests/test_curvenet_face_builder.cpp
     src/CurvenetFaceRegionBuilder.cpp
     tests/test_curvenet_face_region_builder.cpp
+    src/CurvenetHarmonicSolver.cpp
+    tests/test_curvenet_harmonic_solver.cpp
 )
 
 target_include_directories(HalfEdgeTests PRIVATE

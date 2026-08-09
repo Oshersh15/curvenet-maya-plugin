@@ -638,4 +638,24 @@ void CurvenetSceneBuilder::build(
         curvenetCutResult
     );
 
+    if (geometryTransformName.length() > 0)
+    {
+        const MString previewName =
+            ownerName + "_curvenet_regionPreview";
+
+        /*
+            The preview vertices are stored in mesh-local space. Drive the
+            preview transform directly so Maya parenting compensation cannot
+            leave a transferred preview at the source mesh position.
+        */
+        MGlobal::executeCommand(
+            MString("setAttr \"") + previewName +
+                ".inheritsTransform\" 0; connectAttr -f \"" +
+                geometryTransformName + ".worldMatrix[0]\" \"" +
+                previewName + ".offsetParentMatrix\";",
+            false,
+            false
+        );
+    }
+
 }
