@@ -114,7 +114,7 @@ void createCurvenetControl(
         << " $s[0];";
 
     command
-        << "parent $s[0] "
+        << "parent -relative $s[0] "
         << ownerName
         << "_curvenet_controls;";
 
@@ -350,7 +350,7 @@ void createCurvenetCurve(
         << "\";";
 
     command
-        << "parent "
+        << "parent -relative "
         << "$curve"
         << " "
         << ownerName
@@ -535,7 +535,8 @@ void createSharedNodeExpression(
 
 void CurvenetSceneBuilder::build(
     const CurvenetCutResult& curvenetCutResult,
-    const MString& ownerName
+    const MString& ownerName,
+    const MString& geometryTransformName
 )
 {
     const std::string owner =
@@ -559,6 +560,19 @@ void CurvenetSceneBuilder::build(
         false,
         false
     );
+
+    if (geometryTransformName.length() > 0)
+    {
+        MGlobal::executeCommand(
+            MString("connectAttr -f \"") +
+                geometryTransformName +
+                ".worldMatrix[0]\" \"" +
+                owner.c_str() +
+                "_curvenet_group.offsetParentMatrix\";",
+            false,
+            false
+        );
+    }
 
     MGlobal::executeCommand(
         (
