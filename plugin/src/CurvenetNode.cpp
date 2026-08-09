@@ -18,6 +18,7 @@
 #include <maya/MMatrix.h>
 #include <maya/MFnMesh.h>
 #include <maya/MFnDependencyNode.h>
+#include <maya/MFnGeometryFilter.h>
 #include "HalfEdge.h"
 #include "MayaMeshConverter.h"
 #include "ProfileCurveSampler.h"
@@ -283,6 +284,39 @@ unsigned int geometryIndex
 {
     MStatus status;
 
+    MMatrix geometryLocalToWorldMatrix =
+        localToWorldMatrix;
+    MString geometryTransformName;
+
+    MFnGeometryFilter geometryFilter(
+        thisMObject(),
+        &status
+    );
+
+    if (status)
+    {
+        MDagPath geometryPath;
+
+        status = geometryFilter.getPathAtIndex(
+            geometryIndex,
+            geometryPath
+        );
+
+        if (status)
+        {
+            geometryLocalToWorldMatrix =
+                geometryPath.inclusiveMatrix();
+
+            if (!geometryPath.hasFn(MFn::kTransform))
+            {
+                geometryPath.pop();
+            }
+
+            geometryTransformName =
+                geometryPath.fullPathName();
+        }
+    }
+
     curvenetData.clear();
     debugSampledCurves.clear();
     debugCrossings.clear();
@@ -412,6 +446,28 @@ unsigned int geometryIndex
                 sampleCount
             );
 
+        std::vector<Point3> objectSampledPoints;
+        objectSampledPoints.reserve(sampledPoints.size());
+
+        const MMatrix worldToLocalMatrix =
+            geometryLocalToWorldMatrix.inverse();
+
+        for (const Point3& sampledPoint : sampledPoints)
+        {
+            const MPoint objectPoint =
+                MPoint(
+                    sampledPoint.x,
+                    sampledPoint.y,
+                    sampledPoint.z
+                ) * worldToLocalMatrix;
+
+            objectSampledPoints.push_back(Point3{
+                objectPoint.x,
+                objectPoint.y,
+                objectPoint.z
+            });
+        }
+
         curvenetData.addCurve(
             curveObject,
             cvPositions,
@@ -419,17 +475,19 @@ unsigned int geometryIndex
             curveClosed
         );
 
-        currentSampledCurves.push_back(sampledPoints);
+        currentSampledCurves.push_back(objectSampledPoints);
 
         if (!neutralSamplesCaptured)
         {
-            neutralSampledCurves.push_back(sampledPoints);
+            neutralSampledCurves.push_back(objectSampledPoints);
         }
 
         debugSampledCurves.push_back(sampledPoints);
 
         std::vector<PolylineSegment> sampledSegments =
-            ProfileCurveSampler::buildPolylineSegments(sampledPoints);
+            ProfileCurveSampler::buildPolylineSegments(
+                objectSampledPoints
+            );
 
         const double crossingTolerance = 0.0501;
 
@@ -657,6 +715,28 @@ unsigned int geometryIndex
         {
             MString failureName =
                 "Unknown";
+            int failedCrossingCount = -1;
+            int failedCutVertexCount = -1;
+            int failedFaceIntervalCount = -1;
+
+            for (const CutPath& attemptedCutPath :
+                 curvenetCutResult.attemptedCutPaths)
+            {
+                if (attemptedCutPath.curveId ==
+                    curvenetCutResult.failedCurveId)
+                {
+                    failedCrossingCount = static_cast<int>(
+                        attemptedCutPath.crossings.size()
+                    );
+                    failedCutVertexCount = static_cast<int>(
+                        attemptedCutPath.cutVertices.size()
+                    );
+                    failedFaceIntervalCount = static_cast<int>(
+                        attemptedCutPath.faceIntervalIds.size()
+                    );
+                    break;
+                }
+            }
 
             switch (
                 curvenetCutResult.failedSplitReason
@@ -739,6 +819,12 @@ unsigned int geometryIndex
                 + curvenetCutResult.failedFirstVertexId
                 + " -> "
                 + curvenetCutResult.failedSecondVertexId
+                + ", crossings: "
+                + failedCrossingCount
+                + ", cut vertices: "
+                + failedCutVertexCount
+                + ", face intervals: "
+                + failedFaceIntervalCount
             );
         }
 
@@ -773,7 +859,8 @@ unsigned int geometryIndex
 
             CurvenetSceneBuilder::build(
                 curvenetCutResult,
-                dependencyNode.name()
+                dependencyNode.name(),
+                geometryTransformName
             );
 
             MGlobal::displayInfo(

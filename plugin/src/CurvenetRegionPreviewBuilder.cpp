@@ -169,7 +169,7 @@ void CurvenetRegionPreviewBuilder::build(
     meshFn.setDisplayColors(true);
 
     MGlobal::executeCommand(
-        MString("parent \"") + transformName +
+        MString("parent -relative \"") + transformName +
             "\" \"" + ownerName.c_str() +
             "_curvenet_group\"; " +
             "sets -e -forceElement initialShadingGroup \"" +

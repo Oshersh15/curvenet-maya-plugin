@@ -303,6 +303,12 @@ void CurvenetFaceRegionBuilder::build(
                             ) > 0 ||
                             boundaryCollection.boundaryHalfEdgeIds.count(
                                 twinHalfEdgeId
+                            ) > 0 ||
+                            cutResult.embeddedHalfEdgeIds.count(
+                                currentHalfEdgeId
+                            ) > 0 ||
+                            cutResult.embeddedHalfEdgeIds.count(
+                                twinHalfEdgeId
                             ) > 0;
 
                         if (boundaryEdge || twinHalfEdgeId < 0 ||

@@ -10,6 +10,7 @@ public:
 
     static void build(
         const CurvenetCutResult& curvenetCutResult,
-        const MString& ownerName
+        const MString& ownerName,
+        const MString& geometryTransformName
     );
 };
