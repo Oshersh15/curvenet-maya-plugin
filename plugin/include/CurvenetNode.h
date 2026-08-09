@@ -1,6 +1,7 @@
 #pragma once
 
 #include "CurvenetData.h"
+#include "CurvenetHarmonicSolver.h"
 #include "CutCrossing.h"
 #include "HalfEdge.h"
 
@@ -59,8 +60,11 @@ public:
     static MTypeId id;
     static MString nodeName;
     static MObject inputCurves;
+    static MObject inputCurveStartNodeIds;
+    static MObject inputCurveEndNodeIds;
     static MObject inputMesh;
     static MObject fullSurfaceCurvenet;
+    static MObject showGeneratedCurvenet;
 
 private:
     CurvenetData curvenetData;
@@ -74,5 +78,8 @@ private:
     std::vector<std::vector<Point3>> currentSampledCurves;
 
     std::vector<VertexCurveBinding> vertexBindings;
+    CurvenetHarmonicSolver harmonicSolver;
     bool vertexBindingsCaptured = false;
+    bool topologyCaptured = false;
+    bool scenePreviewBuilt = false;
 };

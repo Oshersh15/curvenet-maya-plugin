@@ -7,6 +7,7 @@ and connections between snapped nodes follow the shortest feature-edge path.
 
 import heapq
 import math
+import re
 
 import maya.api.OpenMaya as om
 import maya.cmds as cmds
@@ -16,6 +17,13 @@ FEATURE_SNAP_DISTANCE = 0.22
 FEATURE_ANGLE_DEGREES = 45.0
 FEATURE_EDGE_ATTRIBUTE = "curvenetFeatureEdgeId"
 FEATURE_EDGE_T_ATTRIBUTE = "curvenetFeatureEdgeT"
+
+
+def _surface_distance(first, second):
+    return math.sqrt(sum(
+        (first[index] - second[index]) ** 2
+        for index in range(3)
+    ))
 
 
 def _mesh_dag_path():
@@ -62,7 +70,10 @@ def _feature_graph():
             second_point = mesh_fn.getPoint(second, om.MSpace.kWorld)
             first_position = [first_point.x, first_point.y, first_point.z]
             second_position = [second_point.x, second_point.y, second_point.z]
-            edge_length = distance(first_position, second_position)
+            edge_length = _surface_distance(
+                first_position,
+                second_position,
+            )
 
             positions[first] = first_position
             positions[second] = second_position
@@ -114,7 +125,7 @@ def _nearest_feature_location(position):
             edge[2],
             edge[3],
         )
-        candidate_distance = distance(position, closest)
+        candidate_distance = _surface_distance(position, closest)
 
         if candidate_distance <= best_distance:
             best_edge = edge_id
@@ -232,7 +243,10 @@ def _shortest_feature_path(
             unique_points = []
 
             for point in points:
-                if not unique_points or distance(point, unique_points[-1]) > 1.0e-8:
+                if (
+                    not unique_points or
+                    _surface_distance(point, unique_points[-1]) > 1.0e-8
+                ):
                     unique_points.append(point)
 
             candidates.append((
@@ -254,7 +268,35 @@ def _surface_find_or_create_node(position):
     if feature_edge >= 0:
         position = feature_position
 
-    node = _surface_authoring_base_find_or_create_node(position)
+    ensure_groups()
+
+    node = None
+
+    for existing_node in existing_nodes():
+        if _surface_distance(
+            position,
+            get_world_position(existing_node),
+        ) <= SNAP_DISTANCE:
+            node = existing_node
+            break
+
+    if node is None:
+        node_id = next_index(NODE_PREFIX)
+        node = cmds.polySphere(
+            name=f"{NODE_PREFIX}{node_id}",
+            radius=0.07,
+            subdivisionsX=12,
+            subdivisionsY=12,
+        )[0]
+        cmds.xform(node, worldSpace=True, translation=position)
+        cmds.parent(node, NODE_GRP)
+        cmds.addAttr(
+            node,
+            longName="curvenetNode",
+            attributeType="bool",
+            defaultValue=True,
+        )
+        cmds.setAttr(node + ".curvenetNode", lock=True)
 
     if feature_edge >= 0:
         if not cmds.attributeQuery(FEATURE_EDGE_ATTRIBUTE, node=node, exists=True):
@@ -279,25 +321,42 @@ def _surface_create_endpoint_expression(curve, start_node, end_node):
         noIntermediate=True,
         fullPath=False,
     )[0]
-    last_control = cmds.getAttr(shape + ".controlPoints", size=True) - 1
+    control_count = cmds.getAttr(shape + ".controlPoints", size=True)
+    last_control = control_count - 1
     expression_name = curve + "_endpointExpr"
 
     if cmds.objExists(expression_name):
         cmds.delete(expression_name)
 
+    start_rest = cmds.getAttr(start_node + ".translate")[0]
+    end_rest = cmds.getAttr(end_node + ".translate")[0]
     lines = []
 
-    for control_index, node in ((0, start_node), (last_control, end_node)):
-        lines.extend([
-            f"{shape}.controlPoints[{control_index}].xValue = {node}.translateX;",
-            f"{shape}.controlPoints[{control_index}].yValue = {node}.translateY;",
-            f"{shape}.controlPoints[{control_index}].zValue = {node}.translateZ;",
-        ])
+    # Move every curve CV by the interpolated endpoint displacement. This
+    # preserves the authored edge shape instead of stretching only its first
+    # or last sampled segment when a Curvenet node moves.
+    for control_index in range(control_count):
+        parameter = control_index / float(last_control) if last_control else 0.0
+        start_weight = 1.0 - parameter
+        end_weight = parameter
+        rest = cmds.getAttr(
+            f"{shape}.controlPoints[{control_index}]"
+        )[0]
+
+        for axis, component in zip("XYZ", range(3)):
+            lines.append(
+                f"{shape}.controlPoints[{control_index}].{axis.lower()}Value = "
+                f"{rest[component]:.17g} + "
+                f"{start_weight:.17g} * "
+                f"({start_node}.translate{axis} - {start_rest[component]:.17g}) + "
+                f"{end_weight:.17g} * "
+                f"({end_node}.translate{axis} - {end_rest[component]:.17g});"
+            )
 
     cmds.expression(
         name=expression_name,
         string="\n".join(lines),
-        alwaysEvaluate=True,
+        alwaysEvaluate=False,
         unitConversion="all",
     )
 
@@ -315,10 +374,9 @@ def _surface_get_curve_endpoint_controls(curve):
         if ".xValue" not in line or ".controlPoints[" not in line:
             continue
 
-        control = line.split("=")[1].strip().split(".")[0]
-
-        if control not in controls:
-            controls.append(control)
+        for control in re.findall(r"([|:\w]+)\.translate[XYZ]", line):
+            if control not in controls:
+                controls.append(control)
 
     if len(controls) != 2:
         raise RuntimeError(f"Could not read endpoint controls for {curve}.")
@@ -363,6 +421,86 @@ def _surface_create_curve_between_nodes(start_node, end_node):
     return curve
 
 
+def _logical_node_id(node):
+    attribute = "curvenetLogicalNodeId"
+
+    if cmds.attributeQuery(attribute, node=node, exists=True):
+        return cmds.getAttr(node + "." + attribute)
+
+    match = re.search(r"(\d+)$", node.rsplit("|", 1)[-1])
+    node_id = int(match.group(1)) if match else len(existing_nodes())
+    cmds.addAttr(node, longName=attribute, attributeType="long")
+    cmds.setAttr(node + "." + attribute, node_id)
+    cmds.setAttr(node + "." + attribute, lock=True)
+    return node_id
+
+
+def _surface_connect_drawn_curvenet_to_plugin():
+    ensure_groups()
+
+    if cmds.objExists(DEFORMER_NAME):
+        cmds.delete(DEFORMER_NAME)
+
+    preview_group = DEFORMER_NAME + "_curvenet_group"
+
+    if cmds.objExists(preview_group):
+        cmds.delete(preview_group)
+
+    source_curves = authored_segments()
+    projected_curves = build_projected_curves()
+    deformer = cmds.deformer(
+        MESH_NAME,
+        type="curvenetNode",
+        name=DEFORMER_NAME,
+    )[0]
+    cmds.connectAttr(
+        mesh_shape() + ".outMesh",
+        deformer + ".inputMesh",
+        force=True,
+    )
+
+    for curve_id, (source_curve, projected_curve) in enumerate(
+        zip(source_curves, projected_curves)
+    ):
+        start_control, end_control = get_curve_endpoint_controls(source_curve)
+        _surface_create_endpoint_expression(
+            projected_curve,
+            start_control,
+            end_control,
+        )
+        start_node_id = _logical_node_id(start_control)
+        end_node_id = _logical_node_id(end_control)
+        shape = cmds.listRelatives(
+            projected_curve,
+            shapes=True,
+            noIntermediate=True,
+            fullPath=True,
+        )[0]
+        cmds.connectAttr(
+            shape + ".worldSpace[0]",
+            f"{deformer}.inputCurves[{curve_id}]",
+            force=True,
+        )
+        cmds.setAttr(
+            f"{deformer}.inputCurveStartNodeIds[{curve_id}]",
+            start_node_id,
+        )
+        cmds.setAttr(
+            f"{deformer}.inputCurveEndNodeIds[{curve_id}]",
+            end_node_id,
+        )
+
+    print("\nConnected projected Curvenet to plugin.")
+    print("Projected curves:", len(projected_curves))
+    print("Authored logical nodes:", len({
+        _logical_node_id(control)
+        for curve in source_curves
+        for control in get_curve_endpoint_controls(curve)
+    }))
+    print("Deformer:", deformer)
+    return deformer
+
+
 if "_surface_authoring_base_find_or_create_node" not in globals():
     _surface_authoring_base_find_or_create_node = find_or_create_node
     _surface_authoring_base_create_curve = create_curve_between_nodes
@@ -371,6 +509,7 @@ find_or_create_node = _surface_find_or_create_node
 create_endpoint_expression = _surface_create_endpoint_expression
 get_curve_endpoint_controls = _surface_get_curve_endpoint_controls
 create_curve_between_nodes = _surface_create_curve_between_nodes
+connect_drawn_curvenet_to_plugin = _surface_connect_drawn_curvenet_to_plugin
 
 print("Surface-aware Curvenet authoring enabled.")
 print("Clicks near hard mesh features now snap and follow their edge chains.")

@@ -1,3 +1,5 @@
+import re
+
 import maya.api.OpenMaya as om
 import maya.cmds as cmds
 
@@ -66,10 +68,9 @@ def _endpoint_controls(curve):
         if ".xValue" not in line or ".controlPoints[" not in line:
             continue
 
-        control = line.split("=")[1].strip().split(".")[0]
-
-        if control not in controls:
-            controls.append(control)
+        for control in re.findall(r"([|:\w]+)\.translate[XYZ]", line):
+            if control not in controls:
+                controls.append(control)
 
     if len(controls) != 2:
         raise RuntimeError(
@@ -128,6 +129,108 @@ def _transfer_world_point(
     source_local = om.MPoint(point) * source_inverse_matrix
     target_world = source_local * target_world_matrix
     return [target_world.x, target_world.y, target_world.z]
+
+
+def _joint_hierarchy(root):
+    joints = []
+
+    def visit(joint):
+        joints.append(joint)
+
+        for child in cmds.listRelatives(
+            joint,
+            children=True,
+            type="joint",
+            fullPath=True,
+        ) or []:
+            visit(child)
+
+    visit(cmds.ls(root, long=True)[0])
+    return joints
+
+
+def transfer_joint_hierarchy_to_mesh(
+    source_root_joint,
+    target_mesh,
+    source_mesh="tubeA",
+    connect_pose=True,
+):
+    """Duplicate a source skeleton into a target mesh's local frame."""
+    if not cmds.objExists(source_root_joint):
+        raise RuntimeError(f"Source root joint does not exist: {source_root_joint}")
+
+    if not cmds.objExists(source_mesh):
+        raise RuntimeError(f"Source mesh does not exist: {source_mesh}")
+
+    if not cmds.objExists(target_mesh):
+        raise RuntimeError(f"Target mesh does not exist: {target_mesh}")
+
+    target_prefix = _short_name(target_mesh)
+    target_root_name = target_prefix + "_skeleton_root"
+    target_group_name = target_prefix + "_transferredSkeleton_GRP"
+
+    if cmds.objExists(target_root_name) or cmds.objExists(target_group_name):
+        raise RuntimeError(
+            f"Target skeleton already exists for: {target_prefix}"
+        )
+
+    source_joints = _joint_hierarchy(source_root_joint)
+    duplicated_root = cmds.duplicate(
+        source_root_joint,
+        renameChildren=True,
+        returnRootsOnly=True,
+    )[0]
+    duplicated_root = cmds.rename(duplicated_root, target_root_name)
+    target_group = cmds.group(empty=True, name=target_group_name)
+    duplicated_root = cmds.parent(
+        duplicated_root,
+        target_group,
+        absolute=True,
+    )[0]
+    target_joints = _joint_hierarchy(duplicated_root)
+
+    if len(source_joints) != len(target_joints):
+        cmds.delete(duplicated_root)
+        raise RuntimeError("Duplicated joint hierarchy does not match the source.")
+
+    source_inverse_matrix = _world_matrix(source_mesh).inverse()
+    target_world_matrix = _world_matrix(target_mesh)
+    transfer_matrix = source_inverse_matrix * target_world_matrix
+    cmds.xform(
+        target_group,
+        worldSpace=True,
+        matrix=list(transfer_matrix),
+    )
+    duplicated_root = cmds.ls(duplicated_root, long=True)[0]
+    target_joints = _joint_hierarchy(duplicated_root)
+
+    if connect_pose:
+        for source_joint, target_joint in zip(source_joints, target_joints):
+            cmds.connectAttr(
+                source_joint + ".rotate",
+                target_joint + ".rotate",
+                force=True,
+            )
+            cmds.connectAttr(
+                source_joint + ".scale",
+                target_joint + ".scale",
+                force=True,
+            )
+
+    cmds.addAttr(
+        target_group,
+        longName="transferredCurvenetSkeleton",
+        attributeType="bool",
+        defaultValue=True,
+    )
+    cmds.setAttr(
+        target_group + ".transferredCurvenetSkeleton",
+        lock=True,
+    )
+    print("Transferred skeleton to:", target_mesh)
+    print("Transferred joints:", len(target_joints))
+    print("Target root:", duplicated_root)
+    return duplicated_root, target_joints
 
 
 def _project_world_point(point, target_mesh):
@@ -210,7 +313,28 @@ def _create_node_marker(target_prefix, node_id, position, node_group):
         defaultValue=True,
     )
     cmds.setAttr(marker + ".transferredCurvenetNode", lock=True)
+    cmds.addAttr(
+        marker,
+        longName="curvenetLogicalNodeId",
+        attributeType="long",
+    )
+    cmds.setAttr(marker + ".curvenetLogicalNodeId", node_id)
+    cmds.setAttr(marker + ".curvenetLogicalNodeId", lock=True)
     return marker
+
+
+def _source_logical_node_id(control):
+    attribute = control + ".curvenetLogicalNodeId"
+
+    if cmds.objExists(attribute):
+        return cmds.getAttr(attribute)
+
+    match = re.search(r"(\d+)$", control.rsplit("|", 1)[-1])
+
+    if not match:
+        raise RuntimeError(f"No logical Curvenet node ID found for {control}.")
+
+    return int(match.group(1))
 
 
 def _create_endpoint_expression(curve, start_marker, end_marker):
@@ -220,27 +344,37 @@ def _create_endpoint_expression(curve, start_marker, end_marker):
         noIntermediate=True,
         fullPath=False,
     )[0]
-    last_control = cmds.getAttr(shape + ".controlPoints", size=True) - 1
+    control_count = cmds.getAttr(shape + ".controlPoints", size=True)
+    last_control = control_count - 1
+    start_rest = cmds.getAttr(start_marker + ".translate")[0]
+    end_rest = cmds.getAttr(end_marker + ".translate")[0]
 
     lines = []
 
-    for control_index, marker in (
-        (0, start_marker),
-        (last_control, end_marker),
-    ):
-        lines.extend([
-            f"{shape}.controlPoints[{control_index}].xValue = "
-            f"{marker}.translateX;",
-            f"{shape}.controlPoints[{control_index}].yValue = "
-            f"{marker}.translateY;",
-            f"{shape}.controlPoints[{control_index}].zValue = "
-            f"{marker}.translateZ;",
-        ])
+    for control_index in range(control_count):
+        parameter = control_index / float(last_control) if last_control else 0.0
+        start_weight = 1.0 - parameter
+        end_weight = parameter
+        rest = cmds.getAttr(
+            f"{shape}.controlPoints[{control_index}]"
+        )[0]
+
+        for axis, component in zip("XYZ", range(3)):
+            lines.append(
+                f"{shape}.controlPoints[{control_index}].{axis.lower()}Value = "
+                f"{rest[component]:.17g} + "
+                f"{start_weight:.17g} * "
+                f"({start_marker}.translate{axis} - "
+                f"{start_rest[component]:.17g}) + "
+                f"{end_weight:.17g} * "
+                f"({end_marker}.translate{axis} - "
+                f"{end_rest[component]:.17g});"
+            )
 
     cmds.expression(
         name=curve + "_endpointExpr",
         string="\n".join(lines),
-        alwaysEvaluate=True,
+        alwaysEvaluate=False,
         unitConversion="all",
     )
 
@@ -265,6 +399,7 @@ def attach_existing_curvenet_to_mesh(
     target_world_matrix = _world_matrix(target_mesh)
     projected_endpoint_by_control = {}
     marker_by_control = {}
+    node_id_by_control = {}
     projected_curves = []
 
     def projected_endpoint(control):
@@ -284,12 +419,14 @@ def attach_existing_curvenet_to_mesh(
                 transferred,
                 target_mesh,
             )
+            logical_node_id = _source_logical_node_id(control)
             marker_by_control[control] = _create_node_marker(
                 target_prefix,
-                len(projected_endpoint_by_control) - 1,
+                logical_node_id,
                 projected_endpoint_by_control[control],
                 node_group,
             )
+            node_id_by_control[control] = logical_node_id
 
         return projected_endpoint_by_control[control]
 
@@ -365,6 +502,16 @@ def attach_existing_curvenet_to_mesh(
             curve_shape + ".worldSpace[0]",
             f"{deformer}.inputCurves[{curve_id}]",
             force=True,
+        )
+        source_curve = source_segments[curve_id]
+        start_control, end_control = _endpoint_controls(source_curve)
+        cmds.setAttr(
+            f"{deformer}.inputCurveStartNodeIds[{curve_id}]",
+            node_id_by_control[start_control],
+        )
+        cmds.setAttr(
+            f"{deformer}.inputCurveEndNodeIds[{curve_id}]",
+            node_id_by_control[end_control],
         )
 
     print("Transferred Curvenet to:", target_mesh)

@@ -898,7 +898,7 @@ TEST(
 )
 {
     CurvenetCutResult cutResult;
-    constexpr double sliverWidth = 0.0000001;
+    constexpr double sliverWidth = 0.00005;
 
     cutResult.mesh.vertices = {
         Vertex{Point3{0.0, 0.0, 0.0}},

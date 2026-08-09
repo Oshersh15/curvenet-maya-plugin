@@ -11,6 +11,7 @@ public:
     static void build(
         const CurvenetCutResult& curvenetCutResult,
         const MString& ownerName,
-        const MString& geometryTransformName
+        const MString& geometryTransformName,
+        bool showGeneratedCurvenet
     );
 };

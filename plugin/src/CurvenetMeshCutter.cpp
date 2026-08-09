@@ -12,6 +12,83 @@
 
 namespace
 {
+    bool faceContainsPoint(
+        const HalfEdgeMesh& mesh,
+        int faceId,
+        const Point3& point,
+        double tolerance = 0.000001
+    )
+    {
+        const std::vector<int> halfEdgeIds = mesh.traverseFace(faceId);
+
+        if (halfEdgeIds.size() < 3)
+        {
+            return false;
+        }
+
+        const Point3& anchor = mesh.vertices[
+            mesh.halfEdges[halfEdgeIds[0]].startVertex
+        ].position;
+
+        for (int index = 1;
+             index + 1 < static_cast<int>(halfEdgeIds.size());
+             ++index)
+        {
+            const Point3& first = mesh.vertices[
+                mesh.halfEdges[halfEdgeIds[index]].startVertex
+            ].position;
+            const Point3& second = mesh.vertices[
+                mesh.halfEdges[halfEdgeIds[index + 1]].startVertex
+            ].position;
+            const double ax = first.x - anchor.x;
+            const double ay = first.y - anchor.y;
+            const double az = first.z - anchor.z;
+            const double bx = second.x - anchor.x;
+            const double by = second.y - anchor.y;
+            const double bz = second.z - anchor.z;
+            const double px = point.x - anchor.x;
+            const double py = point.y - anchor.y;
+            const double pz = point.z - anchor.z;
+            const double aa = ax * ax + ay * ay + az * az;
+            const double ab = ax * bx + ay * by + az * bz;
+            const double bb = bx * bx + by * by + bz * bz;
+            const double ap = ax * px + ay * py + az * pz;
+            const double bp = bx * px + by * py + bz * pz;
+            const double denominator = aa * bb - ab * ab;
+
+            if (std::abs(denominator) <= tolerance * tolerance)
+            {
+                continue;
+            }
+
+            const double firstWeight = (bb * ap - ab * bp) / denominator;
+            const double secondWeight = (aa * bp - ab * ap) / denominator;
+
+            if (firstWeight >= -tolerance &&
+                secondWeight >= -tolerance &&
+                firstWeight + secondWeight <= 1.0 + tolerance)
+            {
+                const double nx = ay * bz - az * by;
+                const double ny = az * bx - ax * bz;
+                const double nz = ax * by - ay * bx;
+                const double normalLength = std::sqrt(
+                    nx * nx + ny * ny + nz * nz
+                );
+                const double planeDistance = normalLength > tolerance
+                    ? std::abs(px * nx + py * ny + pz * nz) /
+                        normalLength
+                    : std::numeric_limits<double>::infinity();
+
+                if (planeDistance <= tolerance)
+                {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
     void buildSharedCurvenetNodes(
         CurvenetCutResult& result,
         const std::unordered_set<int>* authoredNodeVertexIds,
@@ -352,34 +429,55 @@ namespace
                 logicalEndpointNodes.push_back(std::move(logicalNode));
             };
 
-            int commonFaceId = -1;
+            int seedFaceId = -1;
+            std::vector<int> seedBoundaryIndices;
+            bool seedContainsSharedPosition = false;
 
             for (int faceId = 0;
                  faceId < static_cast<int>(result.mesh.faces.size());
                  ++faceId)
             {
-                bool containsAllBoundaries = true;
+                std::vector<int> containedBoundaryIndices;
 
-                for (int boundaryVertexId : boundaryVertexIds)
+                for (int boundaryIndex = 0;
+                     boundaryIndex < static_cast<int>(boundaryVertexIds.size());
+                     ++boundaryIndex)
                 {
                     if (result.mesh.findOutgoingHalfEdgeInFace(
                             faceId,
-                            boundaryVertexId
-                        ) < 0)
+                            boundaryVertexIds[boundaryIndex]
+                        ) >= 0)
                     {
-                        containsAllBoundaries = false;
-                        break;
+                        containedBoundaryIndices.push_back(boundaryIndex);
                     }
                 }
 
-                if (containsAllBoundaries)
+                const bool containsSharedPosition = faceContainsPoint(
+                    result.mesh,
+                    faceId,
+                    sharedPosition
+                );
+
+                if (containedBoundaryIndices.size() < 2)
                 {
-                    commonFaceId = faceId;
-                    break;
+                    continue;
+                }
+
+                if ((containsSharedPosition &&
+                     !seedContainsSharedPosition) ||
+                    (containsSharedPosition == seedContainsSharedPosition &&
+                     containedBoundaryIndices.size() >
+                         seedBoundaryIndices.size()))
+                {
+                    seedFaceId = faceId;
+                    seedContainsSharedPosition = containsSharedPosition;
+                    seedBoundaryIndices = std::move(
+                        containedBoundaryIndices
+                    );
                 }
             }
 
-            if (commonFaceId < 0)
+            if (seedFaceId < 0 || seedBoundaryIndices.size() < 2)
             {
                 /*
                     Authored endpoints can represent one logical node even
@@ -395,17 +493,96 @@ namespace
             sharedVertex.position = sharedPosition;
             const int sharedVertexId =
                 static_cast<int>(result.mesh.vertices.size());
+
+            const HalfEdgeMesh meshBeforeJunction = result.mesh;
             result.mesh.vertices.push_back(sharedVertex);
+
+            std::vector<int> seedBoundaryVertexIds;
+
+            for (int boundaryIndex : seedBoundaryIndices)
+            {
+                seedBoundaryVertexIds.push_back(
+                    boundaryVertexIds[boundaryIndex]
+                );
+            }
 
             const InteriorFaceSplitResult splitResult =
                 result.mesh.splitFaceWithInteriorVertex(
-                    commonFaceId,
+                    seedFaceId,
                     sharedVertexId,
-                    boundaryVertexIds
+                    seedBoundaryVertexIds
                 );
 
             if (!splitResult.success)
             {
+                result.mesh = meshBeforeJunction;
+                preserveLogicalJunction();
+                continue;
+            }
+
+            std::vector<int> boundaryToSharedHalfEdgeIds(
+                boundaryVertexIds.size(),
+                -1
+            );
+            std::vector<int> sharedToBoundaryHalfEdgeIds(
+                boundaryVertexIds.size(),
+                -1
+            );
+
+            for (int seedIndex = 0;
+                 seedIndex < static_cast<int>(seedBoundaryIndices.size());
+                 ++seedIndex)
+            {
+                const int boundaryIndex = seedBoundaryIndices[seedIndex];
+                boundaryToSharedHalfEdgeIds[boundaryIndex] =
+                    splitResult.boundaryToInteriorHalfEdgeIds[seedIndex];
+                sharedToBoundaryHalfEdgeIds[boundaryIndex] =
+                    splitResult.interiorToBoundaryHalfEdgeIds[seedIndex];
+            }
+
+            bool connectedEveryBoundary = true;
+
+            for (int boundaryIndex = 0;
+                 boundaryIndex < static_cast<int>(boundaryVertexIds.size());
+                 ++boundaryIndex)
+            {
+                if (boundaryToSharedHalfEdgeIds[boundaryIndex] >= 0)
+                {
+                    continue;
+                }
+
+                const int faceId = result.mesh.findFaceContainingVertices(
+                    boundaryVertexIds[boundaryIndex],
+                    sharedVertexId
+                );
+                const CutHalfEdgePairResult connector =
+                    CutPathMeshSplitter::createCutHalfEdges(
+                        result.mesh,
+                        boundaryVertexIds[boundaryIndex],
+                        sharedVertexId
+                    );
+
+                if (faceId < 0 || !connector.success ||
+                    !CutPathMeshSplitter::insertCutHalfEdgesIntoFace(
+                        result.mesh,
+                        faceId,
+                        connector.firstHalfEdgeId,
+                        connector.secondHalfEdgeId
+                    ))
+                {
+                    connectedEveryBoundary = false;
+                    break;
+                }
+
+                boundaryToSharedHalfEdgeIds[boundaryIndex] =
+                    connector.firstHalfEdgeId;
+                sharedToBoundaryHalfEdgeIds[boundaryIndex] =
+                    connector.secondHalfEdgeId;
+            }
+
+            if (!connectedEveryBoundary)
+            {
+                result.mesh = meshBeforeJunction;
                 preserveLogicalJunction();
                 continue;
             }
@@ -413,14 +590,12 @@ namespace
             result.embeddedVertexIds.insert(sharedVertexId);
             authoredNodeVertexIds.insert(sharedVertexId);
 
-            for (int halfEdgeId :
-                 splitResult.boundaryToInteriorHalfEdgeIds)
+            for (int halfEdgeId : boundaryToSharedHalfEdgeIds)
             {
                 result.embeddedHalfEdgeIds.insert(halfEdgeId);
             }
 
-            for (int halfEdgeId :
-                 splitResult.interiorToBoundaryHalfEdgeIds)
+            for (int halfEdgeId : sharedToBoundaryHalfEdgeIds)
             {
                 result.embeddedHalfEdgeIds.insert(halfEdgeId);
             }
@@ -454,8 +629,7 @@ namespace
                     chain.points.insert(chain.points.begin(), point);
                     chain.halfEdgeIds.insert(
                         chain.halfEdgeIds.begin(),
-                        splitResult
-                            .interiorToBoundaryHalfEdgeIds[boundaryIndex]
+                        sharedToBoundaryHalfEdgeIds[boundaryIndex]
                     );
                 }
                 else
@@ -463,8 +637,7 @@ namespace
                     chain.vertexIds.push_back(sharedVertexId);
                     chain.points.push_back(point);
                     chain.halfEdgeIds.push_back(
-                        splitResult
-                            .boundaryToInteriorHalfEdgeIds[boundaryIndex]
+                        boundaryToSharedHalfEdgeIds[boundaryIndex]
                     );
                 }
             }

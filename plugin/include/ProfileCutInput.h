@@ -24,6 +24,9 @@ struct ProfileCutInput
     */
     int curveId = -1;
 
+    int authoredStartNodeId = -1;
+    int authoredEndNodeId = -1;
+
     /*
         Whether the source profile is open
         or closed.
