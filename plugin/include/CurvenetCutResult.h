@@ -17,6 +17,14 @@ struct EmbeddedSegmentVertex
     int meshVertexId = -1;
 };
 
+struct SurfaceTrackingFailure
+{
+    int curveId = -1;
+    int crossingCount = 0;
+    int intervalCount = 0;
+    int invalidIntervalCount = 0;
+};
+
 struct CurvenetCutResult
 {
     bool success = false;
@@ -40,8 +48,15 @@ struct CurvenetCutResult
     int failedFirstVertexId = -1;
     int failedSecondVertexId = -1;
 
+    int surfaceTrackedCurveCount = 0;
+    std::vector<SurfaceTrackingFailure> surfaceTrackingFailures;
+
     std::unordered_map<int, CutChain>
         cutChainsByCurveId;
+
+    /* Neutral authored geometry used to order curves at logical nodes. */
+    std::unordered_map<int, std::vector<PolylineSegment>>
+        sampledSegmentsByCurveId;
 
     /*
         Stores all embedded vertices created from each
@@ -62,6 +77,10 @@ struct CurvenetCutResult
     std::vector<SharedCurvenetNode> sharedCurvenetNodes;
 
     std::vector<CurvenetFace> curvenetFaces;
+
+    int fullSurfaceRegionCountBeforeCleanup = -1;
+    std::vector<int> mergedFullSurfaceRegionPolygonCounts;
+    std::vector<double> mergedFullSurfaceRegionAreas;
 
     std::vector<CurvenetEdge> curvenetEdges;
 };

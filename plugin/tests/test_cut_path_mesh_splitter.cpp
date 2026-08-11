@@ -5,6 +5,34 @@
 
 TEST(
     CutPathMeshSplitter,
+    ResolvesSingleCrossingForShortOpenProfile
+)
+{
+    HalfEdgeMesh mesh;
+    mesh.createTestQuad();
+
+    CutPath cutPath;
+    cutPath.curveId = 0;
+    cutPath.closed = false;
+
+    CutVertex crossing;
+    crossing.position = Point3{0.5, 1.0, 0.0};
+    crossing.sourceHalfEdgeId = 0;
+    crossing.sourceEdgeT = 0.5;
+    crossing.curveId = 0;
+    crossing.cutPathOrder = 0;
+    cutPath.cutVertices.push_back(crossing);
+
+    const CutPathSplitResult result =
+        CutPathMeshSplitter::apply(mesh, cutPath, 0.0001);
+
+    ASSERT_TRUE(result.success);
+    ASSERT_EQ(result.cutChain.vertexIds.size(), 1);
+    EXPECT_EQ(result.cutChain.vertexIds.front(), 4);
+}
+
+TEST(
+    CutPathMeshSplitter,
     ProcessesCutVerticesInTraversalOrder
 )
 {

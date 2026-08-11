@@ -11,6 +11,7 @@
 #include <maya/MString.h>
 
 #include <cmath>
+#include <unordered_set>
 #include <vector>
 
 namespace
@@ -75,6 +76,10 @@ void CurvenetRegionPreviewBuilder::build(
 
     MIntArray polygonCounts;
     MIntArray polygonVertexIds;
+    std::vector<int> previewFaceIdByMeshFaceId(
+        curvenetCutResult.mesh.faces.size(),
+        -1
+    );
 
     for (int faceId = 0;
          faceId < static_cast<int>(
@@ -84,24 +89,59 @@ void CurvenetRegionPreviewBuilder::build(
     {
         const std::vector<int> halfEdgeIds =
             curvenetCutResult.mesh.traverseFace(faceId);
-
-        if (halfEdgeIds.size() < 3)
-        {
-            return;
-        }
-
-        polygonCounts.append(
-            static_cast<int>(halfEdgeIds.size())
-        );
+        std::vector<int> faceVertexIds;
+        faceVertexIds.reserve(halfEdgeIds.size());
+        std::unordered_set<int> uniqueVertexIds;
 
         for (int halfEdgeId : halfEdgeIds)
         {
-            polygonVertexIds.append(
+            const int vertexId =
                 curvenetCutResult.mesh
                     .halfEdges[halfEdgeId]
-                    .startVertex
-            );
+                    .startVertex;
+
+            if (vertexId < 0 ||
+                vertexId >= static_cast<int>(points.length()))
+            {
+                faceVertexIds.clear();
+                break;
+            }
+
+            faceVertexIds.push_back(vertexId);
+            uniqueVertexIds.insert(vertexId);
         }
+
+        /*
+         * Cutting can leave zero-area slivers with fewer than three distinct
+         * vertices. They have no visible surface, and Maya rejects the whole
+         * preview mesh if they are submitted as polygons.
+         */
+        if (faceVertexIds.size() < 3 ||
+            uniqueVertexIds.size() < 3)
+        {
+            continue;
+        }
+
+        previewFaceIdByMeshFaceId[faceId] =
+            static_cast<int>(polygonCounts.length());
+        polygonCounts.append(
+            static_cast<int>(faceVertexIds.size())
+        );
+
+        for (int vertexId : faceVertexIds)
+        {
+            polygonVertexIds.append(vertexId);
+        }
+    }
+
+    if (polygonCounts.length() == 0)
+    {
+        MGlobal::displayError(
+            MString(
+                "Curvenet preview failed: no valid mesh faces were produced."
+            )
+        );
+        return;
     }
 
     MStatus status;
@@ -113,6 +153,10 @@ void CurvenetRegionPreviewBuilder::build(
 
     if (!status)
     {
+        MGlobal::displayError(
+            MString("Curvenet preview failed to create its transform: ") +
+            status.errorString()
+        );
         return;
     }
 
@@ -134,6 +178,10 @@ void CurvenetRegionPreviewBuilder::build(
 
     if (!status || meshObject.isNull())
     {
+        MGlobal::displayError(
+            MString("Curvenet preview failed to create its mesh: ") +
+            status.errorString()
+        );
         return;
     }
 
@@ -176,9 +224,17 @@ void CurvenetRegionPreviewBuilder::build(
                  .meshFaceIds)
         {
             if (meshFaceId >= 0 &&
-                meshFaceId < static_cast<int>(faceColors.length()))
+                meshFaceId < static_cast<int>(
+                    previewFaceIdByMeshFaceId.size()
+                ))
             {
-                faceColors[meshFaceId] = color;
+                const int previewFaceId =
+                    previewFaceIdByMeshFaceId[meshFaceId];
+
+                if (previewFaceId >= 0)
+                {
+                    faceColors[previewFaceId] = color;
+                }
             }
         }
     }

@@ -3,6 +3,7 @@
 #include <unordered_map>
 #include <unordered_set>
 #include <algorithm>
+#include <cmath>
 #include <set>
 
 namespace
@@ -48,6 +49,143 @@ namespace
         std::vector<int> nodeLoop;
         std::vector<int> edgeLoop;
     };
+
+    Point3 subtractPoints(
+        const Point3& first,
+        const Point3& second
+    )
+    {
+        return {
+            first.x - second.x,
+            first.y - second.y,
+            first.z - second.z
+        };
+    }
+
+    Point3 crossPoints(
+        const Point3& first,
+        const Point3& second
+    )
+    {
+        return {
+            first.y * second.z - first.z * second.y,
+            first.z * second.x - first.x * second.z,
+            first.x * second.y - first.y * second.x
+        };
+    }
+
+    double dotPoints(
+        const Point3& first,
+        const Point3& second
+    )
+    {
+        return
+            first.x * second.x +
+            first.y * second.y +
+            first.z * second.z;
+    }
+
+    Point3 normalisePoint(
+        const Point3& point
+    )
+    {
+        const double length =
+            std::sqrt(dotPoints(point, point));
+
+        if (length <= 1e-12)
+        {
+            return {};
+        }
+
+        return {
+            point.x / length,
+            point.y / length,
+            point.z / length
+        };
+    }
+
+    Point3 buildVertexSurfaceNormal(
+        const HalfEdgeMesh& mesh,
+        int vertexId
+    )
+    {
+        Point3 normal;
+        std::unordered_set<int> incidentFaceIds;
+
+        for (int halfEdgeId :
+             mesh.getOutgoingHalfEdgesAtVertex(vertexId))
+        {
+            if (halfEdgeId < 0 ||
+                halfEdgeId >=
+                    static_cast<int>(mesh.halfEdges.size()))
+            {
+                continue;
+            }
+
+            const HalfEdge& halfEdge =
+                mesh.halfEdges[halfEdgeId];
+
+            if (halfEdge.face >= 0)
+            {
+                incidentFaceIds.insert(halfEdge.face);
+            }
+
+            if (halfEdge.twin >= 0 &&
+                halfEdge.twin <
+                    static_cast<int>(mesh.halfEdges.size()))
+            {
+                const int twinFaceId =
+                    mesh.halfEdges[halfEdge.twin].face;
+
+                if (twinFaceId >= 0)
+                {
+                    incidentFaceIds.insert(twinFaceId);
+                }
+            }
+        }
+
+        for (int faceId : incidentFaceIds)
+        {
+            const std::vector<int> faceHalfEdgeIds =
+                mesh.traverseFace(faceId);
+
+            if (faceHalfEdgeIds.size() < 3)
+            {
+                continue;
+            }
+
+            const Point3& anchor =
+                mesh.vertices[
+                    mesh.halfEdges[faceHalfEdgeIds[0]].startVertex
+                ].position;
+
+            for (int index = 1;
+                 index + 1 <
+                     static_cast<int>(faceHalfEdgeIds.size());
+                 ++index)
+            {
+                const Point3& first =
+                    mesh.vertices[
+                        mesh.halfEdges[faceHalfEdgeIds[index]].startVertex
+                    ].position;
+                const Point3& second =
+                    mesh.vertices[
+                        mesh.halfEdges[faceHalfEdgeIds[index + 1]].startVertex
+                    ].position;
+                const Point3 triangleNormal =
+                    crossPoints(
+                        subtractPoints(first, anchor),
+                        subtractPoints(second, anchor)
+                    );
+
+                normal.x += triangleNormal.x;
+                normal.y += triangleNormal.y;
+                normal.z += triangleNormal.z;
+            }
+        }
+
+        return normalisePoint(normal);
+    }
 
     std::vector<int> buildCanonicalSectionLoop(
         const std::vector<int>& sectionIds
@@ -1248,81 +1386,249 @@ CurvenetFaceBuilder::build(
             outgoingSections =
                 entry.second;
 
-        const std::vector<int>
-            orderedOutgoingHalfEdges =
-                cutResult.mesh
-                    .getOrderedOutgoingHalfEdgesAtVertex(
-                        sharedVertexId
-                    );
-
         std::vector<DirectedBoundarySection>&
             orderedSections =
                 orderedOutgoingSectionsByVertex[
                     sharedVertexId
                 ];
 
-        for (int halfEdgeId :
-             orderedOutgoingHalfEdges)
+        if (sharedVertexId < 0 ||
+            sharedVertexId >=
+                static_cast<int>(cutResult.mesh.vertices.size()))
         {
-            if (halfEdgeId < 0 ||
-                halfEdgeId >=
-                    static_cast<int>(
-                        cutResult.mesh.halfEdges.size()
-                    ))
+            orderedSections = outgoingSections;
+            continue;
+        }
+
+        const Point3& sharedPosition =
+            cutResult.mesh.vertices[sharedVertexId].position;
+        Point3 surfaceNormal =
+            buildVertexSurfaceNormal(
+                cutResult.mesh,
+                sharedVertexId
+            );
+
+        struct SectionDirection
+        {
+            DirectedBoundarySection section;
+            Point3 direction;
+            double angle = 0.0;
+        };
+
+        std::vector<SectionDirection> sectionDirections;
+        sectionDirections.reserve(outgoingSections.size());
+
+        for (const DirectedBoundarySection& directedSection :
+             outgoingSections)
+        {
+            const BoundarySection& section =
+                sections[directedSection.sectionId];
+            const int neighbourVertexId =
+                getDirectedStartNeighbourVertexId(
+                    section,
+                    directedSection.reversed
+                );
+
+            Point3 direction;
+
+            const auto sampledIterator =
+                cutResult.sampledSegmentsByCurveId.find(
+                    section.curveId
+                );
+
+            if (sampledIterator !=
+                    cutResult.sampledSegmentsByCurveId.end() &&
+                !sampledIterator->second.empty())
             {
-                continue;
+                const std::vector<PolylineSegment>& sampledSegments =
+                    sampledIterator->second;
+
+                if (directedSection.reversed)
+                {
+                    direction = subtractPoints(
+                        sampledSegments.back().start,
+                        sampledSegments.back().end
+                    );
+                }
+                else
+                {
+                    direction = subtractPoints(
+                        sampledSegments.front().end,
+                        sampledSegments.front().start
+                    );
+                }
             }
 
-            const int neighbourVertexId =
-                cutResult.mesh.halfEdges[
-                    halfEdgeId
-                ].endVertex;
-
-            for (const DirectedBoundarySection&
-                 directedSection :
-                 outgoingSections)
+            if (dotPoints(direction, direction) <= 1e-12 &&
+                neighbourVertexId >= 0 &&
+                neighbourVertexId <
+                    static_cast<int>(cutResult.mesh.vertices.size()))
             {
-                const BoundarySection& section =
-                    sections[
-                        directedSection.sectionId
-                    ];
+                direction = subtractPoints(
+                    cutResult.mesh.vertices[neighbourVertexId].position,
+                    sharedPosition
+                );
+            }
 
-                const int startNeighbourVertexId =
-                    getDirectedStartNeighbourVertexId(
-                        section,
-                        directedSection.reversed
-                    );
+            sectionDirections.push_back({
+                directedSection,
+                direction,
+                0.0
+            });
+        }
 
-                if (startNeighbourVertexId !=
-                    neighbourVertexId)
+        Point3 tangentNormal;
+        double largestCrossLengthSquared = 0.0;
+
+        for (int firstIndex = 0;
+             firstIndex < static_cast<int>(sectionDirections.size());
+             ++firstIndex)
+        {
+            for (int secondIndex = firstIndex + 1;
+                 secondIndex < static_cast<int>(sectionDirections.size());
+                 ++secondIndex)
+            {
+                const Point3 candidateNormal = crossPoints(
+                    sectionDirections[firstIndex].direction,
+                    sectionDirections[secondIndex].direction
+                );
+                const double candidateLengthSquared =
+                    dotPoints(candidateNormal, candidateNormal);
+
+                if (candidateLengthSquared > largestCrossLengthSquared)
+                {
+                    largestCrossLengthSquared = candidateLengthSquared;
+                    tangentNormal = candidateNormal;
+                }
+            }
+        }
+
+        if (largestCrossLengthSquared > 1e-12)
+        {
+            tangentNormal = normalisePoint(tangentNormal);
+
+            if (dotPoints(surfaceNormal, surfaceNormal) > 1e-12 &&
+                dotPoints(tangentNormal, surfaceNormal) < 0.0)
+            {
+                tangentNormal.x = -tangentNormal.x;
+                tangentNormal.y = -tangentNormal.y;
+                tangentNormal.z = -tangentNormal.z;
+            }
+
+            surfaceNormal = tangentNormal;
+        }
+
+        if (dotPoints(surfaceNormal, surfaceNormal) <= 1e-12)
+        {
+            surfaceNormal = {0.0, 0.0, 1.0};
+        }
+
+        Point3 referenceDirection;
+
+        for (SectionDirection& sectionDirection : sectionDirections)
+        {
+            const double normalComponent =
+                dotPoints(sectionDirection.direction, surfaceNormal);
+            sectionDirection.direction.x -=
+                surfaceNormal.x * normalComponent;
+            sectionDirection.direction.y -=
+                surfaceNormal.y * normalComponent;
+            sectionDirection.direction.z -=
+                surfaceNormal.z * normalComponent;
+            sectionDirection.direction =
+                normalisePoint(sectionDirection.direction);
+
+            if (dotPoints(referenceDirection, referenceDirection) <= 1e-12 &&
+                dotPoints(sectionDirection.direction,
+                          sectionDirection.direction) > 1e-12)
+            {
+                referenceDirection = sectionDirection.direction;
+            }
+        }
+
+        /*
+            Geometry-free synthetic meshes still use the stored
+            half-edge rotation order. Production meshes take the
+            geometric path above so no authored direction is omitted.
+        */
+        if (dotPoints(referenceDirection, referenceDirection) <= 1e-12)
+        {
+            const std::vector<int> orderedOutgoingHalfEdges =
+                cutResult.mesh.getOrderedOutgoingHalfEdgesAtVertex(
+                    sharedVertexId
+                );
+
+            for (int halfEdgeId : orderedOutgoingHalfEdges)
+            {
+                if (halfEdgeId < 0 ||
+                    halfEdgeId >=
+                        static_cast<int>(cutResult.mesh.halfEdges.size()))
                 {
                     continue;
                 }
 
-                const bool alreadyAdded =
-                    std::find_if(
-                        orderedSections.begin(),
-                        orderedSections.end(),
-                        [&directedSection](
-                            const DirectedBoundarySection&
-                                existing
-                        )
-                        {
-                            return
-                                existing.sectionId ==
-                                    directedSection.sectionId &&
-                                existing.reversed ==
-                                    directedSection.reversed;
-                        }
-                    ) != orderedSections.end();
+                const int neighbourVertexId =
+                    cutResult.mesh.halfEdges[halfEdgeId].endVertex;
 
-                if (!alreadyAdded)
+                for (const DirectedBoundarySection& directedSection :
+                     outgoingSections)
                 {
-                    orderedSections.push_back(
-                        directedSection
-                    );
+                    const BoundarySection& section =
+                        sections[directedSection.sectionId];
+
+                    if (getDirectedStartNeighbourVertexId(
+                            section,
+                            directedSection.reversed
+                        ) == neighbourVertexId)
+                    {
+                        orderedSections.push_back(directedSection);
+                    }
                 }
             }
+
+            continue;
+        }
+
+        for (SectionDirection& sectionDirection : sectionDirections)
+        {
+            sectionDirection.angle = std::atan2(
+                dotPoints(
+                    crossPoints(
+                        referenceDirection,
+                        sectionDirection.direction
+                    ),
+                    surfaceNormal
+                ),
+                dotPoints(
+                    referenceDirection,
+                    sectionDirection.direction
+                )
+            );
+        }
+
+        std::stable_sort(
+            sectionDirections.begin(),
+            sectionDirections.end(),
+            [](const SectionDirection& first,
+               const SectionDirection& second)
+            {
+                if (first.angle != second.angle)
+                {
+                    return first.angle < second.angle;
+                }
+
+                if (first.section.sectionId != second.section.sectionId)
+                {
+                    return first.section.sectionId < second.section.sectionId;
+                }
+
+                return first.section.reversed < second.section.reversed;
+            }
+        );
+
+        for (const SectionDirection& sectionDirection : sectionDirections)
+        {
+            orderedSections.push_back(sectionDirection.section);
         }
     }
 
@@ -1332,31 +1638,17 @@ CurvenetFaceBuilder::build(
         orderedOutgoingSectionsByVertex
     );
 
-    std::vector<CurvenetFace> graphCycleFaces =
-        buildGraphCycleFaces(cutResult);
-
-    const bool hasClosedCutChain =
-        std::any_of(
-            cutResult.cutChainsByCurveId.begin(),
-            cutResult.cutChainsByCurveId.end(),
-            [](const auto& entry)
-            {
-                return entry.second.closed;
-            }
-        );
-
     /*
-        Open authored grids define their cells by chordless graph
-        cycles. Directed traversal also finds the unbounded exterior.
-        Closed profiles can partition the entire surface, so their
-        directed regions must be retained.
+        Chordless graph cycles are not necessarily surface faces: a net
+        wrapped around a finger can contain many larger chordless loops.
+        The rotation order at each embedded node defines the actual face
+        walk. Only enumerate graph cycles as a legacy fallback when directed
+        traversal could not construct any surface face.
     */
-    if (!hasClosedCutChain && !graphCycleFaces.empty())
+    if (!directedFaces.empty())
     {
-        return graphCycleFaces;
+        return directedFaces;
     }
 
-    return directedFaces.empty()
-        ? graphCycleFaces
-        : directedFaces;
+    return buildGraphCycleFaces(cutResult);
 }

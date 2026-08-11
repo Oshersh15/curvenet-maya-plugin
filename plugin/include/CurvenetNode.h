@@ -16,6 +16,8 @@
 #include "VertexCurveBinding.h"
 
 #include <vector>
+#include <array>
+#include <unordered_map>
 
 /*
     Maya deformer node that stores the Curvenet representation, samples
@@ -62,6 +64,8 @@ public:
     static MObject inputCurves;
     static MObject inputCurveStartNodeIds;
     static MObject inputCurveEndNodeIds;
+    static MObject inputDriverCurve;
+    static MObject inputDriverNodeIds;
     static MObject inputMesh;
     static MObject fullSurfaceCurvenet;
     static MObject showGeneratedCurvenet;
@@ -76,6 +80,10 @@ private:
     bool neutralSamplesCaptured = false;
 
     std::vector<std::vector<Point3>> currentSampledCurves;
+
+    std::unordered_map<int, Point3> neutralDriverPositions;
+    std::unordered_map<int, std::array<Point3, 4>> neutralDriverFrames;
+    bool neutralDriverCaptured = false;
 
     std::vector<VertexCurveBinding> vertexBindings;
     CurvenetHarmonicSolver harmonicSolver;

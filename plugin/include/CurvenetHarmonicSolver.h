@@ -18,7 +18,7 @@ public:
 
     std::vector<Point3> solve(
         const std::vector<std::vector<Point3>>& currentSampledCurves,
-        int iterationCount = 60
+        int iterationCount = 30
     );
 
     bool isInitialized() const;
