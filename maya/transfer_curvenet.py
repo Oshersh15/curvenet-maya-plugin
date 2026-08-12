@@ -1,5 +1,4 @@
 import re
-import sys
 
 import maya.api.OpenMaya as om
 import maya.cmds as cmds
@@ -540,9 +539,6 @@ def attach_existing_curvenet_to_mesh(
 
     if cmds.objExists(preview_group):
         cmds.delete(preview_group)
-
-    if sys.platform.startswith("linux"):
-        cmds.evaluationManager(mode="off")
 
     deformer = cmds.deformer(
         target_mesh,

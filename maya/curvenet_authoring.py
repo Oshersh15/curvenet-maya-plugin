@@ -5,7 +5,6 @@ Load this through curvenet_workflow.py rather than executing it directly.
 
 import heapq
 import math
-import sys
 import maya.cmds as cmds
 import maya.api.OpenMaya as om
 import maya.api.OpenMayaUI as omui
@@ -959,9 +958,6 @@ def connect_drawn_curvenet_to_plugin():
         cmds.delete(preview_group)
 
     projected_curves = build_projected_curves()
-
-    if sys.platform.startswith("linux"):
-        cmds.evaluationManager(mode="off")
 
     deformer = cmds.deformer(
         MESH_NAME,

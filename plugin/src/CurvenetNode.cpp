@@ -2221,7 +2221,16 @@ MObject CurveDeformerNode::showGeneratedCurvenet;
 MStatus initializePlugin(MObject pluginObject)
 {
     MStatus status;
-    MFnPlugin plugin(pluginObject, "Osher", "1.0", "Any");
+    MFnPlugin plugin(
+        pluginObject,
+        "Osher",
+        "1.1-linux-entry-diagnostic",
+        "Any"
+    );
+
+    MGlobal::displayInfo(
+        "Curvenet plugin build: 1.1-linux-entry-diagnostic"
+    );
 
     status = plugin.registerNode(
         CurveDeformerNode::nodeName,
