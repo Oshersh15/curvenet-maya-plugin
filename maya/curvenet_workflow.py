@@ -433,15 +433,11 @@ def _rebuild_target_deformer_from_skinned_curves(mesh, full_surface):
             worldSpace=True,
             translation=True,
         )
-        points = [
-            tuple(flat_points[index:index + 3]) + (1.0,)
-            for index in range(0, len(flat_points), 3)
-        ]
         cmds.setAttr(
-            "{}.inputCurvePoints[{}]".format(deformer, curve_index),
-            len(points),
-            *points,
-            type="pointArray",
+            "{}.inputCurveCoordinates[{}]".format(deformer, curve_index),
+            len(flat_points),
+            *flat_points,
+            type="doubleArray",
         )
         cmds.setAttr(
             "{}.inputCurveStartNodeIds[{}]".format(deformer, curve_index),

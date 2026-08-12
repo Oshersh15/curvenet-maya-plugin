@@ -9,7 +9,7 @@
 #include <maya/MArrayDataHandle.h>
 #include <maya/MPoint.h>
 #include <maya/MPointArray.h>
-#include <maya/MFnPointArrayData.h>
+#include <maya/MFnDoubleArrayData.h>
 #include <maya/MTypeId.h>
 #include <maya/MStatus.h>
 #include <maya/MFnTypedAttribute.h>
@@ -601,16 +601,16 @@ MStatus CurveDeformerNode::initialize()
         return status;
     }
 
-    inputCurvePoints = typedAttr.create(
-        "inputCurvePoints",
-        "icp",
-        MFnData::kPointArray,
+    inputCurveCoordinates = typedAttr.create(
+        "inputCurveCoordinates",
+        "icc",
+        MFnData::kDoubleArray,
         &status
     );
 
     if (!status)
     {
-        status.perror("Failed to create inputCurvePoints attribute");
+        status.perror("Failed to create inputCurveCoordinates attribute");
         return status;
     }
 
@@ -620,15 +620,15 @@ MStatus CurveDeformerNode::initialize()
     typedAttr.setConnectable(false);
     typedAttr.setArray(true);
     typedAttr.setUsesArrayDataBuilder(true);
-    status = addAttribute(inputCurvePoints);
+    status = addAttribute(inputCurveCoordinates);
 
     if (!status)
     {
-        status.perror("Failed to add inputCurvePoints attribute");
+        status.perror("Failed to add inputCurveCoordinates attribute");
         return status;
     }
 
-    attributeAffects(inputCurvePoints, outputGeom);
+    attributeAffects(inputCurveCoordinates, outputGeom);
 
     MFnNumericAttribute numericAttr;
 
@@ -830,7 +830,7 @@ unsigned int geometryIndex
         ::fsync(descriptor);
         ::close(descriptor);
     };
-    traceStage("ENTER deform 1.7");
+    traceStage("ENTER deform 1.9");
 #else
     const auto traceStage = [](const char*) {};
 #endif
@@ -912,7 +912,7 @@ unsigned int geometryIndex
 
     traceStage("before point-array handle");
     MArrayDataHandle curvePointArrayHandle =
-        dataBlock.inputArrayValue(inputCurvePoints, &status);
+        dataBlock.inputArrayValue(inputCurveCoordinates, &status);
 
     if (!status)
     {
@@ -1205,7 +1205,7 @@ unsigned int geometryIndex
             continue;
         }
 
-        MFnPointArrayData curvePointData(curveObject, &status);
+        MFnDoubleArrayData curveCoordinateData(curveObject, &status);
 
         if (!status)
         {
@@ -1217,14 +1217,27 @@ unsigned int geometryIndex
         std::vector<MPoint> cvPositions;
         std::vector<Point3> controlPoints;
 
-        MPointArray curveCVs = curvePointData.array(&status);
-        traceStage("profile points read");
+        const MDoubleArray curveCoordinates =
+            curveCoordinateData.array(&status);
+        traceStage("profile coordinates read");
 
-        for (unsigned int cvIndex = 0;
-             cvIndex < curveCVs.length();
-             ++cvIndex)
+        if (!status ||
+            curveCoordinates.length() < 6 ||
+            curveCoordinates.length() % 3 != 0)
         {
-            const MPoint cvPosition = curveCVs[cvIndex];
+            traceStage("invalid profile coordinates");
+            continue;
+        }
+
+        for (unsigned int coordinateIndex = 0;
+             coordinateIndex < curveCoordinates.length();
+             coordinateIndex += 3)
+        {
+            const MPoint cvPosition(
+                curveCoordinates[coordinateIndex],
+                curveCoordinates[coordinateIndex + 1],
+                curveCoordinates[coordinateIndex + 2]
+            );
             cvPositions.push_back(cvPosition);
 
             controlPoints.push_back(Point3{
@@ -2208,7 +2221,7 @@ CurveDeformerNode::getDebugProfileCurves() const
 MTypeId CurveDeformerNode::id(0x001226C1);
 MString CurveDeformerNode::nodeName("curvenetNode");
 MObject CurveDeformerNode::inputCurves;
-MObject CurveDeformerNode::inputCurvePoints;
+MObject CurveDeformerNode::inputCurveCoordinates;
 MObject CurveDeformerNode::inputCurveStartNodeIds;
 MObject CurveDeformerNode::inputCurveEndNodeIds;
 MObject CurveDeformerNode::inputDriverCurve;
@@ -2223,12 +2236,12 @@ MStatus initializePlugin(MObject pluginObject)
     MFnPlugin plugin(
         pluginObject,
         "Osher",
-        "1.8-direct-projected-samples",
+        "1.9-primitive-profile-coordinates",
         "Any"
     );
 
     MGlobal::displayInfo(
-        "Curvenet plugin build: 1.8-direct-projected-samples"
+        "Curvenet plugin build: 1.9-primitive-profile-coordinates"
     );
 
     status = plugin.registerNode(

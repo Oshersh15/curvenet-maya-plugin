@@ -561,15 +561,11 @@ def attach_existing_curvenet_to_mesh(
             worldSpace=True,
             translation=True,
         )
-        points = [
-            tuple(flat_points[index:index + 3]) + (1.0,)
-            for index in range(0, len(flat_points), 3)
-        ]
         cmds.setAttr(
-            f"{deformer}.inputCurvePoints[{curve_id}]",
-            len(points),
-            *points,
-            type="pointArray",
+            f"{deformer}.inputCurveCoordinates[{curve_id}]",
+            len(flat_points),
+            *flat_points,
+            type="doubleArray",
         )
         source_curve = source_segments[curve_id]
         start_control, end_control = _endpoint_controls(source_curve)

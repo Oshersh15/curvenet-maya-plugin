@@ -544,15 +544,11 @@ def _surface_connect_drawn_curvenet_to_plugin(full_surface=False):
             worldSpace=True,
             translation=True,
         )
-        points = [
-            tuple(flat_points[index:index + 3]) + (1.0,)
-            for index in range(0, len(flat_points), 3)
-        ]
         cmds.setAttr(
-            f"{deformer}.inputCurvePoints[{curve_id}]",
-            len(points),
-            *points,
-            type="pointArray",
+            f"{deformer}.inputCurveCoordinates[{curve_id}]",
+            len(flat_points),
+            *flat_points,
+            type="doubleArray",
         )
         cmds.setAttr(
             f"{deformer}.inputCurveStartNodeIds[{curve_id}]",

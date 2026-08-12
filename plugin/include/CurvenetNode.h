@@ -64,7 +64,7 @@ public:
     static MTypeId id;
     static MString nodeName;
     static MObject inputCurves;
-    static MObject inputCurvePoints;
+    static MObject inputCurveCoordinates;
     static MObject inputCurveStartNodeIds;
     static MObject inputCurveEndNodeIds;
     static MObject inputDriverCurve;
