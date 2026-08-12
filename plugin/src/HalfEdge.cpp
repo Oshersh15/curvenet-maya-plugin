@@ -53,9 +53,18 @@ std::vector<int> HalfEdgeMesh::getAdjacentVertices(int vertexIndex) const
     }
 
     int currentHalfEdge = startHalfEdge;
+    std::vector<bool> visitedHalfEdges(halfEdges.size(), false);
 
     do
     {
+        if (currentHalfEdge < 0 ||
+            currentHalfEdge >= static_cast<int>(halfEdges.size()) ||
+            visitedHalfEdges[currentHalfEdge])
+        {
+            break;
+        }
+
+        visitedHalfEdges[currentHalfEdge] = true;
         adjacentVertices.push_back(halfEdges[currentHalfEdge].endVertex);
 
         int twinHalfEdge = halfEdges[currentHalfEdge].twin;
@@ -67,7 +76,7 @@ std::vector<int> HalfEdgeMesh::getAdjacentVertices(int vertexIndex) const
 
         currentHalfEdge = halfEdges[twinHalfEdge].next;
 
-    } while (currentHalfEdge != startHalfEdge && currentHalfEdge >= 0);
+    } while (currentHalfEdge != startHalfEdge);
 
     return adjacentVertices;
 }
@@ -89,9 +98,18 @@ std::vector<int> HalfEdgeMesh::getAdjacentFaces(int faceIndex) const
     }
 
     int currentHalfEdge = startHalfEdge;
+    std::vector<bool> visitedHalfEdges(halfEdges.size(), false);
 
     do
     {
+        if (currentHalfEdge < 0 ||
+            currentHalfEdge >= static_cast<int>(halfEdges.size()) ||
+            visitedHalfEdges[currentHalfEdge])
+        {
+            break;
+        }
+
+        visitedHalfEdges[currentHalfEdge] = true;
         int twinHalfEdge = halfEdges[currentHalfEdge].twin;
 
         if (twinHalfEdge >= 0 && twinHalfEdge < static_cast<int>(halfEdges.size()))
@@ -106,7 +124,7 @@ std::vector<int> HalfEdgeMesh::getAdjacentFaces(int faceIndex) const
 
         currentHalfEdge = halfEdges[currentHalfEdge].next;
 
-    } while (currentHalfEdge != startHalfEdge && currentHalfEdge >= 0);
+    } while (currentHalfEdge != startHalfEdge);
 
     return adjacentFaces;
 }
@@ -292,15 +310,23 @@ std::vector<int> HalfEdgeMesh::traverseFace(int faceIndex) const
     }
 
     int currentHalfEdge = startHalfEdge;
+    std::vector<bool> visited(halfEdges.size(), false);
 
     do
     {
+        if (currentHalfEdge < 0 ||
+            currentHalfEdge >= static_cast<int>(halfEdges.size()) ||
+            visited[currentHalfEdge])
+        {
+            traversal.clear();
+            return traversal;
+        }
+
+        visited[currentHalfEdge] = true;
         traversal.push_back(currentHalfEdge);
         currentHalfEdge = halfEdges[currentHalfEdge].next;
 
-    } while (currentHalfEdge != startHalfEdge &&
-             currentHalfEdge >= 0 &&
-             currentHalfEdge < static_cast<int>(halfEdges.size()));
+    } while (currentHalfEdge != startHalfEdge);
 
     return traversal;
 }
@@ -1111,14 +1137,22 @@ HalfEdgeMesh::splitFaceWithInteriorVertex(
             current.outgoingHalfEdgeId;
 
         int halfEdgeId = current.outgoingHalfEdgeId;
+        std::vector<bool> visitedHalfEdges(halfEdges.size(), false);
         do
         {
+            if (halfEdgeId < 0 ||
+                halfEdgeId >= static_cast<int>(halfEdges.size()) ||
+                visitedHalfEdges[halfEdgeId])
+            {
+                result.success = false;
+                return result;
+            }
+
+            visitedHalfEdges[halfEdgeId] = true;
             halfEdges[halfEdgeId].face = regionFaceId;
             halfEdgeId = halfEdges[halfEdgeId].next;
         }
-        while (halfEdgeId != current.outgoingHalfEdgeId &&
-               halfEdgeId >= 0 &&
-               halfEdgeId < static_cast<int>(halfEdges.size()));
+        while (halfEdgeId != current.outgoingHalfEdgeId);
     }
 
     vertices[interiorVertexId].outgoingHalfEdge =

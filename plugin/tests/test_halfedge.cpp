@@ -48,6 +48,20 @@ TEST(HalfEdgeMesh, TraverseFaceReturnsEmptyForInvalidFace)
     EXPECT_TRUE(outOfRangeTraversal.empty());
 }
 
+TEST(HalfEdgeMesh, TraverseFaceRejectsCycleThatMissesRecordedStart)
+{
+    HalfEdgeMesh mesh;
+    mesh.createTestQuad();
+
+    /* Simulate a corrupted evolving face: its recorded start is edge 0,
+       while the next links enter a separate 1 -> 2 -> 1 cycle. */
+    mesh.halfEdges[0].next = 1;
+    mesh.halfEdges[1].next = 2;
+    mesh.halfEdges[2].next = 1;
+
+    EXPECT_TRUE(mesh.traverseFace(0).empty());
+}
+
 TEST(HalfEdgeMesh, GetFaceHalfEdgesReturnsEmptyForInvalidFace)
 {
     HalfEdgeMesh mesh;

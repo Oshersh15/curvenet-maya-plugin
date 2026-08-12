@@ -882,7 +882,7 @@ unsigned int geometryIndex
         ::fsync(descriptor);
         ::close(descriptor);
     };
-    traceStage("ENTER deform 2.5-bulk-input-snapshot");
+    traceStage("ENTER deform 2.6-bounded-half-edge-traversal");
 #else
     const auto traceStage = [](const char*) {};
 #endif
@@ -2279,12 +2279,12 @@ MStatus initializePlugin(MObject pluginObject)
     MFnPlugin plugin(
         pluginObject,
         "Osher",
-        "2.5-bulk-input-snapshot",
+        "2.6-bounded-half-edge-traversal",
         "Any"
     );
 
     MGlobal::displayInfo(
-        "Curvenet plugin build: 2.5-bulk-input-snapshot"
+        "Curvenet plugin build: 2.6-bounded-half-edge-traversal"
     );
 
     status = plugin.registerNode(

@@ -1170,18 +1170,22 @@ bool CutPathMeshSplitter::insertCutHalfEdgesIntoFace(
     */
     int currentHalfEdgeId =
         firstCutHalfEdgeId;
+    std::vector<bool> visitedHalfEdges(
+        mesh.halfEdges.size(),
+        false
+    );
 
     do
     {
         if (currentHalfEdgeId < 0 ||
             currentHalfEdgeId >=
-                static_cast<int>(
-                    mesh.halfEdges.size()
-                ))
+                static_cast<int>(mesh.halfEdges.size()) ||
+            visitedHalfEdges[currentHalfEdgeId])
         {
             return false;
         }
 
+        visitedHalfEdges[currentHalfEdgeId] = true;
         mesh.halfEdges[
             currentHalfEdgeId
         ].face = newFaceId;
