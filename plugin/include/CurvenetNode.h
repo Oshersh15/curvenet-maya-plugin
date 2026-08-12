@@ -46,6 +46,8 @@ public:
         unsigned int geometryIndex
     ) override;
 
+    MStatus prepareEmbedding(unsigned int geometryIndex = 0);
+
     /* Returns the sampled points for every connected profile curve. */
     const std::vector<std::vector<Point3>>&
     getDebugSampledCurves() const;
@@ -75,6 +77,13 @@ public:
     static MObject showGeneratedCurvenet;
 
 private:
+    MStatus evaluatePreparedState(
+        MDataBlock& dataBlock,
+        MItGeometry* geoIterator,
+        const MMatrix& localToWorldMatrix,
+        unsigned int geometryIndex
+    );
+
     std::atomic_bool deformInProgress{false};
 
     CurvenetData curvenetData;

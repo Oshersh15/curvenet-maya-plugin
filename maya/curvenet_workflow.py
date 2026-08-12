@@ -456,6 +456,7 @@ def _rebuild_target_deformer_from_skinned_curves(mesh, full_surface):
             _logical_node_id(controls[1]),
         )
 
+    cmds.prepareCurvenetEmbedding(deformer)
     cmds.dgdirty(deformer)
     cmds.refresh(force=True)
     print("Target plugin connected to skinned curves:", len(curves))

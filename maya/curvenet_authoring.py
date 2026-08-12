@@ -996,6 +996,7 @@ def connect_drawn_curvenet_to_plugin():
 
         print(f"Logical profile ID {curve_id}:", curve)
 
+    cmds.prepareCurvenetEmbedding(deformer)
     print("\nConnected projected Curvenet to plugin.")
     print("Projected curves:", len(projected_curves))
     print("Deformer:", deformer)

@@ -566,6 +566,8 @@ def _surface_connect_drawn_curvenet_to_plugin(full_surface=False):
             end_node_id,
         )
 
+    cmds.prepareCurvenetEmbedding(deformer)
+
     print("\nConnected projected Curvenet to plugin.")
     print("Projected curves:", len(projected_curves))
     print("Authored logical nodes:", len({

@@ -33,6 +33,7 @@
 #include "MayaMeshConverter.h"
 #include "ProfileCurveSampler.h"
 #include <maya/MPxCommand.h>
+#include <maya/MArgList.h>
 #include <maya/MSelectionList.h>
 #include <maya/MItSelectionList.h>
 #include <maya/MDagPath.h>
@@ -861,6 +862,44 @@ const MMatrix& localToWorldMatrix,
 unsigned int geometryIndex
 )
 {
+    /* Embedding construction is an explicit setup operation. Keeping it out
+       of DG evaluation prevents Maya from recursively evaluating partially
+       populated curve inputs. */
+    if (!topologyCaptured)
+    {
+        return MS::kSuccess;
+    }
+
+    return evaluatePreparedState(
+        dataBlock, &geoIterator, localToWorldMatrix, geometryIndex
+    );
+}
+
+MStatus CurveDeformerNode::prepareEmbedding(unsigned int geometryIndex)
+{
+    topologyCaptured = false;
+    neutralSamplesCaptured = false;
+    neutralDriverCaptured = false;
+    vertexBindingsCaptured = false;
+    neutralSampledCurves.clear();
+    currentSampledCurves.clear();
+    neutralDriverPositions.clear();
+    neutralDriverFrames.clear();
+    vertexBindings.clear();
+
+    MDataBlock dataBlock = forceCache();
+    return evaluatePreparedState(
+        dataBlock, nullptr, MMatrix::identity, geometryIndex
+    );
+}
+
+MStatus CurveDeformerNode::evaluatePreparedState(
+MDataBlock& dataBlock,
+MItGeometry* geometryIterator,
+const MMatrix& localToWorldMatrix,
+unsigned int geometryIndex
+)
+{
     MStatus status;
 
 #ifdef __linux__
@@ -882,7 +921,6 @@ unsigned int geometryIndex
         ::fsync(descriptor);
         ::close(descriptor);
     };
-    traceStage("ENTER deform 2.6-bounded-half-edge-traversal");
 #else
     const auto traceStage = [](const char*) {};
 #endif
@@ -905,6 +943,22 @@ unsigned int geometryIndex
             inProgress.store(false);
         }
     } evaluationGuard{deformInProgress};
+
+#ifdef __linux__
+    {
+        const int descriptor = ::open(
+            "/tmp/curvenet_deform_trace.txt",
+            O_WRONLY | O_CREAT | O_TRUNC,
+            0666
+        );
+
+        if (descriptor >= 0)
+        {
+            ::close(descriptor);
+        }
+    }
+#endif
+    traceStage("ENTER deform 2.7-complete-stage-map");
 
     traceStage("before geometry filter");
     MMatrix geometryLocalToWorldMatrix =
@@ -1647,6 +1701,7 @@ unsigned int geometryIndex
         /* Cache the exact crossings used by the cutter, not the preliminary
            proximity detections produced before the evolving-mesh pass. */
         debugCrossings.clear();
+        traceStage("before debug crossing snapshot");
 
         for (const CutPath& attemptedPath :
              curvenetCutResult.attemptedCutPaths)
@@ -1668,6 +1723,7 @@ unsigned int geometryIndex
                 debugCrossings.push_back(worldCrossing);
             }
         }
+        traceStage("after debug crossing snapshot");
 
         MGlobal::displayInfo(
             MString("Curvenet cutting: ")
@@ -1866,6 +1922,7 @@ unsigned int geometryIndex
 
         if (curvenetCutResult.success)
         {
+            traceStage("successful cut processing begin");
             const bool buildFullSurface =
                 dataBlock.inputValue(
                     fullSurfaceCurvenet,
@@ -1913,15 +1970,18 @@ unsigned int geometryIndex
 
             if (buildFullSurface)
             {
+                traceStage("before full-surface face regions");
                 MGlobal::displayInfo("Curvenet coverage: FULL SURFACE");
                 CurvenetFaceRegionBuilder::
                     buildFullSurfacePartitions(
                         curvenetCutResult,
                         expectedFullSurfaceFaceCount
                     );
+                traceStage("after full-surface face regions");
             }
             else
             {
+                traceStage("before authored face regions");
                 MGlobal::displayInfo("Curvenet coverage: AUTHORED FACES");
                 const int expectedAuthoredFaceCount =
                     authoredCycleRank(profileInputs);
@@ -1930,6 +1990,7 @@ unsigned int geometryIndex
                         curvenetCutResult,
                         expectedAuthoredFaceCount
                     );
+                traceStage("after authored face regions");
 
                 if (expectedAuthoredFaceCount >= 0 &&
                     static_cast<int>(
@@ -1948,17 +2009,21 @@ unsigned int geometryIndex
 
             }
 
+            traceStage("before Curvenet edge builder");
             CurvenetEdgeBuilder::build(
                 curvenetCutResult,
                 profileInputs
             );
+            traceStage("after Curvenet edge builder");
 
+            traceStage("before harmonic initialize");
             harmonicSolver.initialize(
                 curvenetCutResult.mesh,
                 curvenetCutResult.cutChainsByCurveId,
                 originalVertexCount,
                 neutralSampledCurves
             );
+            traceStage("after harmonic initialize");
 
             if (buildFullSurface && hasExplicitAuthoredTopology)
             {
@@ -2118,6 +2183,7 @@ unsigned int geometryIndex
             );
 
             topologyCaptured = true;
+            traceStage("topology captured");
 
         }
     }
@@ -2135,12 +2201,20 @@ unsigned int geometryIndex
         neutralSamplesCaptured = true;
     }
 
+    if (geometryIterator == nullptr)
+    {
+        return topologyCaptured ? MS::kSuccess : MS::kFailure;
+    }
+
+    MItGeometry& geoIterator = *geometryIterator;
     geoIterator.reset();
 
+    traceStage("before harmonic solve");
     const std::vector<Point3> harmonicDisplacements =
         harmonicSolver.solve(currentSampledCurves);
     traceStage("after harmonic solve");
 
+    traceStage("before geometry update");
     while (!geoIterator.isDone())
     {
         const int vertexId =
@@ -2232,6 +2306,8 @@ unsigned int geometryIndex
         geoIterator.next();
     }
 
+    traceStage("after geometry update");
+
     traceStage("EXIT deform");
 
     return MS::kSuccess;
@@ -2261,6 +2337,59 @@ CurveDeformerNode::getDebugProfileCurves() const
     return curvenetData.getCurves();
 }
 
+namespace
+{
+class PrepareCurvenetEmbeddingCommand : public MPxCommand
+{
+public:
+    static void* creator()
+    {
+        return new PrepareCurvenetEmbeddingCommand();
+    }
+
+    MStatus doIt(const MArgList& arguments) override
+    {
+        if (arguments.length() != 1)
+        {
+            MGlobal::displayError(
+                "prepareCurvenetEmbedding expects one Curvenet deformer."
+            );
+            return MS::kInvalidParameter;
+        }
+
+        MSelectionList selection;
+        MStatus status = selection.add(arguments.asString(0));
+        MObject nodeObject;
+
+        if (!status || !selection.getDependNode(0, nodeObject))
+        {
+            MGlobal::displayError("Curvenet deformer was not found.");
+            return MS::kInvalidParameter;
+        }
+
+        MFnDependencyNode dependencyNode(nodeObject, &status);
+        auto* node = status
+            ? dynamic_cast<CurveDeformerNode*>(dependencyNode.userNode())
+            : nullptr;
+
+        if (node == nullptr)
+        {
+            MGlobal::displayError("Selected node is not a Curvenet deformer.");
+            return MS::kInvalidParameter;
+        }
+
+        status = node->prepareEmbedding();
+
+        if (!status)
+        {
+            MGlobal::displayError("Curvenet embedding preparation failed.");
+        }
+
+        return status;
+    }
+};
+}
+
 MTypeId CurveDeformerNode::id(0x001226C1);
 MString CurveDeformerNode::nodeName("curvenetNode");
 MObject CurveDeformerNode::inputCurves;
@@ -2279,12 +2408,12 @@ MStatus initializePlugin(MObject pluginObject)
     MFnPlugin plugin(
         pluginObject,
         "Osher",
-        "2.6-bounded-half-edge-traversal",
+        "3.0-explicit-embedding-prepare",
         "Any"
     );
 
     MGlobal::displayInfo(
-        "Curvenet plugin build: 2.6-bounded-half-edge-traversal"
+        "Curvenet plugin build: 3.0-explicit-embedding-prepare"
     );
 
     status = plugin.registerNode(
@@ -2309,6 +2438,17 @@ MStatus initializePlugin(MObject pluginObject)
         return status;
     }
 
+    status = plugin.registerCommand(
+        "prepareCurvenetEmbedding",
+        PrepareCurvenetEmbeddingCommand::creator
+    );
+
+    if (!status)
+    {
+        status.perror("Failed to register prepareCurvenetEmbedding command");
+        return status;
+    }
+
     if (!status)
     {
         status.perror("Failed to register curvenetNode");
@@ -2321,6 +2461,14 @@ MStatus uninitializePlugin(MObject pluginObject)
 {
     MStatus status;
     MFnPlugin plugin(pluginObject);
+
+    status = plugin.deregisterCommand("prepareCurvenetEmbedding");
+
+    if (!status)
+    {
+        status.perror("Failed to deregister prepareCurvenetEmbedding command");
+        return status;
+    }
 
     status = plugin.deregisterCommand(
         CurvenetDebugCommand::commandName

@@ -585,6 +585,8 @@ def attach_existing_curvenet_to_mesh(
             node_id_by_control[end_control],
         )
 
+    cmds.prepareCurvenetEmbedding(deformer)
+
     print("Transferred Curvenet to:", target_mesh)
     print("Projected curves:", len(projected_curves))
     print("Shared projected endpoint controls:", len(projected_endpoint_by_control))
