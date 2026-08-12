@@ -550,9 +550,10 @@ void* CurveDeformerNode::creator()
 
 MPxNode::SchedulingType CurveDeformerNode::schedulingType() const
 {
-    /* Evaluation updates node-owned embedding and deformation caches. Keep
-       separate Curvenet nodes from mutating those caches concurrently. */
-    return MPxNode::kGloballySerial;
+    /* Each Curvenet node owns its caches, so only evaluations of the same
+       node must be serialized. Global serialization can deadlock Maya's
+       Linux viewport while it waits for the deformer evaluation to start. */
+    return MPxNode::kSerial;
 }
 
 MStatus CurveDeformerNode::initialize()
