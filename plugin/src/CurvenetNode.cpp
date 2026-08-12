@@ -9,6 +9,7 @@
 #include <maya/MArrayDataHandle.h>
 #include <maya/MPoint.h>
 #include <maya/MPointArray.h>
+#include <maya/MFnPointArrayData.h>
 #include <maya/MTypeId.h>
 #include <maya/MStatus.h>
 #include <maya/MFnTypedAttribute.h>
@@ -594,6 +595,35 @@ MStatus CurveDeformerNode::initialize()
         return status;
     }
 
+    inputCurvePoints = typedAttr.create(
+        "inputCurvePoints",
+        "icp",
+        MFnData::kPointArray,
+        &status
+    );
+
+    if (!status)
+    {
+        status.perror("Failed to create inputCurvePoints attribute");
+        return status;
+    }
+
+    typedAttr.setStorable(true);
+    typedAttr.setReadable(false);
+    typedAttr.setWritable(true);
+    typedAttr.setConnectable(false);
+    typedAttr.setArray(true);
+    typedAttr.setUsesArrayDataBuilder(true);
+    status = addAttribute(inputCurvePoints);
+
+    if (!status)
+    {
+        status.perror("Failed to add inputCurvePoints attribute");
+        return status;
+    }
+
+    attributeAffects(inputCurvePoints, outputGeom);
+
     MFnNumericAttribute numericAttr;
 
     inputCurveStartNodeIds = numericAttr.create(
@@ -844,15 +874,15 @@ unsigned int geometryIndex
         }
     }
 
-    MArrayDataHandle curveArrayHandle =
-        dataBlock.inputArrayValue(inputCurves, &status);
+    MArrayDataHandle curvePointArrayHandle =
+        dataBlock.inputArrayValue(inputCurvePoints, &status);
 
     if (!status)
     {
         return MS::kSuccess;
     }
 
-    unsigned int numConnectedCurves = curveArrayHandle.elementCount();
+    unsigned int numConnectedCurves = curvePointArrayHandle.elementCount();
 
 
     std::vector<CutPath> cutPaths;
@@ -1105,56 +1135,40 @@ unsigned int geometryIndex
             continue;
         }
 
-        status = curveArrayHandle.jumpToArrayElement(curveIndex);
+        status = curvePointArrayHandle.jumpToArrayElement(curveIndex);
 
         if (!status)
         {
             continue;
         }
 
-        MDataHandle curveHandle = curveArrayHandle.inputValue(&status);
+        MDataHandle curveHandle = curvePointArrayHandle.inputValue(&status);
 
         if (!status)
         {
             continue;
         }
 
-        MObject curveObject =
-            curveHandle.asNurbsCurve();
+        MObject curveObject = curveHandle.data();
 
         if (curveObject.isNull())
         {
             continue;
         }
 
-        MFnNurbsCurve curveFn(curveObject, &status);
+        MFnPointArrayData curvePointData(curveObject, &status);
 
         if (!status)
         {
             continue;
         }
 
-        const MFnNurbsCurve::Form curveForm =
-            curveFn.form();
-
-        const bool curveClosed =
-            curveForm == MFnNurbsCurve::kClosed ||
-            curveForm == MFnNurbsCurve::kPeriodic;
+        const bool curveClosed = false;
 
         std::vector<MPoint> cvPositions;
         std::vector<Point3> controlPoints;
 
-        MPointArray curveCVs;
-        MStatus cvStatus =
-            curveFn.getCVs(
-                curveCVs,
-                MSpace::kObject
-            );
-
-        if (!cvStatus)
-        {
-            continue;
-        }
+        MPointArray curveCVs = curvePointData.array(&status);
 
         for (unsigned int cvIndex = 0;
              cvIndex < curveCVs.length();
@@ -1170,8 +1184,7 @@ unsigned int geometryIndex
             });
         }
 
-        std::vector<Point3> densePoints =
-            buildDenseCurvePoints(curveFn, 200);
+        std::vector<Point3> densePoints = controlPoints;
 
         const double controlPolygonLength =
             ProfileCurveSampler::computeControlPolygonLength(controlPoints);
@@ -2163,6 +2176,7 @@ CurveDeformerNode::getDebugProfileCurves() const
 MTypeId CurveDeformerNode::id(0x001226C1);
 MString CurveDeformerNode::nodeName("curvenetNode");
 MObject CurveDeformerNode::inputCurves;
+MObject CurveDeformerNode::inputCurvePoints;
 MObject CurveDeformerNode::inputCurveStartNodeIds;
 MObject CurveDeformerNode::inputCurveEndNodeIds;
 MObject CurveDeformerNode::inputDriverCurve;
@@ -2177,12 +2191,12 @@ MStatus initializePlugin(MObject pluginObject)
     MFnPlugin plugin(
         pluginObject,
         "Osher",
-        "1.4-stable-local-curve-data",
+        "1.5-baked-profile-point-data",
         "Any"
     );
 
     MGlobal::displayInfo(
-        "Curvenet plugin build: 1.4-stable-local-curve-data"
+        "Curvenet plugin build: 1.5-baked-profile-point-data"
     );
 
     status = plugin.registerNode(

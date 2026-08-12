@@ -427,10 +427,21 @@ def _rebuild_target_deformer_from_skinned_curves(mesh, full_surface):
             raise RuntimeError(
                 "Missing target endpoint metadata for curve: " + curve
             )
-        cmds.connectAttr(
-            shape + ".local",
-            "{}.inputCurves[{}]".format(deformer, curve_index),
-            force=True,
+        flat_points = cmds.xform(
+            curve + ".cv[*]",
+            query=True,
+            worldSpace=True,
+            translation=True,
+        )
+        points = [
+            tuple(flat_points[index:index + 3]) + (1.0,)
+            for index in range(0, len(flat_points), 3)
+        ]
+        cmds.setAttr(
+            "{}.inputCurvePoints[{}]".format(deformer, curve_index),
+            len(points),
+            *points,
+            type="pointArray",
         )
         cmds.setAttr(
             "{}.inputCurveStartNodeIds[{}]".format(deformer, curve_index),

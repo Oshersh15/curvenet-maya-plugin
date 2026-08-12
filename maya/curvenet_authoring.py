@@ -974,10 +974,21 @@ def connect_drawn_curvenet_to_plugin():
             fullPath=True,
         )[0]
 
-        cmds.connectAttr(
-            shape + ".local",
-            f"{deformer}.inputCurves[{curve_id}]",
-            force=True,
+        flat_points = cmds.xform(
+            curve + ".cv[*]",
+            query=True,
+            worldSpace=True,
+            translation=True,
+        )
+        points = [
+            tuple(flat_points[index:index + 3]) + (1.0,)
+            for index in range(0, len(flat_points), 3)
+        ]
+        cmds.setAttr(
+            f"{deformer}.inputCurvePoints[{curve_id}]",
+            len(points),
+            *points,
+            type="pointArray",
         )
 
         print(f"Logical profile ID {curve_id}:", curve)
