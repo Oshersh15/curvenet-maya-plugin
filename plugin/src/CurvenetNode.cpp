@@ -831,7 +831,7 @@ unsigned int geometryIndex
         ::fsync(descriptor);
         ::close(descriptor);
     };
-    traceStage("ENTER deform 2.1");
+    traceStage("ENTER deform 2.2");
 #else
     const auto traceStage = [](const char*) {};
 #endif
@@ -1254,21 +1254,13 @@ unsigned int geometryIndex
         }
         traceStage("profile Point3 values ready");
 
-        std::vector<Point3> densePoints = controlPoints;
-
-        /* Python supplies the already sampled projected profile. Resampling
-           this point array here duplicates work and can amplify malformed
-           input into an unbounded adaptive sample count. */
-        std::vector<Point3> sampledPoints = densePoints;
-        traceStage("profile samples ready");
-
         std::vector<Point3> objectSampledPoints;
-        objectSampledPoints.reserve(sampledPoints.size());
+        objectSampledPoints.reserve(controlPoints.size());
 
         const MMatrix worldToLocalMatrix =
             geometryLocalToWorldMatrix.inverse();
 
-        for (const Point3& sampledPoint : sampledPoints)
+        for (const Point3& sampledPoint : controlPoints)
         {
             objectSampledPoints.push_back(Point3{
                 sampledPoint.x * worldToLocalMatrix[0][0] +
@@ -1289,19 +1281,14 @@ unsigned int geometryIndex
 
         applyDriverDisplacement(curveIndex, objectSampledPoints);
 
-        curvenetData.addCurve(
-            sampledPoints,
-            curveClosed
-        );
-
-        currentSampledCurves.push_back(objectSampledPoints);
+        currentSampledCurves.emplace_back(objectSampledPoints);
 
         if (!neutralSamplesCaptured)
         {
-            neutralSampledCurves.push_back(objectSampledPoints);
+            neutralSampledCurves.emplace_back(objectSampledPoints);
         }
 
-        debugSampledCurves.push_back(sampledPoints);
+        debugSampledCurves.emplace_back(controlPoints);
 
         /*
             Cutting and region discovery describe the neutral embedding. Once
@@ -2196,7 +2183,6 @@ unsigned int geometryIndex
         geoIterator.next();
     }
 
-    curvenetData.detectConnections(0.001);
     traceStage("EXIT deform");
 
     return MS::kSuccess;
@@ -2244,12 +2230,12 @@ MStatus initializePlugin(MObject pluginObject)
     MFnPlugin plugin(
         pluginObject,
         "Osher",
-        "2.1-native-profile-points",
+        "2.2-single-owner-profile-data",
         "Any"
     );
 
     MGlobal::displayInfo(
-        "Curvenet plugin build: 2.1-native-profile-points"
+        "Curvenet plugin build: 2.2-single-owner-profile-data"
     );
 
     status = plugin.registerNode(
