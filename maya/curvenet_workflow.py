@@ -1,13 +1,29 @@
 """Public Maya workflow for authoring and transferring a Curvenet."""
 
+import os
+import sys
+
 import maya.cmds as cmds
 
 
-_PROJECT_DIRECTORY = (
-    "/Users/osher/Desktop/BU/CAVE/MasterProject/CurvenetProject"
+_WORKFLOW_FILE = globals().get("__file__", "")
+_DISCOVERED_PROJECT_DIRECTORY = (
+    os.path.dirname(os.path.dirname(os.path.abspath(_WORKFLOW_FILE)))
+    if os.path.basename(_WORKFLOW_FILE) == "curvenet_workflow.py"
+    else "/Users/osher/Desktop/BU/CAVE/MasterProject/CurvenetProject"
+)
+_PROJECT_DIRECTORY = os.environ.get(
+    "CURVENET_PROJECT_DIR",
+    _DISCOVERED_PROJECT_DIRECTORY,
 )
 _MAYA_DIRECTORY = _PROJECT_DIRECTORY + "/maya"
-_PLUGIN_PATH = _PROJECT_DIRECTORY + "/plugin/build/CurvenetPlugin.bundle"
+_PLUGIN_EXTENSION = (
+    ".bundle" if sys.platform == "darwin"
+    else (".mll" if sys.platform.startswith("win") else ".so")
+)
+_PLUGIN_PATH = (
+    _PROJECT_DIRECTORY + "/plugin/build/CurvenetPlugin" + _PLUGIN_EXTENSION
+)
 _FULL_SURFACE_CURVENET = None
 
 
@@ -293,9 +309,7 @@ def setup_curvenet_rigs(
     source_root = _selected_source_root()
     source_prefix = source_mesh.rsplit("|", 1)[-1].rsplit(":", 1)[-1]
     target_prefix = target_mesh.rsplit("|", 1)[-1].rsplit(":", 1)[-1]
-    source_nodes_group = source_prefix + "_drawnCurvenet_nodes_GRP"
     source_curves_group = source_prefix + "_drawnCurvenet_curves_GRP"
-    target_nodes_group = target_prefix + "_transferredCurvenet_nodes_GRP"
     source_deformer = source_prefix + "CurvenetNode"
 
     if full_surface is None:
@@ -306,11 +320,24 @@ def setup_curvenet_rigs(
             else False
         )
 
-    ensure_curvenet_driver_to_joint_hierarchy(
-        source_root,
-        source_nodes_group,
-        source_deformer,
-    )
+    source_curves = _skinned_projected_curves_for_mesh(source_mesh)
+    if not source_curves:
+        raise RuntimeError(
+            "Bind and finish painting the source Curvenet before transfer."
+        )
+    source_influences = []
+    for curve in source_curves:
+        skin = _connected_curve_skin(curve)
+        for joint in cmds.skinCluster(
+            skin,
+            query=True,
+            influence=True,
+        ) or []:
+            joint = cmds.ls(joint, long=True)[0]
+            if joint not in source_influences:
+                source_influences.append(joint)
+
+    source_joints = _ordered_joint_hierarchy(source_root)
     target_root, target_joints = transfer_joint_hierarchy_to_mesh(
         source_root_joint=source_root,
         source_mesh=source_mesh,
@@ -323,16 +350,108 @@ def setup_curvenet_rigs(
         source_curve_group=source_curves_group,
         full_surface=full_surface,
     )
-    bind_curvenet_driver_to_joint_hierarchy(
-        target_root,
-        target_nodes_group,
-        target_prefix + "CurvenetNode",
+    hierarchy_map = dict(zip(source_joints, target_joints))
+    missing_influences = [
+        joint for joint in source_influences if joint not in hierarchy_map
+    ]
+    if missing_influences:
+        raise RuntimeError(
+            "Source curve influences are outside the transferred hierarchy."
+        )
+    target_influences = [
+        hierarchy_map[joint]
+        for joint in source_influences
+    ]
+    target_nodes_group = target_prefix + "_transferredCurvenet_nodes_GRP"
+
+    # All required objects are already known here. Avoid routing this internal
+    # transfer through the interactive selected-mesh command.
+    cmds.select(target_influences, replace=True)
+    cmds.select(target_nodes_group, add=True)
+    bind_selected_curvenet_nodes_to_joints(lightweight_curves=False)
+    copy_projected_curve_skin_weights(
+        source_mesh,
+        target_mesh,
+        hierarchy_map,
     )
-    copy_curvenet_driver_weights(source_mesh, target_mesh)
+    _rebuild_target_deformer_from_skinned_curves(
+        target_mesh,
+        full_surface,
+    )
     cmds.select(source_root, replace=True)
     print("Source and target Curvenet rigs are ready.")
     print("Animate the source skeleton; the target follows the same pose.")
     return target_root, target_joints
+
+
+def _rebuild_target_deformer_from_skinned_curves(mesh, full_surface):
+    """Connect the target plugin to the final skinned NURBS shapes."""
+    prefix = mesh.rsplit("|", 1)[-1].rsplit(":", 1)[-1]
+    deformer_name = prefix + "CurvenetNode"
+    preview_group = deformer_name + "_curvenet_group"
+
+    if cmds.objExists(deformer_name):
+        cmds.delete(deformer_name)
+    if cmds.objExists(preview_group):
+        cmds.delete(preview_group)
+
+    curves = _skinned_projected_curves_for_mesh(mesh)
+    curves = sorted(
+        curves,
+        key=lambda curve: int(
+            curve.rsplit("|", 1)[-1].rsplit("_projected_", 1)[-1]
+        ),
+    )
+
+    if not curves:
+        raise RuntimeError("Missing skinned target Curvenet curves for: " + mesh)
+
+    controls_by_curve = _infer_curve_endpoint_controls(curves, mesh)
+
+    deformer = cmds.deformer(
+        mesh,
+        type="curvenetNode",
+        name=deformer_name,
+    )[0]
+    cmds.setAttr(deformer + ".fullSurfaceCurvenet", bool(full_surface))
+    source_mesh_shape = _deformer_source_mesh_shape(deformer)
+    cmds.connectAttr(
+        source_mesh_shape + ".outMesh",
+        deformer + ".inputMesh",
+        force=True,
+    )
+
+    for curve_index, curve in enumerate(curves):
+        shape = cmds.listRelatives(
+            curve,
+            shapes=True,
+            noIntermediate=True,
+            type="nurbsCurve",
+            fullPath=True,
+        )[0]
+        controls = controls_by_curve.get(curve, [])
+        if len(controls) != 2:
+            raise RuntimeError(
+                "Missing target endpoint metadata for curve: " + curve
+            )
+        cmds.connectAttr(
+            shape + ".worldSpace[0]",
+            "{}.inputCurves[{}]".format(deformer, curve_index),
+            force=True,
+        )
+        cmds.setAttr(
+            "{}.inputCurveStartNodeIds[{}]".format(deformer, curve_index),
+            _logical_node_id(controls[0]),
+        )
+        cmds.setAttr(
+            "{}.inputCurveEndNodeIds[{}]".format(deformer, curve_index),
+            _logical_node_id(controls[1]),
+        )
+
+    cmds.dgdirty(deformer)
+    cmds.refresh(force=True)
+    print("Target plugin connected to skinned curves:", len(curves))
+    return deformer
 
 
 def setup_tube_a_and_tube_b():
@@ -364,6 +483,9 @@ def setup_tube_a_and_tube_b():
     print("Tube A and Tube B Curvenet rigs are ready.")
     print("Animate the Tube A skeleton; Tube B follows the same pose.")
     return target_root, target_joints
+
+
+_execute_project_script("curvenet_ui.py")
 
 
 print("Curvenet workflow loaded.")

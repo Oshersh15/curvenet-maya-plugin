@@ -907,6 +907,21 @@ def create_projected_curve(curve, index, cache):
     )
     cmds.setAttr(projected_curve + ".projectedCurvenetProfile", lock=True)
 
+    for attribute, control in (
+        ("curvenetStartControl", start_control),
+        ("curvenetEndControl", end_control),
+    ):
+        cmds.addAttr(
+            projected_curve,
+            longName=attribute,
+            attributeType="message",
+        )
+        cmds.connectAttr(
+            control + ".message",
+            projected_curve + "." + attribute,
+            force=True,
+        )
+
     return projected_curve
 
 

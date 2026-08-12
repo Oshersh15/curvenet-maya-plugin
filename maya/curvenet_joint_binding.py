@@ -16,6 +16,7 @@ DRIVER_MARKER_ATTRIBUTE = "curvenetWeightDriver"
 DRIVER_FRAME_POINT_COUNT_ATTRIBUTE = "curvenetFramePointCount"
 WEIGHT_CONTROL_ATTRIBUTE = "curvenetWeightControlIndex"
 WEIGHT_EDITOR_WINDOW = "curvenetWeightEditorWindow"
+CURVE_WEIGHT_EDITOR_WINDOW = "curvenetCurveWeightEditorWindow"
 
 
 def _is_curvenet_node(node):
@@ -1262,10 +1263,137 @@ def copy_curvenet_driver_weights(source_mesh, target_mesh):
             )
 
     print("Copied painted Curvenet driver weights:", source_count)
+
+
+def copy_projected_curve_skin_weights(
+    source_mesh,
+    target_mesh,
+    source_to_target_joints,
+):
+    """Copy full painted projected-curve CV weights between Curvenets."""
+    source_curves = _skinned_projected_curves_for_mesh(source_mesh)
+    target_curves = _skinned_projected_curves_for_mesh(target_mesh)
+
+    def indexed_curves(curves):
+        result = {}
+        for curve in curves:
+            match = re.search(r"_projected_(\d+)$", curve.rsplit("|", 1)[-1])
+            if match:
+                result[int(match.group(1))] = curve
+        return result
+
+    source_by_index = indexed_curves(source_curves)
+    target_by_index = indexed_curves(target_curves)
+
+    if set(source_by_index) != set(target_by_index):
+        raise RuntimeError(
+            "Source and target projected Curvenet curves do not correspond."
+        )
+
+    joint_map = {
+        cmds.ls(source, long=True)[0]: cmds.ls(target, long=True)[0]
+        for source, target in source_to_target_joints.items()
+    }
+    copied_cvs = 0
+
+    for curve_index in sorted(source_by_index):
+        source_curve = source_by_index[curve_index]
+        target_curve = target_by_index[curve_index]
+        source_skin = _connected_curve_skin(source_curve)
+        target_skin = _connected_curve_skin(target_curve)
+
+        if not source_skin or not target_skin:
+            raise RuntimeError(
+                "Missing projected-curve skinCluster at curve "
+                + str(curve_index)
+            )
+
+        source_shape = cmds.listRelatives(
+            source_curve,
+            shapes=True,
+            noIntermediate=True,
+            type="nurbsCurve",
+            fullPath=True,
+        )[0]
+        target_shape = cmds.listRelatives(
+            target_curve,
+            shapes=True,
+            noIntermediate=True,
+            type="nurbsCurve",
+            fullPath=True,
+        )[0]
+        source_count = cmds.getAttr(source_shape + ".controlPoints", size=True)
+        target_count = cmds.getAttr(target_shape + ".controlPoints", size=True)
+
+        if source_count != target_count:
+            raise RuntimeError(
+                "Projected curve CV counts do not correspond at curve "
+                + str(curve_index)
+            )
+
+        source_influences = [
+            cmds.ls(joint, long=True)[0]
+            for joint in (
+                cmds.skinCluster(source_skin, query=True, influence=True) or []
+            )
+        ]
+
+        for cv_index in range(source_count):
+            source_component = source_curve + f".cv[{cv_index}]"
+            target_component = target_curve + f".cv[{cv_index}]"
+            target_values = []
+
+            for source_joint in source_influences:
+                if source_joint not in joint_map:
+                    raise RuntimeError(
+                        "No duplicated target joint for influence: "
+                        + source_joint
+                    )
+                value = cmds.skinPercent(
+                    source_skin,
+                    source_component,
+                    query=True,
+                    transform=source_joint,
+                )
+                target_values.append((joint_map[source_joint], value))
+
+            cmds.skinPercent(
+                target_skin,
+                target_component,
+                transformValue=target_values,
+                normalize=True,
+            )
+            copied_cvs += 1
+
+    print("Copied painted projected-curve CV weights:", copied_cvs)
+    return copied_cvs
     return source_count
 
 
 def _curve_endpoint_controls(curve):
+    stored_controls = []
+
+    for attribute in ("curvenetStartControl", "curvenetEndControl"):
+        if not cmds.attributeQuery(attribute, node=curve, exists=True):
+            stored_controls = []
+            break
+
+        connections = cmds.listConnections(
+            curve + "." + attribute,
+            source=True,
+            destination=False,
+            type="transform",
+        ) or []
+
+        if not connections:
+            stored_controls = []
+            break
+
+        stored_controls.append(connections[0].rsplit("|", 1)[-1])
+
+    if len(stored_controls) == 2:
+        return stored_controls
+
     expression = curve.rsplit("|", 1)[-1] + "_endpointExpr"
 
     if not cmds.objExists(expression):
@@ -1621,6 +1749,655 @@ def unbind_selected_curvenet_nodes():
     print("Unbound Curvenet nodes:", unbound)
     print("Unskinned projected curves:", unskinned)
     return nodes
+
+
+def _skinned_projected_curves_for_mesh(mesh):
+    prefix = mesh.rsplit("|", 1)[-1].rsplit(":", 1)[-1]
+    group_names = (
+        prefix + "_drawnCurvenet_projectedCurves_GRP",
+        prefix + "_transferredCurvenet_projectedCurves_GRP",
+    )
+    curves = []
+
+    for group_name in group_names:
+        matches = cmds.ls(group_name, long=True, type="transform") or []
+
+        for group in matches:
+            for shape in cmds.listRelatives(
+                group,
+                allDescendents=True,
+                type="nurbsCurve",
+                noIntermediate=True,
+                fullPath=True,
+            ) or []:
+                parents = cmds.listRelatives(
+                    shape,
+                    parent=True,
+                    fullPath=True,
+                ) or []
+
+                if parents and _connected_curve_skin(parents[0]):
+                    curves.append(parents[0])
+
+    return sorted(set(curves))
+
+
+def _selected_skinned_curve_cvs(curves):
+    curve_names = set(curves)
+    components = []
+
+    for selected in cmds.ls(selection=True, flatten=True, long=True) or []:
+        if ".cv[" in selected:
+            curve = selected.split(".cv[", 1)[0]
+            matches = cmds.ls(curve, long=True, type="transform") or []
+
+            if matches and matches[0] in curve_names:
+                components.append(selected)
+
+            continue
+
+        transforms = cmds.ls(selected, long=True, type="transform") or []
+
+        if not transforms or transforms[0] not in curve_names:
+            continue
+
+        shape = cmds.listRelatives(
+            transforms[0],
+            shapes=True,
+            noIntermediate=True,
+            type="nurbsCurve",
+            fullPath=True,
+        )
+
+        if not shape:
+            continue
+
+        cv_count = cmds.getAttr(shape[0] + ".controlPoints", size=True)
+        components.extend(
+            f"{transforms[0]}.cv[{cv_index}]"
+            for cv_index in range(cv_count)
+        )
+
+    return sorted(set(components))
+
+
+def _infer_curve_endpoint_controls(curves, mesh):
+    prefix = mesh.rsplit("|", 1)[-1].rsplit(":", 1)[-1]
+    groups = (
+        prefix + "_drawnCurvenet_nodes_GRP",
+        prefix + "_transferredCurvenet_nodes_GRP",
+    )
+    nodes = []
+
+    for group_name in groups:
+        matches = cmds.ls(group_name, long=True, type="transform") or []
+
+        for group in matches:
+            nodes.extend(_selected_curvenet_nodes([group]))
+
+    node_positions = {
+        node.rsplit("|", 1)[-1]: _world_position(node)
+        for node in nodes
+    }
+    controls_by_curve = {}
+
+    for curve in curves:
+        controls = _curve_endpoint_controls(curve)
+
+        if len(controls) == 2 or not node_positions:
+            controls_by_curve[curve] = controls
+            continue
+
+        shape = cmds.listRelatives(
+            curve,
+            shapes=True,
+            noIntermediate=True,
+            type="nurbsCurve",
+            fullPath=True,
+        )[0]
+        cv_count = cmds.getAttr(shape + ".controlPoints", size=True)
+        endpoints = (
+            cmds.pointPosition(curve + ".cv[0]", world=True),
+            cmds.pointPosition(
+                curve + f".cv[{cv_count - 1}]",
+                world=True,
+            ),
+        )
+        controls_by_curve[curve] = [
+            min(
+                node_positions,
+                key=lambda name: sum(
+                    (
+                        node_positions[name][axis] - endpoint[axis]
+                    ) ** 2
+                    for axis in range(3)
+                ),
+            )
+            for endpoint in endpoints
+        ]
+
+    return controls_by_curve
+
+
+def open_curvenet_curve_weight_editor(mesh):
+    """Edit the skin weights on the projected Curvenet curve CVs."""
+    mesh_matches = cmds.ls(mesh, long=True, type="transform") or []
+
+    if len(mesh_matches) != 1:
+        raise RuntimeError("Expected exactly one mesh transform: " + str(mesh))
+
+    curves = _skinned_projected_curves_for_mesh(mesh_matches[0])
+
+    if not curves:
+        raise RuntimeError(
+            "No fully skinned projected Curvenet curves found for " + mesh
+        )
+
+    mesh_shapes = cmds.listRelatives(
+        mesh_matches[0],
+        shapes=True,
+        noIntermediate=True,
+        type="mesh",
+        fullPath=True,
+    ) or []
+    mesh_display_state = {}
+
+    for shape in mesh_shapes:
+        mesh_display_state[shape] = (
+            cmds.getAttr(shape + ".overrideEnabled"),
+            cmds.getAttr(shape + ".overrideDisplayType"),
+        )
+        cmds.setAttr(shape + ".overrideEnabled", True)
+        cmds.setAttr(shape + ".overrideDisplayType", 2)
+
+    influences = []
+
+    for curve in curves:
+        skin = _connected_curve_skin(curve)
+
+        for influence in cmds.skinCluster(
+            skin,
+            query=True,
+            influence=True,
+        ) or []:
+            influence = cmds.ls(influence, long=True)[0]
+
+            if influence not in influences:
+                influences.append(influence)
+
+        shape = cmds.listRelatives(
+            curve,
+            shapes=True,
+            noIntermediate=True,
+            fullPath=True,
+        )[0]
+
+        if cmds.objExists(shape + ".dispCV"):
+            cmds.setAttr(shape + ".dispCV", True)
+
+        if cmds.objExists(shape + ".alwaysDrawOnTop"):
+            cmds.setAttr(shape + ".alwaysDrawOnTop", True)
+
+    if cmds.window(CURVE_WEIGHT_EDITOR_WINDOW, exists=True):
+        cmds.deleteUI(CURVE_WEIGHT_EDITOR_WINDOW)
+
+    window = cmds.window(
+        CURVE_WEIGHT_EDITOR_WINDOW,
+        title="Curvenet Curve CV Weights",
+        sizeable=True,
+        widthHeight=(480, 560),
+    )
+    cmds.columnLayout(adjustableColumn=True, rowSpacing=8)
+    cmds.text(
+        label=(
+            "1. Right-click a green curve and choose Control Vertex.\n"
+            "2. Select the CVs that move incorrectly.\n"
+            "3. Press Capture Selected CVs, choose a joint, then drag Weight."
+        ),
+        align="left",
+    )
+    status = cmds.text(label="No curve CVs captured.", align="left")
+    capture_button = cmds.button(
+        label="Capture Selected Curves or Green CVs"
+    )
+    joint_list = cmds.textScrollList(
+        allowMultiSelection=False,
+        height=330,
+    )
+    weight_field = cmds.floatSliderGrp(
+        label="Weight",
+        field=True,
+        minValue=0.0,
+        maxValue=1.0,
+        fieldMinValue=0.0,
+        fieldMaxValue=1.0,
+        value=0.0,
+    )
+    soft_radius_field = cmds.intSliderGrp(
+        label="Soft radius (CVs)",
+        field=True,
+        minValue=0,
+        maxValue=20,
+        fieldMinValue=0,
+        fieldMaxValue=50,
+        value=8,
+    )
+    state = {
+        "components": [],
+        "joint": None,
+        "updating": False,
+        "baseline_weight_vectors": {},
+    }
+
+    endpoint_controls_by_curve = _infer_curve_endpoint_controls(
+        curves,
+        mesh_matches[0],
+    )
+
+    def joint_label(joint):
+        parts = [part for part in joint.split("|") if part]
+        short_name = parts[-1]
+        parent_name = parts[-2] if len(parts) > 1 else "world"
+        return short_name + "  | parent: " + parent_name
+
+    label_to_joint = {
+        joint_label(joint): joint
+        for joint in influences
+    }
+    cmds.textScrollList(
+        joint_list,
+        edit=True,
+        append=list(label_to_joint),
+    )
+
+    def components_by_skin():
+        grouped = {}
+
+        for component in state["components"]:
+            curve = component.split(".cv[", 1)[0]
+            skin = _connected_curve_skin(curve)
+
+            if skin:
+                grouped.setdefault(skin, []).append(component)
+
+        return grouped
+
+    def soft_component_weights():
+        """Return CVs and smooth-selection strength over the curve graph."""
+        selected = set(state["components"])
+        shared_controls = set()
+        adjacency = {}
+        endpoints_by_control = {}
+
+        for curve, controls in endpoint_controls_by_curve.items():
+            shape = cmds.listRelatives(
+                curve,
+                shapes=True,
+                noIntermediate=True,
+                type="nurbsCurve",
+                fullPath=True,
+            )[0]
+            cv_count = cmds.getAttr(shape + ".controlPoints", size=True)
+            components = [
+                curve + f".cv[{index}]"
+                for index in range(cv_count)
+            ]
+
+            for component in components:
+                adjacency.setdefault(component, set())
+            for first, second in zip(components, components[1:]):
+                adjacency[first].add(second)
+                adjacency[second].add(first)
+
+            if len(controls) == 2:
+                endpoints_by_control.setdefault(controls[0], []).append(
+                    components[0]
+                )
+                endpoints_by_control.setdefault(controls[1], []).append(
+                    components[-1]
+                )
+
+        for control, endpoints in endpoints_by_control.items():
+            for endpoint in endpoints:
+                adjacency[endpoint].update(
+                    other for other in endpoints if other != endpoint
+                )
+            if any(endpoint in selected for endpoint in endpoints):
+                shared_controls.add(control)
+                # Incident curves share one logical node, so their endpoint
+                # CVs must receive the same full edit before falloff begins.
+                selected.update(endpoints)
+
+        radius = cmds.intSliderGrp(
+            soft_radius_field,
+            query=True,
+            value=True,
+        )
+        distances = {component: 0 for component in selected}
+        frontier = list(selected)
+
+        while frontier:
+            component = frontier.pop(0)
+            distance = distances[component]
+            if distance >= radius:
+                continue
+            for neighbour in adjacency.get(component, ()):
+                if neighbour in distances:
+                    continue
+                distances[neighbour] = distance + 1
+                frontier.append(neighbour)
+
+        strengths = {}
+        for component, distance in distances.items():
+            if distance == 0:
+                strengths[component] = 1.0
+                continue
+            linear = max(0.0, 1.0 - distance / float(radius + 1))
+            strengths[component] = linear * linear * (3.0 - 2.0 * linear)
+
+        return strengths, shared_controls
+
+    def update_shared_spheres(shared_controls, joint, value):
+        for control_name in shared_controls:
+            controls = cmds.ls(control_name, long=True, type="transform") or []
+
+            if len(controls) != 1:
+                continue
+
+            control = controls[0]
+            constraint = _connected_constraint(control)
+
+            if not constraint:
+                continue
+
+            targets = cmds.parentConstraint(
+                constraint,
+                query=True,
+                targetList=True,
+            ) or []
+            aliases = cmds.parentConstraint(
+                constraint,
+                query=True,
+                weightAliasList=True,
+            ) or []
+            target_data = [
+                (cmds.ls(target, long=True)[0], alias)
+                for target, alias in zip(targets, aliases)
+            ]
+            selected_alias = next(
+                (
+                    alias
+                    for target, alias in target_data
+                    if target == joint
+                ),
+                None,
+            )
+
+            if selected_alias is None:
+                continue
+
+            other_data = [
+                (target, alias, cmds.getAttr(constraint + "." + alias))
+                for target, alias in target_data
+                if alias != selected_alias
+            ]
+            cmds.setAttr(constraint + "." + selected_alias, value)
+            remaining = max(0.0, 1.0 - value)
+            other_total = sum(item[2] for item in other_data)
+
+            for _, alias, old_value in other_data:
+                resolved = (
+                    remaining * old_value / other_total
+                    if other_total > 1.0e-8
+                    else remaining / max(1, len(other_data))
+                )
+                cmds.setAttr(constraint + "." + alias, resolved)
+
+            _store_joint_weights(
+                control,
+                [
+                    cmds.getAttr(constraint + "." + alias)
+                    for _, alias in target_data
+                ],
+            )
+
+    def average_weight():
+        if state["joint"] is None or not state["components"]:
+            return 0.0
+
+        values = []
+
+        for skin, components in components_by_skin().items():
+            skin_influences = {
+                cmds.ls(item, long=True)[0]
+                for item in (
+                    cmds.skinCluster(skin, query=True, influence=True) or []
+                )
+            }
+
+            if state["joint"] not in skin_influences:
+                continue
+
+            values.extend(
+                cmds.skinPercent(
+                    skin,
+                    component,
+                    query=True,
+                    transform=state["joint"],
+                )
+                for component in components
+            )
+
+        return sum(values) / len(values) if values else 0.0
+
+    def update_display():
+        value = average_weight()
+        state["updating"] = True
+        cmds.floatSliderGrp(weight_field, edit=True, value=value)
+        state["updating"] = False
+        cmds.text(
+            status,
+            edit=True,
+            label=(
+                f"Captured CVs: {len(state['components'])}  | "
+                f"average selected-joint weight: {value:.3f}"
+            ),
+        )
+
+    def capture_components(*_):
+        components = _selected_skinned_curve_cvs(curves)
+
+        if not components:
+            raise RuntimeError(
+                "Select projected Curvenet curves or their CVs first."
+            )
+
+        state["components"] = components
+        state["baseline_weight_vectors"] = {}
+        update_display()
+
+    def choose_joint(*_):
+        labels = cmds.textScrollList(
+            joint_list,
+            query=True,
+            selectItem=True,
+        ) or []
+
+        if not labels:
+            return
+
+        state["joint"] = label_to_joint[labels[0]]
+        update_display()
+
+        # Highlighting the joint must not discard the captured CV list.
+        cmds.select(state["joint"], replace=True)
+
+    def apply_weight(*_):
+        if state["updating"]:
+            return
+
+        if not state["components"]:
+            raise RuntimeError("Capture green Curvenet CVs first.")
+
+        if state["joint"] is None:
+            raise RuntimeError("Choose a joint in the list first.")
+
+        value = cmds.floatSliderGrp(
+            weight_field,
+            query=True,
+            value=True,
+        )
+
+        component_strengths, shared_controls = soft_component_weights()
+
+        for component, strength in component_strengths.items():
+            curve = component.split(".cv[", 1)[0]
+            skin = _connected_curve_skin(curve)
+
+            if not skin:
+                continue
+
+            skin_influences = [
+                cmds.ls(influence, long=True)[0]
+                for influence in (
+                    cmds.skinCluster(skin, query=True, influence=True) or []
+                )
+            ]
+            baseline_key = (skin, component)
+            if baseline_key not in state["baseline_weight_vectors"]:
+                state["baseline_weight_vectors"][baseline_key] = [
+                    cmds.skinPercent(
+                        skin,
+                        component,
+                        query=True,
+                        transform=influence,
+                    )
+                    for influence in skin_influences
+                ]
+
+            baseline = state["baseline_weight_vectors"][baseline_key]
+            selected_index = skin_influences.index(state["joint"])
+            other_total = sum(
+                weight
+                for index, weight in enumerate(baseline)
+                if index != selected_index
+            )
+            target = []
+
+            for index, old_weight in enumerate(baseline):
+                if index == selected_index:
+                    target.append(value)
+                elif other_total > 1.0e-8:
+                    target.append((1.0 - value) * old_weight / other_total)
+                else:
+                    target.append(
+                        (1.0 - value) / max(1, len(baseline) - 1)
+                    )
+
+            blended_weights = [
+                old_weight + strength * (target_weight - old_weight)
+                for old_weight, target_weight in zip(baseline, target)
+            ]
+            cmds.skinPercent(
+                skin,
+                component,
+                transformValue=list(zip(skin_influences, blended_weights)),
+                normalize=True,
+            )
+
+        update_shared_spheres(shared_controls, state["joint"], value)
+
+        cmds.refresh(force=True)
+        update_display()
+
+    cmds.button(
+        capture_button,
+        edit=True,
+        command=capture_components,
+    )
+    cmds.textScrollList(
+        joint_list,
+        edit=True,
+        selectCommand=choose_joint,
+    )
+    cmds.floatSliderGrp(
+        weight_field,
+        edit=True,
+        dragCommand=apply_weight,
+        changeCommand=apply_weight,
+    )
+    cmds.intSliderGrp(
+        soft_radius_field,
+        edit=True,
+        dragCommand=apply_weight,
+        changeCommand=apply_weight,
+    )
+    cmds.button(
+        label="Restore Captured CV Selection",
+        command=lambda *_: cmds.select(state["components"], replace=True),
+    )
+    def sync_selected_joint(*_):
+        selected_joints = cmds.ls(
+            selection=True,
+            long=True,
+            type="joint",
+        ) or []
+
+        if len(selected_joints) != 1 or selected_joints[0] not in influences:
+            return
+
+        state["joint"] = selected_joints[0]
+        label = joint_label(state["joint"])
+        cmds.textScrollList(
+            joint_list,
+            edit=True,
+            deselectAll=True,
+        )
+        cmds.textScrollList(
+            joint_list,
+            edit=True,
+            selectItem=label,
+        )
+        update_display()
+
+    def restore_display(*_):
+        for shape, display_state in mesh_display_state.items():
+            if not cmds.objExists(shape):
+                continue
+
+            cmds.setAttr(shape + ".overrideEnabled", display_state[0])
+            cmds.setAttr(shape + ".overrideDisplayType", display_state[1])
+
+        for curve in curves:
+            shapes = cmds.listRelatives(
+                curve,
+                shapes=True,
+                noIntermediate=True,
+                type="nurbsCurve",
+                fullPath=True,
+            ) or []
+
+            if not shapes:
+                continue
+            if cmds.objExists(shapes[0] + ".dispCV"):
+                cmds.setAttr(shapes[0] + ".dispCV", False)
+            if cmds.objExists(shapes[0] + ".alwaysDrawOnTop"):
+                cmds.setAttr(shapes[0] + ".alwaysDrawOnTop", False)
+
+        cmds.selectMode(object=True)
+        cmds.select(clear=True)
+
+    cmds.showWindow(window)
+    cmds.scriptJob(
+        event=["SelectionChanged", sync_selected_joint],
+        parent=window,
+    )
+    cmds.scriptJob(
+        uiDeleted=[window, restore_display],
+        runOnce=True,
+    )
+    print("Curvenet curve-CV weight editor opened for:", mesh)
+    return window
 
 
 print("Curvenet joint binding enabled.")

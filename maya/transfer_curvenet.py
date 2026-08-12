@@ -510,6 +510,20 @@ def attach_existing_curvenet_to_mesh(
             projected_curve + ".projectedCurvenetProfile",
             lock=True,
         )
+        for attribute, marker in (
+            ("curvenetStartControl", marker_by_control[start_control]),
+            ("curvenetEndControl", marker_by_control[end_control]),
+        ):
+            cmds.addAttr(
+                projected_curve,
+                longName=attribute,
+                attributeType="message",
+            )
+            cmds.connectAttr(
+                marker + ".message",
+                projected_curve + "." + attribute,
+                force=True,
+            )
         _create_endpoint_expression(
             projected_curve,
             marker_by_control[start_control],
