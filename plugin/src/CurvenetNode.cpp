@@ -545,6 +545,13 @@ void* CurveDeformerNode::creator()
     return new CurveDeformerNode();
 }
 
+MPxNode::SchedulingType CurveDeformerNode::schedulingType() const
+{
+    /* Evaluation updates node-owned embedding and deformation caches. Keep
+       separate Curvenet nodes from mutating those caches concurrently. */
+    return MPxNode::kGloballySerial;
+}
+
 MStatus CurveDeformerNode::initialize()
 {
     MStatus status;
@@ -901,7 +908,18 @@ unsigned int geometryIndex
                     }
 
                     MPoint position;
-                    driverFn.getCV(cvIndex, position, MSpace::kObject);
+                    MStatus cvStatus =
+                        driverFn.getCV(
+                            cvIndex,
+                            position,
+                            MSpace::kObject
+                        );
+
+                    if (!cvStatus)
+                    {
+                        continue;
+                    }
+
                     position *= worldToLocalMatrix;
                     currentDriverFramePoints[logicalNodeId].push_back(Point3{
                         position.x,
@@ -1130,7 +1148,18 @@ unsigned int geometryIndex
         for (unsigned int cvIndex = 0; cvIndex < numCVs; ++cvIndex)
         {
             MPoint cvPosition;
-            curveFn.getCV(cvIndex, cvPosition);
+            MStatus cvStatus =
+                curveFn.getCV(
+                    cvIndex,
+                    cvPosition,
+                    MSpace::kObject
+                );
+
+            if (!cvStatus)
+            {
+                continue;
+            }
+
             cvPositions.push_back(cvPosition);
 
             controlPoints.push_back(Point3{

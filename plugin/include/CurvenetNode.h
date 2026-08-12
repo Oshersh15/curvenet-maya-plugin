@@ -36,6 +36,8 @@ public:
     static void* creator();
     static MStatus initialize();
 
+    SchedulingType schedulingType() const override;
+
     MStatus deform(
         MDataBlock& dataBlock,
         MItGeometry& geoIterator,
