@@ -68,35 +68,15 @@ def _run_ui_action(action):
 
 
 def _run_long_ui_action(label, action):
-    """Show definite feedback while Maya performs a synchronous operation."""
-    opened_progress = False
+    """Run a synchronous operation with Maya's standard busy cursor."""
     try:
-        try:
-            cmds.progressWindow(endProgress=True)
-        except Exception:
-            pass
-        cmds.progressWindow(
-            title="Curvenet",
-            progress=0,
-            status=label + "\nMaya is working; please wait.",
-            isInterruptable=False,
-        )
-        opened_progress = True
         cmds.waitCursor(state=True)
-        cmds.refresh(force=True)
-        result = action()
-        cmds.progressWindow(edit=True, progress=100, status=label + " complete.")
-        return result
+        return action()
     except Exception as error:
         cmds.warning("Curvenet: " + str(error))
         raise
     finally:
         cmds.waitCursor(state=False)
-        if opened_progress:
-            try:
-                cmds.progressWindow(endProgress=True)
-            except Exception:
-                pass
 
 
 def _coverage_value(menu):

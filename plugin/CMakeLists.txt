@@ -41,6 +41,17 @@ endif()
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+if(UNIX AND NOT APPLE AND CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+    if(NOT CMAKE_CXX_COMPILER_VERSION VERSION_GREATER_EQUAL 11.0 OR
+       CMAKE_CXX_COMPILER_VERSION VERSION_GREATER_EQUAL 12.0)
+        message(FATAL_ERROR
+            "Maya 2025 Linux plugins must be built with Autodesk's supported "
+            "DTS-11/GCC 11 toolchain. Detected GCC "
+            "${CMAKE_CXX_COMPILER_VERSION}."
+        )
+    endif()
+endif()
+
 add_library(CurvenetPlugin SHARED
     src/CurvenetNode.cpp
     src/CurvenetData.cpp
