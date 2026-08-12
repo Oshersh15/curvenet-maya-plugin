@@ -550,10 +550,10 @@ void* CurveDeformerNode::creator()
 
 MPxNode::SchedulingType CurveDeformerNode::schedulingType() const
 {
-    /* Each Curvenet node owns its caches, so only evaluations of the same
-       node must be serialized. Global serialization can deadlock Maya's
-       Linux viewport while it waits for the deformer evaluation to start. */
-    return MPxNode::kSerial;
+    /* Initial embedding reads Maya curve and mesh function sets and reports
+       its result through Maya's UI. These operations must remain on Maya's
+       main thread, particularly on Linux. */
+    return MPxNode::kUntrusted;
 }
 
 MStatus CurveDeformerNode::initialize()
@@ -782,7 +782,6 @@ unsigned int geometryIndex
 #ifdef __linux__
     const auto reportLinuxStage = [](const MString& stage)
     {
-        MGlobal::displayInfo(MString("Curvenet Linux stage: ") + stage);
         std::ofstream trace(
             "/tmp/curvenet_linux_stage.txt",
             std::ios::out | std::ios::trunc
