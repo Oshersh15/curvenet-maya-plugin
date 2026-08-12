@@ -39,7 +39,6 @@
 #include "CurvenetFaceBuilder.h"
 #include "CurvenetFaceRegionBuilder.h"
 #include "CurvenetMeshCutter.h"
-#include "CurvenetSceneBuilder.h"
 #include "CurvenetEdgeBuilder.h"
 
 #include <vector>
@@ -1973,27 +1972,6 @@ unsigned int geometryIndex
                         cleanupDetails
                     );
                 }
-            }
-
-            MFnDependencyNode dependencyNode(
-                thisMObject()
-            );
-
-            const bool showGeneratedScene =
-                dataBlock.inputValue(
-                    showGeneratedCurvenet,
-                    &status
-                ).asBool();
-
-            if (!scenePreviewBuilt)
-            {
-                CurvenetSceneBuilder::build(
-                    curvenetCutResult,
-                    dependencyNode.name(),
-                    geometryTransformName,
-                    showGeneratedScene
-                );
-                scenePreviewBuilt = true;
             }
 
             MGlobal::displayInfo(

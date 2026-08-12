@@ -91,5 +91,4 @@ private:
     CurvenetHarmonicSolver harmonicSolver;
     bool vertexBindingsCaptured = false;
     bool topologyCaptured = false;
-    bool scenePreviewBuilt = false;
 };
