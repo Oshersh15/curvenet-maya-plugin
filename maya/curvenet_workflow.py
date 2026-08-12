@@ -435,8 +435,8 @@ def _rebuild_target_deformer_from_skinned_curves(mesh, full_surface):
         )
         cmds.setAttr(
             "{}.inputCurveCoordinates[{}]".format(deformer, curve_index),
-            flat_points,
-            type="doubleArray",
+            ",".join(format(value, ".17g") for value in flat_points),
+            type="string",
         )
         cmds.setAttr(
             "{}.inputCurveStartNodeIds[{}]".format(deformer, curve_index),

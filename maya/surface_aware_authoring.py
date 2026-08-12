@@ -546,8 +546,8 @@ def _surface_connect_drawn_curvenet_to_plugin(full_surface=False):
         )
         cmds.setAttr(
             f"{deformer}.inputCurveCoordinates[{curve_id}]",
-            flat_points,
-            type="doubleArray",
+            ",".join(format(value, ".17g") for value in flat_points),
+            type="string",
         )
         cmds.setAttr(
             f"{deformer}.inputCurveStartNodeIds[{curve_id}]",

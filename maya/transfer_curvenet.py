@@ -563,8 +563,8 @@ def attach_existing_curvenet_to_mesh(
         )
         cmds.setAttr(
             f"{deformer}.inputCurveCoordinates[{curve_id}]",
-            flat_points,
-            type="doubleArray",
+            ",".join(format(value, ".17g") for value in flat_points),
+            type="string",
         )
         source_curve = source_segments[curve_id]
         start_control, end_control = _endpoint_controls(source_curve)

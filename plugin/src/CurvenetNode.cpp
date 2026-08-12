@@ -9,7 +9,6 @@
 #include <maya/MArrayDataHandle.h>
 #include <maya/MPoint.h>
 #include <maya/MPointArray.h>
-#include <maya/MFnDoubleArrayData.h>
 #include <maya/MTypeId.h>
 #include <maya/MStatus.h>
 #include <maya/MFnTypedAttribute.h>
@@ -24,6 +23,8 @@
 #include <maya/MFnGeometryFilter.h>
 #include <maya/MPlug.h>
 #include <cstring>
+#include <cstdlib>
+#include <cmath>
 #ifdef __linux__
 #include <fcntl.h>
 #include <unistd.h>
@@ -604,7 +605,7 @@ MStatus CurveDeformerNode::initialize()
     inputCurveCoordinates = typedAttr.create(
         "inputCurveCoordinates",
         "icc",
-        MFnData::kDoubleArray,
+        MFnData::kString,
         &status
     );
 
@@ -830,7 +831,7 @@ unsigned int geometryIndex
         ::fsync(descriptor);
         ::close(descriptor);
     };
-    traceStage("ENTER deform 1.9");
+    traceStage("ENTER deform 2.0");
 #else
     const auto traceStage = [](const char*) {};
 #endif
@@ -1198,39 +1199,51 @@ unsigned int geometryIndex
             continue;
         }
 
-        MObject curveObject = curveHandle.data();
-
-        if (curveObject.isNull())
-        {
-            continue;
-        }
-
-        MFnDoubleArrayData curveCoordinateData(curveObject, &status);
-
-        if (!status)
-        {
-            continue;
-        }
-
         const bool curveClosed = false;
 
         std::vector<MPoint> cvPositions;
         std::vector<Point3> controlPoints;
 
-        const MDoubleArray curveCoordinates =
-            curveCoordinateData.array(&status);
-        traceStage("profile coordinates read");
+        const MString serializedCoordinates = curveHandle.asString();
+        const char* cursor = serializedCoordinates.asChar();
+        std::vector<double> curveCoordinates;
 
-        if (!status ||
-            curveCoordinates.length() < 6 ||
-            curveCoordinates.length() % 3 != 0)
+        while (cursor != nullptr && *cursor != '\0')
+        {
+            char* end = nullptr;
+            const double coordinate = std::strtod(cursor, &end);
+
+            if (end == cursor || !std::isfinite(coordinate))
+            {
+                curveCoordinates.clear();
+                break;
+            }
+
+            curveCoordinates.push_back(coordinate);
+            cursor = end;
+
+            if (*cursor == ',')
+            {
+                ++cursor;
+            }
+            else if (*cursor != '\0')
+            {
+                curveCoordinates.clear();
+                break;
+            }
+        }
+
+        traceStage("profile coordinates parsed");
+
+        if (curveCoordinates.size() < 6 ||
+            curveCoordinates.size() % 3 != 0)
         {
             traceStage("invalid profile coordinates");
             continue;
         }
 
-        for (unsigned int coordinateIndex = 0;
-             coordinateIndex < curveCoordinates.length();
+        for (size_t coordinateIndex = 0;
+             coordinateIndex < curveCoordinates.size();
              coordinateIndex += 3)
         {
             const MPoint cvPosition(
@@ -1280,7 +1293,7 @@ unsigned int geometryIndex
         applyDriverDisplacement(curveIndex, objectSampledPoints);
 
         curvenetData.addCurve(
-            curveObject,
+            MObject::kNullObj,
             cvPositions,
             sampledPoints,
             curveClosed
@@ -2236,12 +2249,12 @@ MStatus initializePlugin(MObject pluginObject)
     MFnPlugin plugin(
         pluginObject,
         "Osher",
-        "1.9-primitive-profile-coordinates",
+        "2.0-serialized-profile-coordinates",
         "Any"
     );
 
     MGlobal::displayInfo(
-        "Curvenet plugin build: 1.9-primitive-profile-coordinates"
+        "Curvenet plugin build: 2.0-serialized-profile-coordinates"
     );
 
     status = plugin.registerNode(
