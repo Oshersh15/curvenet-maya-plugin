@@ -14,6 +14,9 @@
 #include <maya/MFnTypedAttribute.h>
 #include <maya/MFnNumericAttribute.h>
 #include <maya/MFnNurbsCurve.h>
+#ifdef __linux__
+#include <fstream>
+#endif
 #include <maya/MGlobal.h>
 #include <maya/MString.h>
 #include <maya/MObject.h>
@@ -779,6 +782,11 @@ unsigned int geometryIndex
     const auto reportLinuxStage = [](const MString& stage)
     {
         MGlobal::displayInfo(MString("Curvenet Linux stage: ") + stage);
+        std::ofstream trace(
+            "/tmp/curvenet_linux_stage.txt",
+            std::ios::out | std::ios::trunc
+        );
+        trace << stage.asChar() << std::endl;
     };
     reportLinuxStage("deformer evaluation started");
 #endif
