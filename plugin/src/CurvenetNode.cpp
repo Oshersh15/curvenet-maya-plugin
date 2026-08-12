@@ -22,6 +22,7 @@
 #include <maya/MFnMesh.h>
 #include <maya/MFnDependencyNode.h>
 #include <maya/MFnGeometryFilter.h>
+#include <maya/MPlug.h>
 #include "HalfEdge.h"
 #include "MayaMeshConverter.h"
 #include "ProfileCurveSampler.h"
@@ -905,11 +906,20 @@ unsigned int geometryIndex
 
     std::unordered_map<int, Point3> currentDriverPositions;
     std::unordered_map<int, std::vector<Point3>> currentDriverFramePoints;
-    MDataHandle driverHandle =
-        dataBlock.inputValue(inputDriverCurve, &status);
+    const MPlug driverPlug(thisMObject(), inputDriverCurve);
+    const bool hasConnectedDriver =
+        topologyCaptured && driverPlug.isConnected();
 
-    if (status)
+    if (hasConnectedDriver)
     {
+        MDataHandle driverHandle =
+            dataBlock.inputValue(inputDriverCurve, &status);
+
+        if (!status)
+        {
+            return MS::kSuccess;
+        }
+
         const MObject driverObject =
             driverHandle.asNurbsCurve();
 
@@ -2191,12 +2201,12 @@ MStatus initializePlugin(MObject pluginObject)
     MFnPlugin plugin(
         pluginObject,
         "Osher",
-        "1.5-baked-profile-point-data",
+        "1.6-guard-empty-driver-curve",
         "Any"
     );
 
     MGlobal::displayInfo(
-        "Curvenet plugin build: 1.5-baked-profile-point-data"
+        "Curvenet plugin build: 1.6-guard-empty-driver-curve"
     );
 
     status = plugin.registerNode(
