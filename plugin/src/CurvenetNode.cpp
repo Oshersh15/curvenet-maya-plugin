@@ -23,6 +23,11 @@
 #include <maya/MFnDependencyNode.h>
 #include <maya/MFnGeometryFilter.h>
 #include <maya/MPlug.h>
+#include <cstring>
+#ifdef __linux__
+#include <fcntl.h>
+#include <unistd.h>
+#endif
 #include "HalfEdge.h"
 #include "MayaMeshConverter.h"
 #include "ProfileCurveSampler.h"
@@ -806,6 +811,31 @@ unsigned int geometryIndex
 {
     MStatus status;
 
+#ifdef __linux__
+    const auto traceStage = [](const char* message)
+    {
+        const int descriptor = ::open(
+            "/tmp/curvenet_deform_trace.txt",
+            O_WRONLY | O_CREAT | O_APPEND,
+            0666
+        );
+
+        if (descriptor < 0)
+        {
+            return;
+        }
+
+        ::write(descriptor, message, std::strlen(message));
+        ::write(descriptor, "\n", 1);
+        ::fsync(descriptor);
+        ::close(descriptor);
+    };
+    traceStage("ENTER deform 1.7");
+#else
+    const auto traceStage = [](const char*) {};
+#endif
+
+    traceStage("before geometry filter");
     MMatrix geometryLocalToWorldMatrix =
         localToWorldMatrix;
     MString geometryTransformName;
@@ -814,6 +844,7 @@ unsigned int geometryIndex
         thisMObject(),
         &status
     );
+    traceStage("after geometry filter");
 
     if (status)
     {
@@ -851,6 +882,7 @@ unsigned int geometryIndex
        posing scale with the full mesh even though the CutPaths were cached. */
     if (!topologyCaptured)
     {
+        traceStage("before neutral mesh handle");
         MArrayDataHandle geometryArray =
             dataBlock.inputArrayValue(input, &status);
 
@@ -864,17 +896,21 @@ unsigned int geometryIndex
 
             if (!meshObject.isNull())
             {
+                traceStage("before MFnMesh");
                 MFnMesh meshFn(meshObject);
+                traceStage("before half-edge conversion");
 
                 mayaHalfEdgeMesh =
                     MayaMeshConverter::buildFromMayaMesh(meshFn);
 
                 meanMeshEdgeLength =
                     mayaHalfEdgeMesh.computeMeanEdgeLength();
+                traceStage("after half-edge conversion");
             }
         }
     }
 
+    traceStage("before point-array handle");
     MArrayDataHandle curvePointArrayHandle =
         dataBlock.inputArrayValue(inputCurvePoints, &status);
 
@@ -884,6 +920,7 @@ unsigned int geometryIndex
     }
 
     unsigned int numConnectedCurves = curvePointArrayHandle.elementCount();
+    traceStage("after point-array handle");
 
 
     std::vector<CutPath> cutPaths;
@@ -909,6 +946,7 @@ unsigned int geometryIndex
     const MPlug driverPlug(thisMObject(), inputDriverCurve);
     const bool hasConnectedDriver =
         topologyCaptured && driverPlug.isConnected();
+    traceStage("after driver guard");
 
     if (hasConnectedDriver)
     {
@@ -1132,6 +1170,7 @@ unsigned int geometryIndex
 
     for (unsigned int curveIndex = 0; curveIndex < numConnectedCurves; ++curveIndex)
     {
+        traceStage("profile begin");
         if (topologyCaptured &&
             !currentDriverPositions.empty() &&
             curveIndex < neutralSampledCurves.size())
@@ -1179,6 +1218,7 @@ unsigned int geometryIndex
         std::vector<Point3> controlPoints;
 
         MPointArray curveCVs = curvePointData.array(&status);
+        traceStage("profile points read");
 
         for (unsigned int cvIndex = 0;
              cvIndex < curveCVs.length();
@@ -1292,6 +1332,7 @@ unsigned int geometryIndex
                 crossingTolerance,
                 duplicateTolerance
             );
+        traceStage("profile crossings ready");
 
 
         CutPath cutPath;
@@ -1539,6 +1580,7 @@ unsigned int geometryIndex
 
     if (!cutPaths.empty())
     {
+        traceStage("before cutter");
         const int originalVertexCount =
             static_cast<int>(
                 mayaHalfEdgeMesh.vertices.size()
@@ -1567,6 +1609,7 @@ unsigned int geometryIndex
                 crossingTolerance,
                 duplicateTolerance
             );
+        traceStage("after cutter");
 
 
         /* Cache the exact crossings used by the cutter, not the preliminary
@@ -2062,6 +2105,7 @@ unsigned int geometryIndex
 
     const std::vector<Point3> harmonicDisplacements =
         harmonicSolver.solve(currentSampledCurves);
+    traceStage("after harmonic solve");
 
     while (!geoIterator.isDone())
     {
@@ -2155,6 +2199,7 @@ unsigned int geometryIndex
     }
 
     curvenetData.detectConnections(0.001);
+    traceStage("EXIT deform");
 
     return MS::kSuccess;
 }
@@ -2201,12 +2246,12 @@ MStatus initializePlugin(MObject pluginObject)
     MFnPlugin plugin(
         pluginObject,
         "Osher",
-        "1.6-guard-empty-driver-curve",
+        "1.7-crash-safe-deform-trace",
         "Any"
     );
 
     MGlobal::displayInfo(
-        "Curvenet plugin build: 1.6-guard-empty-driver-curve"
+        "Curvenet plugin build: 1.7-crash-safe-deform-trace"
     );
 
     status = plugin.registerNode(
