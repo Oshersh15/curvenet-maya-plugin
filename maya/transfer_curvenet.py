@@ -563,8 +563,7 @@ def attach_existing_curvenet_to_mesh(
         )
         cmds.setAttr(
             f"{deformer}.inputCurveCoordinates[{curve_id}]",
-            len(flat_points),
-            *flat_points,
+            flat_points,
             type="doubleArray",
         )
         source_curve = source_segments[curve_id]

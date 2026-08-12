@@ -982,8 +982,7 @@ def connect_drawn_curvenet_to_plugin():
         )
         cmds.setAttr(
             f"{deformer}.inputCurveCoordinates[{curve_id}]",
-            len(flat_points),
-            *flat_points,
+            flat_points,
             type="doubleArray",
         )
 
