@@ -59,6 +59,57 @@
 
 namespace
 {
+    bool parseProfileCoordinates(
+        const MString& serializedCoordinates,
+        std::vector<Point3>& points
+    )
+    {
+        points.clear();
+        const char* cursor = serializedCoordinates.asChar();
+        std::vector<double> coordinates;
+
+        while (cursor != nullptr && *cursor != '\0')
+        {
+            char* end = nullptr;
+            const double coordinate = std::strtod(cursor, &end);
+
+            if (end == cursor || !std::isfinite(coordinate))
+            {
+                return false;
+            }
+
+            coordinates.push_back(coordinate);
+            cursor = end;
+
+            if (*cursor == ',')
+            {
+                ++cursor;
+            }
+            else if (*cursor != '\0')
+            {
+                return false;
+            }
+        }
+
+        if (coordinates.size() < 6 || coordinates.size() % 3 != 0)
+        {
+            return false;
+        }
+
+        points.reserve(coordinates.size() / 3);
+
+        for (size_t index = 0; index < coordinates.size(); index += 3)
+        {
+            points.push_back(Point3{
+                coordinates[index],
+                coordinates[index + 1],
+                coordinates[index + 2]
+            });
+        }
+
+        return true;
+    }
+
     struct LocalNodeTransform
     {
         std::array<double, 9> rotation = {
@@ -831,7 +882,7 @@ unsigned int geometryIndex
         ::fsync(descriptor);
         ::close(descriptor);
     };
-    traceStage("ENTER deform 2.4");
+    traceStage("ENTER deform 2.5-bulk-input-snapshot");
 #else
     const auto traceStage = [](const char*) {};
 #endif
@@ -920,8 +971,18 @@ unsigned int geometryIndex
                 MFnMesh meshFn(meshObject);
                 traceStage("before half-edge conversion");
 
-                mayaHalfEdgeMesh =
-                    MayaMeshConverter::buildFromMayaMesh(meshFn);
+                status = MayaMeshConverter::buildFromMayaMesh(
+                    meshFn,
+                    mayaHalfEdgeMesh
+                );
+
+                if (!status)
+                {
+                    MGlobal::displayError(
+                        "Curvenet could not snapshot the input mesh topology."
+                    );
+                    return status;
+                }
 
                 meanMeshEdgeLength =
                     mayaHalfEdgeMesh.computeMeanEdgeLength();
@@ -930,7 +991,38 @@ unsigned int geometryIndex
         }
     }
 
-    traceStage("before point-array handle");
+    traceStage("before profile snapshot");
+    std::vector<std::vector<Point3>> inputProfilePoints;
+    std::vector<int> authoredStartNodeIds;
+    std::vector<int> authoredEndNodeIds;
+
+    const auto snapshotNodeIds =
+        [&dataBlock](const MObject& attribute, std::vector<int>& values)
+        {
+            MStatus handleStatus;
+            MArrayDataHandle handle =
+                dataBlock.inputArrayValue(attribute, &handleStatus);
+
+            if (!handleStatus)
+            {
+                return;
+            }
+
+            const unsigned int count = handle.elementCount();
+            values.assign(count, -1);
+
+            for (unsigned int index = 0; index < count; ++index)
+            {
+                if (handle.jumpToArrayElement(index))
+                {
+                    values[index] = handle.inputValue(&handleStatus).asInt();
+                }
+            }
+        };
+
+    snapshotNodeIds(inputCurveStartNodeIds, authoredStartNodeIds);
+    snapshotNodeIds(inputCurveEndNodeIds, authoredEndNodeIds);
+
     MArrayDataHandle curvePointArrayHandle =
         dataBlock.inputArrayValue(inputCurveCoordinates, &status);
 
@@ -939,27 +1031,44 @@ unsigned int geometryIndex
         return MS::kSuccess;
     }
 
-    unsigned int numConnectedCurves = curvePointArrayHandle.elementCount();
-    traceStage("after point-array handle");
+    const unsigned int numConnectedCurves =
+        curvePointArrayHandle.elementCount();
+    inputProfilePoints.resize(numConnectedCurves);
 
+    for (unsigned int curveIndex = 0;
+         curveIndex < numConnectedCurves;
+         ++curveIndex)
+    {
+        if (!curvePointArrayHandle.jumpToArrayElement(curveIndex))
+        {
+            continue;
+        }
+
+        MDataHandle curveHandle = curvePointArrayHandle.inputValue(&status);
+
+        if (status)
+        {
+            parseProfileCoordinates(
+                curveHandle.asString(),
+                inputProfilePoints[curveIndex]
+            );
+        }
+    }
+
+    const auto authoredNodeId = [
+        &authoredStartNodeIds,
+        &authoredEndNodeIds
+    ](bool start, unsigned int index)
+    {
+        const std::vector<int>& values =
+            start ? authoredStartNodeIds : authoredEndNodeIds;
+        return index < values.size() ? values[index] : -1;
+    };
+
+    traceStage("after profile snapshot");
 
     std::vector<CutPath> cutPaths;
     std::vector<ProfileCutInput> profileInputs;
-
-    const auto authoredNodeId =
-        [&dataBlock](const MObject& attribute, unsigned int index)
-        {
-            MStatus handleStatus;
-            MArrayDataHandle handle =
-                dataBlock.inputArrayValue(attribute, &handleStatus);
-
-            if (!handleStatus || !handle.jumpToArrayElement(index))
-            {
-                return -1;
-            }
-
-            return handle.inputValue(&handleStatus).asInt();
-        };
 
     std::unordered_map<int, Point3> currentDriverPositions;
     std::unordered_map<int, std::vector<Point3>> currentDriverFramePoints;
@@ -1060,9 +1169,9 @@ unsigned int geometryIndex
          ++curveIndex)
     {
         const int startNodeId =
-            authoredNodeId(inputCurveStartNodeIds, curveIndex);
+            authoredNodeId(true, curveIndex);
         const int endNodeId =
-            authoredNodeId(inputCurveEndNodeIds, curveIndex);
+            authoredNodeId(false, curveIndex);
 
         if (startNodeId < 0 || endNodeId < 0 || startNodeId == endNodeId)
         {
@@ -1119,9 +1228,9 @@ unsigned int geometryIndex
     )
     {
         const int startLogicalNodeId =
-            authoredNodeId(inputCurveStartNodeIds, curveIndex);
+            authoredNodeId(true, curveIndex);
         const int endLogicalNodeId =
-            authoredNodeId(inputCurveEndNodeIds, curveIndex);
+            authoredNodeId(false, curveIndex);
         const auto neutralStart =
             neutralDriverPositions.find(startLogicalNodeId);
         const auto neutralEnd =
@@ -1204,83 +1313,18 @@ unsigned int geometryIndex
             continue;
         }
 
-        status = curvePointArrayHandle.jumpToArrayElement(curveIndex);
-
-        if (!status)
-        {
-            continue;
-        }
-
-        MDataHandle curveHandle = curvePointArrayHandle.inputValue(&status);
-
-        if (!status)
-        {
-            continue;
-        }
-
         const bool curveClosed = false;
 
-        std::vector<Point3> controlPoints;
-
-        const MString serializedCoordinates = curveHandle.asString();
-        const char* cursor = serializedCoordinates.asChar();
-        std::vector<double> curveCoordinates;
-
-        while (cursor != nullptr && *cursor != '\0')
-        {
-            char* end = nullptr;
-            const double coordinate = std::strtod(cursor, &end);
-
-            if (end == cursor || !std::isfinite(coordinate))
-            {
-                curveCoordinates.clear();
-                break;
-            }
-
-            curveCoordinates.push_back(coordinate);
-            cursor = end;
-
-            if (*cursor == ',')
-            {
-                ++cursor;
-            }
-            else if (*cursor != '\0')
-            {
-                curveCoordinates.clear();
-                break;
-            }
-        }
-
-        traceStage("profile coordinates parsed");
-
-        if (curveCoordinates.size() < 6 ||
-            curveCoordinates.size() % 3 != 0)
+        if (curveIndex >= inputProfilePoints.size() ||
+            inputProfilePoints[curveIndex].size() < 2)
         {
             traceStage("invalid profile coordinates");
             continue;
         }
-        traceStage("profile coordinates validated");
 
-        for (size_t coordinateIndex = 0;
-             coordinateIndex < curveCoordinates.size();
-             coordinateIndex += 3)
-        {
-            controlPoints.push_back(Point3{
-                curveCoordinates[coordinateIndex],
-                curveCoordinates[coordinateIndex + 1],
-                curveCoordinates[coordinateIndex + 2]
-            });
-        }
-        traceStage("profile Point3 values ready");
-
-        std::vector<Point3> objectSampledPoints;
-        objectSampledPoints.reserve(controlPoints.size());
-
-        for (const Point3& sampledPoint : controlPoints)
-        {
-            objectSampledPoints.emplace_back(sampledPoint);
-        }
-        traceStage("profile object points ready");
+        const std::vector<Point3>& controlPoints =
+            inputProfilePoints[curveIndex];
+        std::vector<Point3> objectSampledPoints = controlPoints;
 
         applyDriverDisplacement(curveIndex, objectSampledPoints);
 
@@ -1414,9 +1458,9 @@ unsigned int geometryIndex
             );
 
         profileInput.authoredStartNodeId =
-            authoredNodeId(inputCurveStartNodeIds, curveIndex);
+            authoredNodeId(true, curveIndex);
         profileInput.authoredEndNodeId =
-            authoredNodeId(inputCurveEndNodeIds, curveIndex);
+            authoredNodeId(false, curveIndex);
 
         profileInput.closed =
             curveClosed;
@@ -2235,12 +2279,12 @@ MStatus initializePlugin(MObject pluginObject)
     MFnPlugin plugin(
         pluginObject,
         "Osher",
-        "2.4-reentrant-evaluation-guard",
+        "2.5-bulk-input-snapshot",
         "Any"
     );
 
     MGlobal::displayInfo(
-        "Curvenet plugin build: 2.4-reentrant-evaluation-guard"
+        "Curvenet plugin build: 2.5-bulk-input-snapshot"
     );
 
     status = plugin.registerNode(

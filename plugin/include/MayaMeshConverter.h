@@ -7,5 +7,8 @@
 class MayaMeshConverter
 {
 public:
-    static HalfEdgeMesh buildFromMayaMesh(const MFnMesh& meshFn);
+    static MStatus buildFromMayaMesh(
+        const MFnMesh& meshFn,
+        HalfEdgeMesh& mesh
+    );
 };
