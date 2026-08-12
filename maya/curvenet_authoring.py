@@ -5,6 +5,7 @@ Load this through curvenet_workflow.py rather than executing it directly.
 
 import heapq
 import math
+import sys
 import maya.cmds as cmds
 import maya.api.OpenMaya as om
 import maya.api.OpenMayaUI as omui
@@ -964,6 +965,9 @@ def connect_drawn_curvenet_to_plugin():
         type="curvenetNode",
         name=DEFORMER_NAME,
     )[0]
+    linux_atomic_setup = sys.platform.startswith("linux")
+    if linux_atomic_setup:
+        cmds.setAttr(deformer + ".nodeState", 2)
 
     for curve_id, curve in enumerate(projected_curves):
         shape = cmds.listRelatives(
@@ -980,6 +984,10 @@ def connect_drawn_curvenet_to_plugin():
         )
 
         print(f"Logical profile ID {curve_id}:", curve)
+
+    if linux_atomic_setup:
+        cmds.setAttr(deformer + ".nodeState", 0)
+        cmds.dgdirty(deformer)
 
     print("\nConnected projected Curvenet to plugin.")
     print("Projected curves:", len(projected_curves))

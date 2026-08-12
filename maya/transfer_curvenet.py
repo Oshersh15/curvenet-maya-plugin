@@ -1,4 +1,5 @@
 import re
+import sys
 
 import maya.api.OpenMaya as om
 import maya.cmds as cmds
@@ -545,6 +546,9 @@ def attach_existing_curvenet_to_mesh(
         type="curvenetNode",
         name=deformer_name,
     )[0]
+    linux_atomic_setup = sys.platform.startswith("linux")
+    if linux_atomic_setup:
+        cmds.setAttr(deformer + ".nodeState", 2)
     cmds.setAttr(
         deformer + ".fullSurfaceCurvenet",
         bool(full_surface),
@@ -571,6 +575,10 @@ def attach_existing_curvenet_to_mesh(
             f"{deformer}.inputCurveEndNodeIds[{curve_id}]",
             node_id_by_control[end_control],
         )
+
+    if linux_atomic_setup:
+        cmds.setAttr(deformer + ".nodeState", 0)
+        cmds.dgdirty(deformer)
 
     print("Transferred Curvenet to:", target_mesh)
     print("Projected curves:", len(projected_curves))

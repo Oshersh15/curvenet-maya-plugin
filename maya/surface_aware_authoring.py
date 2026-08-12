@@ -8,6 +8,7 @@ and connections between snapped nodes follow the shortest feature-edge path.
 import heapq
 import math
 import re
+import sys
 
 import maya.api.OpenMaya as om
 import maya.cmds as cmds
@@ -524,6 +525,9 @@ def _surface_connect_drawn_curvenet_to_plugin(full_surface=False):
         type="curvenetNode",
         name=DEFORMER_NAME,
     )[0]
+    linux_atomic_setup = sys.platform.startswith("linux")
+    if linux_atomic_setup:
+        cmds.setAttr(deformer + ".nodeState", 2)
     cmds.setAttr(
         deformer + ".fullSurfaceCurvenet",
         bool(full_surface),
@@ -558,6 +562,10 @@ def _surface_connect_drawn_curvenet_to_plugin(full_surface=False):
             f"{deformer}.inputCurveEndNodeIds[{curve_id}]",
             end_node_id,
         )
+
+    if linux_atomic_setup:
+        cmds.setAttr(deformer + ".nodeState", 0)
+        cmds.dgdirty(deformer)
 
     print("\nConnected projected Curvenet to plugin.")
     print("Projected curves:", len(projected_curves))

@@ -2229,12 +2229,12 @@ MStatus initializePlugin(MObject pluginObject)
     MFnPlugin plugin(
         pluginObject,
         "Osher",
-        "1.1-linux-entry-diagnostic",
+        "1.2-linux-atomic-initialization",
         "Any"
     );
 
     MGlobal::displayInfo(
-        "Curvenet plugin build: 1.1-linux-entry-diagnostic"
+        "Curvenet plugin build: 1.2-linux-atomic-initialization"
     );
 
     status = plugin.registerNode(
