@@ -1236,35 +1236,11 @@ unsigned int geometryIndex
 
         std::vector<Point3> densePoints = controlPoints;
 
-        const double controlPolygonLength =
-            ProfileCurveSampler::computeControlPolygonLength(controlPoints);
-
-        const int densityMultiplier = 5;
-
-        int sampleCount = 0;
-
-        if (!neutralSamplesCaptured)
-        {
-            sampleCount =
-                ProfileCurveSampler::computeAdaptiveSampleCount(
-                    controlPolygonLength,
-                    meanMeshEdgeLength,
-                    densityMultiplier
-                );
-        }
-        else if (curveIndex < neutralSampledCurves.size())
-        {
-            sampleCount =
-                static_cast<int>(
-                    neutralSampledCurves[curveIndex].size()
-                );
-        }
-
-        std::vector<Point3> sampledPoints =
-            ProfileCurveSampler::sampleByArcLength(
-                densePoints,
-                sampleCount
-            );
+        /* Python supplies the already sampled projected profile. Resampling
+           this point array here duplicates work and can amplify malformed
+           input into an unbounded adaptive sample count. */
+        std::vector<Point3> sampledPoints = densePoints;
+        traceStage("profile samples ready");
 
         std::vector<Point3> objectSampledPoints;
         objectSampledPoints.reserve(sampledPoints.size());
@@ -1319,6 +1295,7 @@ unsigned int geometryIndex
             ProfileCurveSampler::buildPolylineSegments(
                 objectSampledPoints
             );
+        traceStage("profile segments ready");
 
         const double crossingTolerance = 0.0501;
 
@@ -2246,12 +2223,12 @@ MStatus initializePlugin(MObject pluginObject)
     MFnPlugin plugin(
         pluginObject,
         "Osher",
-        "1.7-crash-safe-deform-trace",
+        "1.8-direct-projected-samples",
         "Any"
     );
 
     MGlobal::displayInfo(
-        "Curvenet plugin build: 1.7-crash-safe-deform-trace"
+        "Curvenet plugin build: 1.8-direct-projected-samples"
     );
 
     status = plugin.registerNode(
