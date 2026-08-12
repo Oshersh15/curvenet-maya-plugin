@@ -17,6 +17,7 @@
 
 #include <vector>
 #include <array>
+#include <atomic>
 #include <unordered_map>
 
 /*
@@ -74,6 +75,8 @@ public:
     static MObject showGeneratedCurvenet;
 
 private:
+    std::atomic_bool deformInProgress{false};
+
     CurvenetData curvenetData;
 
     std::vector<std::vector<Point3>> debugSampledCurves;

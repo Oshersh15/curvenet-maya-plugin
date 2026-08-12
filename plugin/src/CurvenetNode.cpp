@@ -831,10 +831,29 @@ unsigned int geometryIndex
         ::fsync(descriptor);
         ::close(descriptor);
     };
-    traceStage("ENTER deform 2.3");
+    traceStage("ENTER deform 2.4");
 #else
     const auto traceStage = [](const char*) {};
 #endif
+
+    /* Maya may request this output recursively while resolving connected
+       geometry. A nested evaluation must not mutate the outer evaluation's
+       embedding caches. */
+    if (deformInProgress.exchange(true))
+    {
+        traceStage("SKIP re-entrant deform");
+        return MS::kSuccess;
+    }
+
+    struct DeformEvaluationGuard
+    {
+        std::atomic_bool& inProgress;
+
+        ~DeformEvaluationGuard()
+        {
+            inProgress.store(false);
+        }
+    } evaluationGuard{deformInProgress};
 
     traceStage("before geometry filter");
     MMatrix geometryLocalToWorldMatrix =
@@ -2059,13 +2078,15 @@ unsigned int geometryIndex
         }
     }
 
-    if (!vertexBindingsCaptured)
+    if (!vertexBindingsCaptured && topologyCaptured)
     {
         vertexBindingsCaptured = true;
 
     }
 
-    if (!neutralSamplesCaptured)
+    if (!neutralSamplesCaptured &&
+        topologyCaptured &&
+        !neutralSampledCurves.empty())
     {
         neutralSamplesCaptured = true;
     }
