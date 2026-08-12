@@ -34,6 +34,8 @@
 #include <maya/MItSelectionList.h>
 #include <maya/MDagPath.h>
 #include <maya/MFnDagNode.h>
+#include <maya/MDGModifier.h>
+#include <maya/MObjectHandle.h>
 #include "ProfileCurveSampler.h"
 #include "GeometryUtils.h"
 #include "CurveMeshIntersector.h"
@@ -1720,7 +1722,8 @@ MDataBlock* dataBlock,
                 : "FAILED")
         );
 
-        if (curvenetCutResult.failedCurveId >= 0)
+        if (!curvenetCutResult.success &&
+            curvenetCutResult.failedCurveId >= 0)
         {
             MString failureName =
                 "Unknown";
@@ -2326,7 +2329,7 @@ CurveDeformerNode::getDebugProfileCurves() const
 
 namespace
 {
-std::unordered_map<int, std::unique_ptr<CurveDeformerNode>>
+std::unordered_map<int, MObjectHandle>
     preparedEmbeddingByToken;
 int nextPreparedEmbeddingToken = 1;
 
@@ -2401,7 +2404,30 @@ public:
             endNodeIds[curveIndex] = arguments.asInt(argumentIndex + 2);
         }
 
-        auto preparedNode = std::make_unique<CurveDeformerNode>();
+        MDGModifier modifier;
+        MObject preparedObject = modifier.createNode(
+            CurveDeformerNode::id,
+            &status
+        );
+
+        if (!status || !modifier.doIt())
+        {
+            MGlobal::displayError(
+                "Could not create the disconnected Curvenet preparation node."
+            );
+            return MS::kFailure;
+        }
+
+        MFnDependencyNode preparedDependency(preparedObject, &status);
+        auto* preparedNode = status
+            ? dynamic_cast<CurveDeformerNode*>(preparedDependency.userNode())
+            : nullptr;
+
+        if (preparedNode == nullptr)
+        {
+            return MS::kFailure;
+        }
+
         status = preparedNode->prepareEmbedding(
             meshPath,
             profilePoints,
@@ -2412,12 +2438,15 @@ public:
 
         if (!status)
         {
+            MDGModifier cleanup;
+            cleanup.deleteNode(preparedObject);
+            cleanup.doIt();
             MGlobal::displayError("Curvenet embedding preparation failed.");
             return status;
         }
 
         const int token = nextPreparedEmbeddingToken++;
-        preparedEmbeddingByToken[token] = std::move(preparedNode);
+        preparedEmbeddingByToken.emplace(token, MObjectHandle(preparedObject));
         setResult(token);
         return MS::kSuccess;
     }
@@ -2472,8 +2501,30 @@ public:
             return MS::kInvalidParameter;
         }
 
-        node->installPreparedEmbedding(*prepared->second);
+        if (!prepared->second.isValid() || !prepared->second.isAlive())
+        {
+            preparedEmbeddingByToken.erase(prepared);
+            MGlobal::displayError("Prepared Curvenet cache is no longer valid.");
+            return MS::kFailure;
+        }
+
+        MObject preparedObject = prepared->second.object();
+        MFnDependencyNode preparedDependency(preparedObject, &status);
+        auto* preparedNode = status
+            ? dynamic_cast<CurveDeformerNode*>(preparedDependency.userNode())
+            : nullptr;
+
+        if (preparedNode == nullptr)
+        {
+            return MS::kFailure;
+        }
+
+        node->installPreparedEmbedding(*preparedNode);
         preparedEmbeddingByToken.erase(prepared);
+
+        MDGModifier cleanup;
+        cleanup.deleteNode(preparedObject);
+        cleanup.doIt();
         return MS::kSuccess;
     }
 };
@@ -2497,12 +2548,12 @@ MStatus initializePlugin(MObject pluginObject)
     MFnPlugin plugin(
         pluginObject,
         "Osher",
-        "4.0-prebuilt-embedding-cache",
+        "4.1-maya-owned-preparation-cache",
         "Any"
     );
 
     MGlobal::displayInfo(
-        "Curvenet plugin build: 4.0-prebuilt-embedding-cache"
+        "Curvenet plugin build: 4.1-maya-owned-preparation-cache"
     );
 
     status = plugin.registerNode(
