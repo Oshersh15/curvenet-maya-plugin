@@ -1,6 +1,4 @@
 import re
-import sys
-
 import maya.api.OpenMaya as om
 import maya.cmds as cmds
 
@@ -525,12 +523,11 @@ def attach_existing_curvenet_to_mesh(
                 projected_curve + "." + attribute,
                 force=True,
             )
-        if not sys.platform.startswith("linux"):
-            _create_endpoint_expression(
-                projected_curve,
-                marker_by_control[start_control],
-                marker_by_control[end_control],
-            )
+        _create_endpoint_expression(
+            projected_curve,
+            marker_by_control[start_control],
+            marker_by_control[end_control],
+        )
         projected_curves.append(projected_curve)
 
     deformer_name = target_prefix + "CurvenetNode"
@@ -559,7 +556,7 @@ def attach_existing_curvenet_to_mesh(
             fullPath=True,
         )[0]
         cmds.connectAttr(
-            curve_shape + ".worldSpace[0]",
+            curve_shape + ".local",
             f"{deformer}.inputCurves[{curve_id}]",
             force=True,
         )

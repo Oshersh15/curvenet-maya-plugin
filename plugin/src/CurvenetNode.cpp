@@ -14,9 +14,6 @@
 #include <maya/MFnTypedAttribute.h>
 #include <maya/MFnNumericAttribute.h>
 #include <maya/MFnNurbsCurve.h>
-#ifdef __linux__
-#include <fstream>
-#endif
 #include <maya/MGlobal.h>
 #include <maya/MString.h>
 #include <maya/MObject.h>
@@ -550,16 +547,9 @@ void* CurveDeformerNode::creator()
 
 MPxNode::SchedulingType CurveDeformerNode::schedulingType() const
 {
-#ifdef __linux__
-    /* Initial embedding reads Maya curve and mesh function sets and reports
-       its result through Maya's UI. These operations must remain on Maya's
-       main thread, particularly on Linux. */
-    return MPxNode::kUntrusted;
-#else
     /* Evaluation updates node-owned embedding and deformation caches. Keep
        separate Curvenet nodes from mutating those caches concurrently. */
     return MPxNode::kGloballySerial;
-#endif
 }
 
 MStatus CurveDeformerNode::initialize()
@@ -785,18 +775,6 @@ unsigned int geometryIndex
 {
     MStatus status;
 
-#ifdef __linux__
-    const auto reportLinuxStage = [](const MString& stage)
-    {
-        std::ofstream trace(
-            "/tmp/curvenet_linux_stage.txt",
-            std::ios::out | std::ios::trunc
-        );
-        trace << stage.asChar() << std::endl;
-    };
-    reportLinuxStage("deformer evaluation started");
-#endif
-
     MMatrix geometryLocalToWorldMatrix =
         localToWorldMatrix;
     MString geometryTransformName;
@@ -915,7 +893,7 @@ unsigned int geometryIndex
     if (status)
     {
         const MObject driverObject =
-            driverHandle.asNurbsCurveTransformed();
+            driverHandle.asNurbsCurve();
 
         if (!driverObject.isNull())
         {
@@ -1160,7 +1138,7 @@ unsigned int geometryIndex
         }
 
         MObject curveObject =
-            curveHandle.asNurbsCurveTransformed();
+            curveHandle.asNurbsCurve();
 
         if (curveObject.isNull())
         {
@@ -2229,12 +2207,12 @@ MStatus initializePlugin(MObject pluginObject)
     MFnPlugin plugin(
         pluginObject,
         "Osher",
-        "1.3-linux-baked-projected-curves",
+        "1.4-stable-local-curve-data",
         "Any"
     );
 
     MGlobal::displayInfo(
-        "Curvenet plugin build: 1.3-linux-baked-projected-curves"
+        "Curvenet plugin build: 1.4-stable-local-curve-data"
     );
 
     status = plugin.registerNode(

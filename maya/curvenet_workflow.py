@@ -428,7 +428,7 @@ def _rebuild_target_deformer_from_skinned_curves(mesh, full_surface):
                 "Missing target endpoint metadata for curve: " + curve
             )
         cmds.connectAttr(
-            shape + ".worldSpace[0]",
+            shape + ".local",
             "{}.inputCurves[{}]".format(deformer, curve_index),
             force=True,
         )

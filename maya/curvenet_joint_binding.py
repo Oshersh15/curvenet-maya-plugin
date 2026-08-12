@@ -490,7 +490,7 @@ def bind_curvenet_driver_to_joint_hierarchy(
     cmds.skinCluster(skin, edit=True, forceNormalizeWeights=True)
 
     cmds.connectAttr(
-        driver_shape + ".worldSpace[0]",
+        driver_shape + ".local",
         deformer + ".inputDriverCurve",
         force=True,
     )
@@ -534,11 +534,11 @@ def ensure_curvenet_driver_to_joint_hierarchy(
             )[0]
 
             if not cmds.isConnected(
-                shape + ".worldSpace[0]",
+                shape + ".local",
                 deformer + ".inputDriverCurve",
             ):
                 cmds.connectAttr(
-                    shape + ".worldSpace[0]",
+                    shape + ".local",
                     deformer + ".inputDriverCurve",
                     force=True,
                 )
@@ -801,7 +801,7 @@ def _ensure_curvenet_weight_controls(mesh):
             name=f"{prefix}_curvenetWeightPoint_{node_index}",
         )
         cmds.connectAttr(
-            driver_shape + ".worldSpace[0]",
+            driver_shape + ".local",
             point_node + ".inputCurve",
         )
         cmds.setAttr(

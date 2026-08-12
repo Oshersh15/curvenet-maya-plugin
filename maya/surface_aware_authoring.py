@@ -8,8 +8,6 @@ and connections between snapped nodes follow the shortest feature-edge path.
 import heapq
 import math
 import re
-import sys
-
 import maya.api.OpenMaya as om
 import maya.cmds as cmds
 
@@ -533,12 +531,11 @@ def _surface_connect_drawn_curvenet_to_plugin(full_surface=False):
         zip(source_curves, projected_curves)
     ):
         start_control, end_control = get_curve_endpoint_controls(source_curve)
-        if not sys.platform.startswith("linux"):
-            _surface_create_endpoint_expression(
-                projected_curve,
-                start_control,
-                end_control,
-            )
+        _surface_create_endpoint_expression(
+            projected_curve,
+            start_control,
+            end_control,
+        )
         start_node_id = _logical_node_id(start_control)
         end_node_id = _logical_node_id(end_control)
         shape = cmds.listRelatives(
@@ -548,7 +545,7 @@ def _surface_connect_drawn_curvenet_to_plugin(full_surface=False):
             fullPath=True,
         )[0]
         cmds.connectAttr(
-            shape + ".worldSpace[0]",
+            shape + ".local",
             f"{deformer}.inputCurves[{curve_id}]",
             force=True,
         )

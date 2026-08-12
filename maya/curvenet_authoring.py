@@ -975,7 +975,7 @@ def connect_drawn_curvenet_to_plugin():
         )[0]
 
         cmds.connectAttr(
-            shape + ".worldSpace[0]",
+            shape + ".local",
             f"{deformer}.inputCurves[{curve_id}]",
             force=True,
         )
