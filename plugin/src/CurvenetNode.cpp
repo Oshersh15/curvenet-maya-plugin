@@ -875,7 +875,8 @@ unsigned int geometryIndex
 
     if (status)
     {
-        const MObject driverObject = driverHandle.asNurbsCurve();
+        const MObject driverObject =
+            driverHandle.asNurbsCurveTransformed();
 
         if (!driverObject.isNull())
         {
@@ -1113,7 +1114,8 @@ unsigned int geometryIndex
             continue;
         }
 
-        MObject curveObject = curveHandle.asNurbsCurve();
+        MObject curveObject =
+            curveHandle.asNurbsCurveTransformed();
 
         if (curveObject.isNull())
         {
