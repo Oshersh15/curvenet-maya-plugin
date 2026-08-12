@@ -8,6 +8,7 @@
 #include <maya/MDataHandle.h>
 #include <maya/MArrayDataHandle.h>
 #include <maya/MPoint.h>
+#include <maya/MPointArray.h>
 #include <maya/MTypeId.h>
 #include <maya/MStatus.h>
 #include <maya/MFnTypedAttribute.h>
@@ -887,9 +888,15 @@ unsigned int geometryIndex
                     dataBlock.inputArrayValue(inputDriverNodeIds, &status);
                 const MMatrix worldToLocalMatrix =
                     geometryLocalToWorldMatrix.inverse();
+                MPointArray driverPositions;
+                MStatus cvStatus =
+                    driverFn.getCVs(
+                        driverPositions,
+                        MSpace::kObject
+                    );
 
                 for (unsigned int cvIndex = 0;
-                     cvIndex < driverFn.numCVs();
+                     cvStatus && cvIndex < driverPositions.length();
                      ++cvIndex)
                 {
                     if (!status ||
@@ -907,19 +914,7 @@ unsigned int geometryIndex
                         continue;
                     }
 
-                    MPoint position;
-                    MStatus cvStatus =
-                        driverFn.getCV(
-                            cvIndex,
-                            position,
-                            MSpace::kObject
-                        );
-
-                    if (!cvStatus)
-                    {
-                        continue;
-                    }
-
+                    MPoint position = driverPositions[cvIndex];
                     position *= worldToLocalMatrix;
                     currentDriverFramePoints[logicalNodeId].push_back(Point3{
                         position.x,
@@ -1143,23 +1138,23 @@ unsigned int geometryIndex
         std::vector<MPoint> cvPositions;
         std::vector<Point3> controlPoints;
 
-        unsigned int numCVs = curveFn.numCVs();
+        MPointArray curveCVs;
+        MStatus cvStatus =
+            curveFn.getCVs(
+                curveCVs,
+                MSpace::kObject
+            );
 
-        for (unsigned int cvIndex = 0; cvIndex < numCVs; ++cvIndex)
+        if (!cvStatus)
         {
-            MPoint cvPosition;
-            MStatus cvStatus =
-                curveFn.getCV(
-                    cvIndex,
-                    cvPosition,
-                    MSpace::kObject
-                );
+            continue;
+        }
 
-            if (!cvStatus)
-            {
-                continue;
-            }
-
+        for (unsigned int cvIndex = 0;
+             cvIndex < curveCVs.length();
+             ++cvIndex)
+        {
+            const MPoint cvPosition = curveCVs[cvIndex];
             cvPositions.push_back(cvPosition);
 
             controlPoints.push_back(Point3{
