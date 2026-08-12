@@ -27,6 +27,15 @@ _PLUGIN_PATH = (
 _FULL_SURFACE_CURVENET = None
 
 
+def _prepare_curvenet_evaluation():
+    """Use Maya's stable dependency-graph evaluator for Curvenet on Linux."""
+    if sys.platform.startswith("linux"):
+        current_mode = cmds.evaluationManager(query=True, mode=True) or []
+        if current_mode != ["off"]:
+            cmds.evaluationManager(mode="off")
+            print("Curvenet evaluation mode: DG")
+
+
 def _execute_project_script(filename):
     path = _MAYA_DIRECTORY + "/" + filename
 
@@ -408,6 +417,7 @@ def _rebuild_target_deformer_from_skinned_curves(mesh, full_surface):
 
     controls_by_curve = _infer_curve_endpoint_controls(curves, mesh)
 
+    _prepare_curvenet_evaluation()
     deformer = cmds.deformer(
         mesh,
         type="curvenetNode",
