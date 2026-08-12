@@ -550,10 +550,16 @@ void* CurveDeformerNode::creator()
 
 MPxNode::SchedulingType CurveDeformerNode::schedulingType() const
 {
+#ifdef __linux__
     /* Initial embedding reads Maya curve and mesh function sets and reports
        its result through Maya's UI. These operations must remain on Maya's
        main thread, particularly on Linux. */
     return MPxNode::kUntrusted;
+#else
+    /* Evaluation updates node-owned embedding and deformation caches. Keep
+       separate Curvenet nodes from mutating those caches concurrently. */
+    return MPxNode::kGloballySerial;
+#endif
 }
 
 MStatus CurveDeformerNode::initialize()
