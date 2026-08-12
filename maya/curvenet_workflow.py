@@ -413,9 +413,6 @@ def _rebuild_target_deformer_from_skinned_curves(mesh, full_surface):
         type="curvenetNode",
         name=deformer_name,
     )[0]
-    linux_atomic_setup = sys.platform.startswith("linux")
-    if linux_atomic_setup:
-        cmds.setAttr(deformer + ".nodeState", 2)
     cmds.setAttr(deformer + ".fullSurfaceCurvenet", bool(full_surface))
     for curve_index, curve in enumerate(curves):
         shape = cmds.listRelatives(
@@ -444,8 +441,6 @@ def _rebuild_target_deformer_from_skinned_curves(mesh, full_surface):
             _logical_node_id(controls[1]),
         )
 
-    if linux_atomic_setup:
-        cmds.setAttr(deformer + ".nodeState", 0)
     cmds.dgdirty(deformer)
     cmds.refresh(force=True)
     print("Target plugin connected to skinned curves:", len(curves))

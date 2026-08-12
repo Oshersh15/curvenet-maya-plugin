@@ -2229,12 +2229,12 @@ MStatus initializePlugin(MObject pluginObject)
     MFnPlugin plugin(
         pluginObject,
         "Osher",
-        "1.2-linux-atomic-initialization",
+        "1.3-linux-baked-projected-curves",
         "Any"
     );
 
     MGlobal::displayInfo(
-        "Curvenet plugin build: 1.2-linux-atomic-initialization"
+        "Curvenet plugin build: 1.3-linux-baked-projected-curves"
     );
 
     status = plugin.registerNode(

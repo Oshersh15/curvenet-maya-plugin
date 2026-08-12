@@ -525,9 +525,6 @@ def _surface_connect_drawn_curvenet_to_plugin(full_surface=False):
         type="curvenetNode",
         name=DEFORMER_NAME,
     )[0]
-    linux_atomic_setup = sys.platform.startswith("linux")
-    if linux_atomic_setup:
-        cmds.setAttr(deformer + ".nodeState", 2)
     cmds.setAttr(
         deformer + ".fullSurfaceCurvenet",
         bool(full_surface),
@@ -536,11 +533,12 @@ def _surface_connect_drawn_curvenet_to_plugin(full_surface=False):
         zip(source_curves, projected_curves)
     ):
         start_control, end_control = get_curve_endpoint_controls(source_curve)
-        _surface_create_endpoint_expression(
-            projected_curve,
-            start_control,
-            end_control,
-        )
+        if not sys.platform.startswith("linux"):
+            _surface_create_endpoint_expression(
+                projected_curve,
+                start_control,
+                end_control,
+            )
         start_node_id = _logical_node_id(start_control)
         end_node_id = _logical_node_id(end_control)
         shape = cmds.listRelatives(
@@ -562,10 +560,6 @@ def _surface_connect_drawn_curvenet_to_plugin(full_surface=False):
             f"{deformer}.inputCurveEndNodeIds[{curve_id}]",
             end_node_id,
         )
-
-    if linux_atomic_setup:
-        cmds.setAttr(deformer + ".nodeState", 0)
-        cmds.dgdirty(deformer)
 
     print("\nConnected projected Curvenet to plugin.")
     print("Projected curves:", len(projected_curves))
