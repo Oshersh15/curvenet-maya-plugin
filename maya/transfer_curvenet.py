@@ -561,9 +561,17 @@ def attach_existing_curvenet_to_mesh(
             worldSpace=True,
             translation=True,
         )
+        world_to_mesh = om.MMatrix(
+            cmds.xform(target_mesh, query=True, worldSpace=True, matrix=True)
+        ).inverse()
+        local_points = []
+        for point_index in range(0, len(flat_points), 3):
+            point = om.MPoint(*flat_points[point_index:point_index + 3])
+            point *= world_to_mesh
+            local_points.extend((point.x, point.y, point.z))
         cmds.setAttr(
             f"{deformer}.inputCurveCoordinates[{curve_id}]",
-            ",".join(format(value, ".17g") for value in flat_points),
+            ",".join(format(value, ".17g") for value in local_points),
             type="string",
         )
         source_curve = source_segments[curve_id]

@@ -831,7 +831,7 @@ unsigned int geometryIndex
         ::fsync(descriptor);
         ::close(descriptor);
     };
-    traceStage("ENTER deform 2.2");
+    traceStage("ENTER deform 2.3");
 #else
     const auto traceStage = [](const char*) {};
 #endif
@@ -1257,25 +1257,9 @@ unsigned int geometryIndex
         std::vector<Point3> objectSampledPoints;
         objectSampledPoints.reserve(controlPoints.size());
 
-        const MMatrix worldToLocalMatrix =
-            geometryLocalToWorldMatrix.inverse();
-
         for (const Point3& sampledPoint : controlPoints)
         {
-            objectSampledPoints.push_back(Point3{
-                sampledPoint.x * worldToLocalMatrix[0][0] +
-                    sampledPoint.y * worldToLocalMatrix[1][0] +
-                    sampledPoint.z * worldToLocalMatrix[2][0] +
-                    worldToLocalMatrix[3][0],
-                sampledPoint.x * worldToLocalMatrix[0][1] +
-                    sampledPoint.y * worldToLocalMatrix[1][1] +
-                    sampledPoint.z * worldToLocalMatrix[2][1] +
-                    worldToLocalMatrix[3][1],
-                sampledPoint.x * worldToLocalMatrix[0][2] +
-                    sampledPoint.y * worldToLocalMatrix[1][2] +
-                    sampledPoint.z * worldToLocalMatrix[2][2] +
-                    worldToLocalMatrix[3][2]
-            });
+            objectSampledPoints.emplace_back(sampledPoint);
         }
         traceStage("profile object points ready");
 
@@ -2230,12 +2214,12 @@ MStatus initializePlugin(MObject pluginObject)
     MFnPlugin plugin(
         pluginObject,
         "Osher",
-        "2.2-single-owner-profile-data",
+        "2.3-python-object-space-profiles",
         "Any"
     );
 
     MGlobal::displayInfo(
-        "Curvenet plugin build: 2.2-single-owner-profile-data"
+        "Curvenet plugin build: 2.3-python-object-space-profiles"
     );
 
     status = plugin.registerNode(

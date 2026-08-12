@@ -4,6 +4,7 @@ import os
 import sys
 
 import maya.cmds as cmds
+import maya.api.OpenMaya as om
 
 
 _WORKFLOW_FILE = globals().get("__file__", "")
@@ -433,9 +434,17 @@ def _rebuild_target_deformer_from_skinned_curves(mesh, full_surface):
             worldSpace=True,
             translation=True,
         )
+        world_to_mesh = om.MMatrix(
+            cmds.xform(mesh, query=True, worldSpace=True, matrix=True)
+        ).inverse()
+        local_points = []
+        for point_index in range(0, len(flat_points), 3):
+            point = om.MPoint(*flat_points[point_index:point_index + 3])
+            point *= world_to_mesh
+            local_points.extend((point.x, point.y, point.z))
         cmds.setAttr(
             "{}.inputCurveCoordinates[{}]".format(deformer, curve_index),
-            ",".join(format(value, ".17g") for value in flat_points),
+            ",".join(format(value, ".17g") for value in local_points),
             type="string",
         )
         cmds.setAttr(
