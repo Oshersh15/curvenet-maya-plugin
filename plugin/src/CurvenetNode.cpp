@@ -522,7 +522,7 @@ std::vector<Point3> buildDenseCurvePoints(
         status = curveFn.getPointAtParam(
             parameter,
             mayaPoint,
-            MSpace::kWorld
+            MSpace::kObject
         );
 
         if (!status)
