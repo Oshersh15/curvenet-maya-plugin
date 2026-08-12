@@ -960,12 +960,8 @@ def connect_drawn_curvenet_to_plugin():
 
     projected_curves = build_projected_curves()
 
-    deformer = cmds.deformer(
-        MESH_NAME,
-        type="curvenetNode",
-        name=DEFORMER_NAME,
-    )[0]
-
+    curve_inputs = []
+    preparation_arguments = []
     for curve_id, curve in enumerate(projected_curves):
         shape = cmds.listRelatives(
             curve,
@@ -988,15 +984,44 @@ def connect_drawn_curvenet_to_plugin():
             point = om.MPoint(*flat_points[point_index:point_index + 3])
             point *= world_to_mesh
             local_points.extend((point.x, point.y, point.z))
-        cmds.setAttr(
-            f"{deformer}.inputCurveCoordinates[{curve_id}]",
-            ",".join(format(value, ".17g") for value in local_points),
-            type="string",
+        coordinates = ",".join(
+            format(value, ".17g") for value in local_points
         )
+        curve_inputs.append((coordinates, -1, -1))
+        preparation_arguments.extend((coordinates, -1, -1))
 
         print(f"Logical profile ID {curve_id}:", curve)
 
-    cmds.prepareCurvenetEmbedding(deformer)
+    preparation_token = cmds.prepareCurvenetEmbedding(
+        MESH_NAME,
+        False,
+        *preparation_arguments,
+    )
+    deformer = cmds.deformer(
+        MESH_NAME,
+        type="curvenetNode",
+        name=DEFORMER_NAME,
+    )[0]
+    cmds.setAttr(deformer + ".nodeState", 2)
+    for curve_id, (coordinates, start_node_id, end_node_id) in enumerate(
+        curve_inputs
+    ):
+        cmds.setAttr(
+            f"{deformer}.inputCurveCoordinates[{curve_id}]",
+            coordinates,
+            type="string",
+        )
+        cmds.setAttr(
+            f"{deformer}.inputCurveStartNodeIds[{curve_id}]",
+            start_node_id,
+        )
+        cmds.setAttr(
+            f"{deformer}.inputCurveEndNodeIds[{curve_id}]",
+            end_node_id,
+        )
+    cmds.installPreparedCurvenetEmbedding(preparation_token, deformer)
+    cmds.setAttr(deformer + ".nodeState", 0)
+    cmds.dgdirty(deformer)
     print("\nConnected projected Curvenet to plugin.")
     print("Projected curves:", len(projected_curves))
     print("Deformer:", deformer)

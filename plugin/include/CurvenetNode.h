@@ -6,6 +6,7 @@
 #include "HalfEdge.h"
 
 #include <maya/MDataBlock.h>
+#include <maya/MDagPath.h>
 #include <maya/MItGeometry.h>
 #include <maya/MMatrix.h>
 #include <maya/MObject.h>
@@ -46,7 +47,15 @@ public:
         unsigned int geometryIndex
     ) override;
 
-    MStatus prepareEmbedding(unsigned int geometryIndex = 0);
+    MStatus prepareEmbedding(
+        const MDagPath& meshPath,
+        const std::vector<std::vector<Point3>>& profilePoints,
+        const std::vector<int>& startNodeIds,
+        const std::vector<int>& endNodeIds,
+        bool fullSurface
+    );
+
+    void installPreparedEmbedding(CurveDeformerNode& preparedNode);
 
     /* Returns the sampled points for every connected profile curve. */
     const std::vector<std::vector<Point3>>&
@@ -78,10 +87,15 @@ public:
 
 private:
     MStatus evaluatePreparedState(
-        MDataBlock& dataBlock,
+        MDataBlock* dataBlock,
         MItGeometry* geoIterator,
         const MMatrix& localToWorldMatrix,
-        unsigned int geometryIndex
+        unsigned int geometryIndex,
+        const MDagPath* preparationMeshPath = nullptr,
+        const std::vector<std::vector<Point3>>* preparationProfilePoints = nullptr,
+        const std::vector<int>* preparationStartNodeIds = nullptr,
+        const std::vector<int>* preparationEndNodeIds = nullptr,
+        const bool* preparationFullSurface = nullptr
     );
 
     std::atomic_bool deformInProgress{false};

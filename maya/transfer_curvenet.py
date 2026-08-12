@@ -539,15 +539,8 @@ def attach_existing_curvenet_to_mesh(
     if cmds.objExists(preview_group):
         cmds.delete(preview_group)
 
-    deformer = cmds.deformer(
-        target_mesh,
-        type="curvenetNode",
-        name=deformer_name,
-    )[0]
-    cmds.setAttr(
-        deformer + ".fullSurfaceCurvenet",
-        bool(full_surface),
-    )
+    curve_inputs = []
+    preparation_arguments = []
     for curve_id, curve in enumerate(projected_curves):
         curve_shape = cmds.listRelatives(
             curve,
@@ -569,23 +562,52 @@ def attach_existing_curvenet_to_mesh(
             point = om.MPoint(*flat_points[point_index:point_index + 3])
             point *= world_to_mesh
             local_points.extend((point.x, point.y, point.z))
-        cmds.setAttr(
-            f"{deformer}.inputCurveCoordinates[{curve_id}]",
-            ",".join(format(value, ".17g") for value in local_points),
-            type="string",
-        )
         source_curve = source_segments[curve_id]
         start_control, end_control = _endpoint_controls(source_curve)
+        coordinates = ",".join(
+            format(value, ".17g") for value in local_points
+        )
+        start_node_id = node_id_by_control[start_control]
+        end_node_id = node_id_by_control[end_control]
+        curve_inputs.append((coordinates, start_node_id, end_node_id))
+        preparation_arguments.extend(
+            (coordinates, start_node_id, end_node_id)
+        )
+
+    preparation_token = cmds.prepareCurvenetEmbedding(
+        target_mesh,
+        bool(full_surface),
+        *preparation_arguments,
+    )
+    deformer = cmds.deformer(
+        target_mesh,
+        type="curvenetNode",
+        name=deformer_name,
+    )[0]
+    cmds.setAttr(deformer + ".nodeState", 2)
+    cmds.setAttr(
+        deformer + ".fullSurfaceCurvenet",
+        bool(full_surface),
+    )
+    for curve_id, (coordinates, start_node_id, end_node_id) in enumerate(
+        curve_inputs
+    ):
+        cmds.setAttr(
+            f"{deformer}.inputCurveCoordinates[{curve_id}]",
+            coordinates,
+            type="string",
+        )
         cmds.setAttr(
             f"{deformer}.inputCurveStartNodeIds[{curve_id}]",
-            node_id_by_control[start_control],
+            start_node_id,
         )
         cmds.setAttr(
             f"{deformer}.inputCurveEndNodeIds[{curve_id}]",
-            node_id_by_control[end_control],
+            end_node_id,
         )
-
-    cmds.prepareCurvenetEmbedding(deformer)
+    cmds.installPreparedCurvenetEmbedding(preparation_token, deformer)
+    cmds.setAttr(deformer + ".nodeState", 0)
+    cmds.dgdirty(deformer)
 
     print("Transferred Curvenet to:", target_mesh)
     print("Projected curves:", len(projected_curves))

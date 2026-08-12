@@ -518,15 +518,9 @@ def _surface_connect_drawn_curvenet_to_plugin(full_surface=False):
 
     source_curves = authored_segments()
     projected_curves = build_projected_curves()
-    deformer = cmds.deformer(
-        MESH_NAME,
-        type="curvenetNode",
-        name=DEFORMER_NAME,
-    )[0]
-    cmds.setAttr(
-        deformer + ".fullSurfaceCurvenet",
-        bool(full_surface),
-    )
+
+    curve_inputs = []
+    preparation_arguments = []
     for curve_id, (source_curve, projected_curve) in enumerate(
         zip(source_curves, projected_curves)
     ):
@@ -552,9 +546,38 @@ def _surface_connect_drawn_curvenet_to_plugin(full_surface=False):
             point = om.MPoint(*flat_points[point_index:point_index + 3])
             point *= world_to_mesh
             local_points.extend((point.x, point.y, point.z))
+        coordinates = ",".join(
+            format(value, ".17g") for value in local_points
+        )
+        curve_inputs.append((coordinates, start_node_id, end_node_id))
+        preparation_arguments.extend(
+            (coordinates, start_node_id, end_node_id)
+        )
+
+    # Build CutPaths, half-edges, regions and harmonic constraints before the
+    # Maya deformer exists. The completed cache is installed atomically below.
+    preparation_token = cmds.prepareCurvenetEmbedding(
+        MESH_NAME,
+        bool(full_surface),
+        *preparation_arguments,
+    )
+
+    deformer = cmds.deformer(
+        MESH_NAME,
+        type="curvenetNode",
+        name=DEFORMER_NAME,
+    )[0]
+    cmds.setAttr(deformer + ".nodeState", 2)
+    cmds.setAttr(
+        deformer + ".fullSurfaceCurvenet",
+        bool(full_surface),
+    )
+    for curve_id, (coordinates, start_node_id, end_node_id) in enumerate(
+        curve_inputs
+    ):
         cmds.setAttr(
             f"{deformer}.inputCurveCoordinates[{curve_id}]",
-            ",".join(format(value, ".17g") for value in local_points),
+            coordinates,
             type="string",
         )
         cmds.setAttr(
@@ -566,7 +589,9 @@ def _surface_connect_drawn_curvenet_to_plugin(full_surface=False):
             end_node_id,
         )
 
-    cmds.prepareCurvenetEmbedding(deformer)
+    cmds.installPreparedCurvenetEmbedding(preparation_token, deformer)
+    cmds.setAttr(deformer + ".nodeState", 0)
+    cmds.dgdirty(deformer)
 
     print("\nConnected projected Curvenet to plugin.")
     print("Projected curves:", len(projected_curves))

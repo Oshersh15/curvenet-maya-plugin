@@ -409,12 +409,8 @@ def _rebuild_target_deformer_from_skinned_curves(mesh, full_surface):
 
     controls_by_curve = _infer_curve_endpoint_controls(curves, mesh)
 
-    deformer = cmds.deformer(
-        mesh,
-        type="curvenetNode",
-        name=deformer_name,
-    )[0]
-    cmds.setAttr(deformer + ".fullSurfaceCurvenet", bool(full_surface))
+    curve_inputs = []
+    preparation_arguments = []
     for curve_index, curve in enumerate(curves):
         shape = cmds.listRelatives(
             curve,
@@ -442,21 +438,46 @@ def _rebuild_target_deformer_from_skinned_curves(mesh, full_surface):
             point = om.MPoint(*flat_points[point_index:point_index + 3])
             point *= world_to_mesh
             local_points.extend((point.x, point.y, point.z))
+        coordinates = ",".join(
+            format(value, ".17g") for value in local_points
+        )
+        start_node_id = _logical_node_id(controls[0])
+        end_node_id = _logical_node_id(controls[1])
+        curve_inputs.append((coordinates, start_node_id, end_node_id))
+        preparation_arguments.extend(
+            (coordinates, start_node_id, end_node_id)
+        )
+
+    preparation_token = cmds.prepareCurvenetEmbedding(
+        mesh,
+        bool(full_surface),
+        *preparation_arguments,
+    )
+    deformer = cmds.deformer(
+        mesh,
+        type="curvenetNode",
+        name=deformer_name,
+    )[0]
+    cmds.setAttr(deformer + ".nodeState", 2)
+    cmds.setAttr(deformer + ".fullSurfaceCurvenet", bool(full_surface))
+    for curve_index, (coordinates, start_node_id, end_node_id) in enumerate(
+        curve_inputs
+    ):
         cmds.setAttr(
             "{}.inputCurveCoordinates[{}]".format(deformer, curve_index),
-            ",".join(format(value, ".17g") for value in local_points),
+            coordinates,
             type="string",
         )
         cmds.setAttr(
             "{}.inputCurveStartNodeIds[{}]".format(deformer, curve_index),
-            _logical_node_id(controls[0]),
+            start_node_id,
         )
         cmds.setAttr(
             "{}.inputCurveEndNodeIds[{}]".format(deformer, curve_index),
-            _logical_node_id(controls[1]),
+            end_node_id,
         )
-
-    cmds.prepareCurvenetEmbedding(deformer)
+    cmds.installPreparedCurvenetEmbedding(preparation_token, deformer)
+    cmds.setAttr(deformer + ".nodeState", 0)
     cmds.dgdirty(deformer)
     cmds.refresh(force=True)
     print("Target plugin connected to skinned curves:", len(curves))

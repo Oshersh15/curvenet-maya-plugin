@@ -25,10 +25,6 @@
 #include <cstring>
 #include <cstdlib>
 #include <cmath>
-#ifdef __linux__
-#include <fcntl.h>
-#include <unistd.h>
-#endif
 #include "HalfEdge.h"
 #include "MayaMeshConverter.h"
 #include "ProfileCurveSampler.h"
@@ -57,6 +53,7 @@
 #include <limits>
 #include <unordered_map>
 #include <unordered_set>
+#include <memory>
 
 namespace
 {
@@ -871,11 +868,17 @@ unsigned int geometryIndex
     }
 
     return evaluatePreparedState(
-        dataBlock, &geoIterator, localToWorldMatrix, geometryIndex
+        &dataBlock, &geoIterator, localToWorldMatrix, geometryIndex
     );
 }
 
-MStatus CurveDeformerNode::prepareEmbedding(unsigned int geometryIndex)
+MStatus CurveDeformerNode::prepareEmbedding(
+    const MDagPath& meshPath,
+    const std::vector<std::vector<Point3>>& profilePoints,
+    const std::vector<int>& startNodeIds,
+    const std::vector<int>& endNodeIds,
+    bool fullSurface
+)
 {
     topologyCaptured = false;
     neutralSamplesCaptured = false;
@@ -887,43 +890,50 @@ MStatus CurveDeformerNode::prepareEmbedding(unsigned int geometryIndex)
     neutralDriverFrames.clear();
     vertexBindings.clear();
 
-    MDataBlock dataBlock = forceCache();
     return evaluatePreparedState(
-        dataBlock, nullptr, MMatrix::identity, geometryIndex
+        nullptr,
+        nullptr,
+        meshPath.inclusiveMatrix(),
+        0,
+        &meshPath,
+        &profilePoints,
+        &startNodeIds,
+        &endNodeIds,
+        &fullSurface
     );
 }
 
+void CurveDeformerNode::installPreparedEmbedding(
+    CurveDeformerNode& preparedNode
+)
+{
+    curvenetData = std::move(preparedNode.curvenetData);
+    debugSampledCurves = std::move(preparedNode.debugSampledCurves);
+    debugCrossings = std::move(preparedNode.debugCrossings);
+    neutralSampledCurves = std::move(preparedNode.neutralSampledCurves);
+    currentSampledCurves = neutralSampledCurves;
+    vertexBindings = std::move(preparedNode.vertexBindings);
+    harmonicSolver = std::move(preparedNode.harmonicSolver);
+    neutralSamplesCaptured = preparedNode.neutralSamplesCaptured;
+    vertexBindingsCaptured = preparedNode.vertexBindingsCaptured;
+    topologyCaptured = preparedNode.topologyCaptured;
+}
+
 MStatus CurveDeformerNode::evaluatePreparedState(
-MDataBlock& dataBlock,
-MItGeometry* geometryIterator,
-const MMatrix& localToWorldMatrix,
-unsigned int geometryIndex
+MDataBlock* dataBlock,
+    MItGeometry* geometryIterator,
+    const MMatrix& localToWorldMatrix,
+    unsigned int geometryIndex,
+    const MDagPath* preparationMeshPath,
+    const std::vector<std::vector<Point3>>* preparationProfilePoints,
+    const std::vector<int>* preparationStartNodeIds,
+    const std::vector<int>* preparationEndNodeIds,
+    const bool* preparationFullSurface
 )
 {
     MStatus status;
 
-#ifdef __linux__
-    const auto traceStage = [](const char* message)
-    {
-        const int descriptor = ::open(
-            "/tmp/curvenet_deform_trace.txt",
-            O_WRONLY | O_CREAT | O_APPEND,
-            0666
-        );
-
-        if (descriptor < 0)
-        {
-            return;
-        }
-
-        ::write(descriptor, message, std::strlen(message));
-        ::write(descriptor, "\n", 1);
-        ::fsync(descriptor);
-        ::close(descriptor);
-    };
-#else
     const auto traceStage = [](const char*) {};
-#endif
 
     /* Maya may request this output recursively while resolving connected
        geometry. A nested evaluation must not mutate the outer evaluation's
@@ -944,35 +954,25 @@ unsigned int geometryIndex
         }
     } evaluationGuard{deformInProgress};
 
-#ifdef __linux__
-    {
-        const int descriptor = ::open(
-            "/tmp/curvenet_deform_trace.txt",
-            O_WRONLY | O_CREAT | O_TRUNC,
-            0666
-        );
-
-        if (descriptor >= 0)
-        {
-            ::close(descriptor);
-        }
-    }
-#endif
-    traceStage("ENTER deform 2.7-complete-stage-map");
-
     traceStage("before geometry filter");
     MMatrix geometryLocalToWorldMatrix =
         localToWorldMatrix;
     MString geometryTransformName;
 
-    MFnGeometryFilter geometryFilter(
-        thisMObject(),
-        &status
-    );
-    traceStage("after geometry filter");
-
-    if (status)
+    if (preparationMeshPath != nullptr)
     {
+        geometryLocalToWorldMatrix = preparationMeshPath->inclusiveMatrix();
+        MDagPath transformPath = *preparationMeshPath;
+        if (!transformPath.hasFn(MFn::kTransform))
+        {
+            transformPath.pop();
+        }
+        geometryTransformName = transformPath.fullPathName();
+    }
+    else
+    {
+        MFnGeometryFilter geometryFilter(thisMObject(), &status);
+        traceStage("after geometry filter");
         MDagPath geometryPath;
 
         status = geometryFilter.getPathAtIndex(
@@ -1008,21 +1008,12 @@ unsigned int geometryIndex
     if (!topologyCaptured)
     {
         traceStage("before neutral mesh handle");
-        MArrayDataHandle geometryArray =
-            dataBlock.inputArrayValue(input, &status);
-
-        if (status && geometryArray.jumpToElement(geometryIndex))
+        if (preparationMeshPath != nullptr)
         {
-            MDataHandle geometryHandle =
-                geometryArray.inputValue(&status);
-            MDataHandle meshHandle =
-                geometryHandle.child(inputGeom);
-            MObject meshObject = meshHandle.asMesh();
-
-            if (!meshObject.isNull())
+            MFnMesh meshFn(*preparationMeshPath, &status);
+            if (status)
             {
                 traceStage("before MFnMesh");
-                MFnMesh meshFn(meshObject);
                 traceStage("before half-edge conversion");
 
                 status = MayaMeshConverter::buildFromMayaMesh(
@@ -1043,6 +1034,10 @@ unsigned int geometryIndex
                 traceStage("after half-edge conversion");
             }
         }
+        else
+        {
+            return MS::kFailure;
+        }
     }
 
     traceStage("before profile snapshot");
@@ -1051,60 +1046,53 @@ unsigned int geometryIndex
     std::vector<int> authoredEndNodeIds;
 
     const auto snapshotNodeIds =
-        [&dataBlock](const MObject& attribute, std::vector<int>& values)
+        [this](const MObject& attribute, std::vector<int>& values)
         {
-            MStatus handleStatus;
-            MArrayDataHandle handle =
-                dataBlock.inputArrayValue(attribute, &handleStatus);
-
-            if (!handleStatus)
+            MPlug plug(thisMObject(), attribute);
+            for (unsigned int index = 0; index < plug.numElements(); ++index)
             {
-                return;
-            }
-
-            const unsigned int count = handle.elementCount();
-            values.assign(count, -1);
-
-            for (unsigned int index = 0; index < count; ++index)
-            {
-                if (handle.jumpToArrayElement(index))
-                {
-                    values[index] = handle.inputValue(&handleStatus).asInt();
-                }
+                MPlug element = plug.elementByPhysicalIndex(index);
+                const unsigned int logicalIndex = element.logicalIndex();
+                if (values.size() <= logicalIndex)
+                    values.resize(logicalIndex + 1, -1);
+                values[logicalIndex] = element.asInt();
             }
         };
 
-    snapshotNodeIds(inputCurveStartNodeIds, authoredStartNodeIds);
-    snapshotNodeIds(inputCurveEndNodeIds, authoredEndNodeIds);
+    unsigned int numConnectedCurves = 0;
 
-    MArrayDataHandle curvePointArrayHandle =
-        dataBlock.inputArrayValue(inputCurveCoordinates, &status);
-
-    if (!status)
+    if (preparationProfilePoints != nullptr &&
+        preparationStartNodeIds != nullptr &&
+        preparationEndNodeIds != nullptr)
     {
-        return MS::kSuccess;
+        inputProfilePoints = *preparationProfilePoints;
+        authoredStartNodeIds = *preparationStartNodeIds;
+        authoredEndNodeIds = *preparationEndNodeIds;
+        numConnectedCurves = static_cast<unsigned int>(
+            inputProfilePoints.size()
+        );
     }
-
-    const unsigned int numConnectedCurves =
-        curvePointArrayHandle.elementCount();
-    inputProfilePoints.resize(numConnectedCurves);
-
-    for (unsigned int curveIndex = 0;
-         curveIndex < numConnectedCurves;
-         ++curveIndex)
+    else
     {
-        if (!curvePointArrayHandle.jumpToArrayElement(curveIndex))
+        snapshotNodeIds(inputCurveStartNodeIds, authoredStartNodeIds);
+        snapshotNodeIds(inputCurveEndNodeIds, authoredEndNodeIds);
+
+        MPlug coordinatePlug(thisMObject(), inputCurveCoordinates);
+        for (unsigned int physicalIndex = 0;
+             physicalIndex < coordinatePlug.numElements(); ++physicalIndex)
         {
-            continue;
+            MPlug element = coordinatePlug.elementByPhysicalIndex(physicalIndex);
+            numConnectedCurves = std::max(
+                numConnectedCurves, element.logicalIndex() + 1
+            );
         }
-
-        MDataHandle curveHandle = curvePointArrayHandle.inputValue(&status);
-
-        if (status)
+        inputProfilePoints.resize(numConnectedCurves);
+        for (unsigned int physicalIndex = 0;
+             physicalIndex < coordinatePlug.numElements(); ++physicalIndex)
         {
+            MPlug element = coordinatePlug.elementByPhysicalIndex(physicalIndex);
             parseProfileCoordinates(
-                curveHandle.asString(),
-                inputProfilePoints[curveIndex]
+                element.asString(), inputProfilePoints[element.logicalIndex()]
             );
         }
     }
@@ -1126,15 +1114,15 @@ unsigned int geometryIndex
 
     std::unordered_map<int, Point3> currentDriverPositions;
     std::unordered_map<int, std::vector<Point3>> currentDriverFramePoints;
-    const MPlug driverPlug(thisMObject(), inputDriverCurve);
-    const bool hasConnectedDriver =
-        topologyCaptured && driverPlug.isConnected();
+    const bool hasConnectedDriver = topologyCaptured &&
+        preparationMeshPath == nullptr &&
+        MPlug(thisMObject(), inputDriverCurve).isConnected();
     traceStage("after driver guard");
 
-    if (hasConnectedDriver)
+    if (hasConnectedDriver && dataBlock != nullptr)
     {
         MDataHandle driverHandle =
-            dataBlock.inputValue(inputDriverCurve, &status);
+            dataBlock->inputValue(inputDriverCurve, &status);
 
         if (!status)
         {
@@ -1151,7 +1139,7 @@ unsigned int geometryIndex
             if (status)
             {
                 MArrayDataHandle driverIdHandle =
-                    dataBlock.inputArrayValue(inputDriverNodeIds, &status);
+                    dataBlock->inputArrayValue(inputDriverNodeIds, &status);
                 const MMatrix worldToLocalMatrix =
                     geometryLocalToWorldMatrix.inverse();
                 MPointArray driverPositions;
@@ -1924,10 +1912,9 @@ unsigned int geometryIndex
         {
             traceStage("successful cut processing begin");
             const bool buildFullSurface =
-                dataBlock.inputValue(
-                    fullSurfaceCurvenet,
-                    &status
-                ).asBool();
+                preparationFullSurface != nullptr
+                    ? *preparationFullSurface
+                    : MPlug(thisMObject(), fullSurfaceCurvenet).asBool();
 
             int expectedFullSurfaceFaceCount = -1;
 
@@ -2339,6 +2326,10 @@ CurveDeformerNode::getDebugProfileCurves() const
 
 namespace
 {
+std::unordered_map<int, std::unique_ptr<CurveDeformerNode>>
+    preparedEmbeddingByToken;
+int nextPreparedEmbeddingToken = 1;
+
 class PrepareCurvenetEmbeddingCommand : public MPxCommand
 {
 public:
@@ -2349,16 +2340,119 @@ public:
 
     MStatus doIt(const MArgList& arguments) override
     {
-        if (arguments.length() != 1)
+        if (arguments.length() < 5 ||
+            (arguments.length() - 2) % 3 != 0)
         {
             MGlobal::displayError(
-                "prepareCurvenetEmbedding expects one Curvenet deformer."
+                "prepareCurvenetEmbedding expects a mesh, coverage flag, "
+                "and coordinate/start/end triples."
             );
             return MS::kInvalidParameter;
         }
 
+        MSelectionList meshSelection;
+        MStatus status = meshSelection.add(arguments.asString(0));
+        MDagPath meshPath;
+
+        if (!status || !meshSelection.getDagPath(0, meshPath))
+        {
+            MGlobal::displayError("Curvenet mesh was not found.");
+            return MS::kInvalidParameter;
+        }
+
+        if (meshPath.hasFn(MFn::kTransform))
+        {
+            status = meshPath.extendToShape();
+        }
+
+        if (!status || !meshPath.hasFn(MFn::kMesh))
+        {
+            MGlobal::displayError("Curvenet target is not a polygon mesh.");
+            return MS::kInvalidParameter;
+        }
+
+        const bool fullSurface = arguments.asBool(1, &status);
+
+        if (!status)
+        {
+            return status;
+        }
+
+        const unsigned int curveCount = (arguments.length() - 2) / 3;
+        std::vector<std::vector<Point3>> profilePoints(curveCount);
+        std::vector<int> startNodeIds(curveCount, -1);
+        std::vector<int> endNodeIds(curveCount, -1);
+
+        for (unsigned int curveIndex = 0; curveIndex < curveCount; ++curveIndex)
+        {
+            const unsigned int argumentIndex = 2 + curveIndex * 3;
+            if (!parseProfileCoordinates(
+                    arguments.asString(argumentIndex),
+                    profilePoints[curveIndex]
+                ))
+            {
+                MGlobal::displayError(
+                    MString("Invalid Curvenet coordinates for curve ") +
+                    static_cast<int>(curveIndex) + "."
+                );
+                return MS::kInvalidParameter;
+            }
+            startNodeIds[curveIndex] = arguments.asInt(argumentIndex + 1);
+            endNodeIds[curveIndex] = arguments.asInt(argumentIndex + 2);
+        }
+
+        auto preparedNode = std::make_unique<CurveDeformerNode>();
+        status = preparedNode->prepareEmbedding(
+            meshPath,
+            profilePoints,
+            startNodeIds,
+            endNodeIds,
+            fullSurface
+        );
+
+        if (!status)
+        {
+            MGlobal::displayError("Curvenet embedding preparation failed.");
+            return status;
+        }
+
+        const int token = nextPreparedEmbeddingToken++;
+        preparedEmbeddingByToken[token] = std::move(preparedNode);
+        setResult(token);
+        return MS::kSuccess;
+    }
+};
+
+class InstallPreparedCurvenetEmbeddingCommand : public MPxCommand
+{
+public:
+    static void* creator()
+    {
+        return new InstallPreparedCurvenetEmbeddingCommand();
+    }
+
+    MStatus doIt(const MArgList& arguments) override
+    {
+        if (arguments.length() != 2)
+        {
+            MGlobal::displayError(
+                "installPreparedCurvenetEmbedding expects a token and deformer."
+            );
+            return MS::kInvalidParameter;
+        }
+
+        MStatus status;
+        const int token = arguments.asInt(0, &status);
+        auto prepared = preparedEmbeddingByToken.find(token);
+
+        if (!status || prepared == preparedEmbeddingByToken.end())
+        {
+            MGlobal::displayError("Prepared Curvenet embedding was not found.");
+            return MS::kInvalidParameter;
+        }
+
         MSelectionList selection;
-        MStatus status = selection.add(arguments.asString(0));
+        status = selection.add(arguments.asString(1));
         MObject nodeObject;
 
         if (!status || !selection.getDependNode(0, nodeObject))
@@ -2378,14 +2472,9 @@ public:
             return MS::kInvalidParameter;
         }
 
-        status = node->prepareEmbedding();
-
-        if (!status)
-        {
-            MGlobal::displayError("Curvenet embedding preparation failed.");
-        }
-
-        return status;
+        node->installPreparedEmbedding(*prepared->second);
+        preparedEmbeddingByToken.erase(prepared);
+        return MS::kSuccess;
     }
 };
 }
@@ -2408,12 +2497,12 @@ MStatus initializePlugin(MObject pluginObject)
     MFnPlugin plugin(
         pluginObject,
         "Osher",
-        "3.0-explicit-embedding-prepare",
+        "4.0-prebuilt-embedding-cache",
         "Any"
     );
 
     MGlobal::displayInfo(
-        "Curvenet plugin build: 3.0-explicit-embedding-prepare"
+        "Curvenet plugin build: 4.0-prebuilt-embedding-cache"
     );
 
     status = plugin.registerNode(
@@ -2449,6 +2538,19 @@ MStatus initializePlugin(MObject pluginObject)
         return status;
     }
 
+    status = plugin.registerCommand(
+        "installPreparedCurvenetEmbedding",
+        InstallPreparedCurvenetEmbeddingCommand::creator
+    );
+
+    if (!status)
+    {
+        status.perror(
+            "Failed to register installPreparedCurvenetEmbedding command"
+        );
+        return status;
+    }
+
     if (!status)
     {
         status.perror("Failed to register curvenetNode");
@@ -2461,6 +2563,16 @@ MStatus uninitializePlugin(MObject pluginObject)
 {
     MStatus status;
     MFnPlugin plugin(pluginObject);
+
+    status = plugin.deregisterCommand("installPreparedCurvenetEmbedding");
+
+    if (!status)
+    {
+        status.perror(
+            "Failed to deregister installPreparedCurvenetEmbedding command"
+        );
+        return status;
+    }
 
     status = plugin.deregisterCommand("prepareCurvenetEmbedding");
 
