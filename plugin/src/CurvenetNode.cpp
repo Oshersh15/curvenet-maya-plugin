@@ -775,6 +775,14 @@ unsigned int geometryIndex
 {
     MStatus status;
 
+#ifdef __linux__
+    const auto reportLinuxStage = [](const MString& stage)
+    {
+        MGlobal::displayInfo(MString("Curvenet Linux stage: ") + stage);
+    };
+    reportLinuxStage("deformer evaluation started");
+#endif
+
     MMatrix geometryLocalToWorldMatrix =
         localToWorldMatrix;
     MString geometryTransformName;
@@ -820,6 +828,9 @@ unsigned int geometryIndex
        posing scale with the full mesh even though the CutPaths were cached. */
     if (!topologyCaptured)
     {
+#ifdef __linux__
+        reportLinuxStage("reading neutral mesh");
+#endif
         MArrayDataHandle geometryArray =
             dataBlock.inputArrayValue(input, &status);
 
@@ -842,6 +853,9 @@ unsigned int geometryIndex
                     mayaHalfEdgeMesh.computeMeanEdgeLength();
             }
         }
+#ifdef __linux__
+        reportLinuxStage("neutral mesh ready");
+#endif
     }
 
     MArrayDataHandle curveArrayHandle =
@@ -853,6 +867,13 @@ unsigned int geometryIndex
     }
 
     unsigned int numConnectedCurves = curveArrayHandle.elementCount();
+
+#ifdef __linux__
+    reportLinuxStage(
+        MString("reading ") + static_cast<int>(numConnectedCurves) +
+        " profile curves"
+    );
+#endif
 
     std::vector<CutPath> cutPaths;
     std::vector<ProfileCutInput> profileInputs;
@@ -1091,6 +1112,12 @@ unsigned int geometryIndex
 
     for (unsigned int curveIndex = 0; curveIndex < numConnectedCurves; ++curveIndex)
     {
+#ifdef __linux__
+        reportLinuxStage(
+            MString("sampling profile curve ") +
+            static_cast<int>(curveIndex)
+        );
+#endif
         if (topologyCaptured &&
             !currentDriverPositions.empty() &&
             curveIndex < neutralSampledCurves.size())
@@ -1268,6 +1295,13 @@ unsigned int geometryIndex
                 crossingTolerance,
                 duplicateTolerance
             );
+
+#ifdef __linux__
+        reportLinuxStage(
+            MString("profile curve ") +
+            static_cast<int>(curveIndex) + " crossings ready"
+        );
+#endif
 
         CutPath cutPath;
 
@@ -1514,6 +1548,9 @@ unsigned int geometryIndex
 
     if (!cutPaths.empty())
     {
+#ifdef __linux__
+        reportLinuxStage("applying embedded CutPaths");
+#endif
         const int originalVertexCount =
             static_cast<int>(
                 mayaHalfEdgeMesh.vertices.size()
@@ -1542,6 +1579,10 @@ unsigned int geometryIndex
                 crossingTolerance,
                 duplicateTolerance
             );
+
+#ifdef __linux__
+        reportLinuxStage("embedded CutPaths ready");
+#endif
 
         /* Cache the exact crossings used by the cutter, not the preliminary
            proximity detections produced before the evolving-mesh pass. */
