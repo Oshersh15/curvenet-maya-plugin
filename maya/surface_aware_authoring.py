@@ -528,13 +528,6 @@ def _surface_connect_drawn_curvenet_to_plugin(full_surface=False):
         deformer + ".fullSurfaceCurvenet",
         bool(full_surface),
     )
-    source_mesh_shape = _deformer_source_mesh_shape(deformer)
-    cmds.connectAttr(
-        source_mesh_shape + ".outMesh",
-        deformer + ".inputMesh",
-        force=True,
-    )
-
     for curve_id, (source_curve, projected_curve) in enumerate(
         zip(source_curves, projected_curves)
     ):

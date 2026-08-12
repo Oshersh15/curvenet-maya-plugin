@@ -414,13 +414,6 @@ def _rebuild_target_deformer_from_skinned_curves(mesh, full_surface):
         name=deformer_name,
     )[0]
     cmds.setAttr(deformer + ".fullSurfaceCurvenet", bool(full_surface))
-    source_mesh_shape = _deformer_source_mesh_shape(deformer)
-    cmds.connectAttr(
-        source_mesh_shape + ".outMesh",
-        deformer + ".inputMesh",
-        force=True,
-    )
-
     for curve_index, curve in enumerate(curves):
         shape = cmds.listRelatives(
             curve,

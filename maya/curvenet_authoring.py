@@ -965,12 +965,6 @@ def connect_drawn_curvenet_to_plugin():
         name=DEFORMER_NAME,
     )[0]
 
-    cmds.connectAttr(
-        mesh_shape() + ".outMesh",
-        deformer + ".inputMesh",
-        force=True,
-    )
-
     for curve_id, curve in enumerate(projected_curves):
         shape = cmds.listRelatives(
             curve,

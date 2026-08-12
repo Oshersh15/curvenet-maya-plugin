@@ -549,12 +549,6 @@ def attach_existing_curvenet_to_mesh(
         deformer + ".fullSurfaceCurvenet",
         bool(full_surface),
     )
-    cmds.connectAttr(
-        _deformer_input_mesh_plug(deformer),
-        deformer + ".inputMesh",
-        force=True,
-    )
-
     for curve_id, curve in enumerate(projected_curves):
         curve_shape = cmds.listRelatives(
             curve,

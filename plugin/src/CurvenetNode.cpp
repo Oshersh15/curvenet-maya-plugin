@@ -820,11 +820,15 @@ unsigned int geometryIndex
        posing scale with the full mesh even though the CutPaths were cached. */
     if (!topologyCaptured)
     {
-        MDataHandle meshHandle =
-            dataBlock.inputValue(inputMesh, &status);
+        MArrayDataHandle geometryArray =
+            dataBlock.inputArrayValue(input, &status);
 
-        if (status)
+        if (status && geometryArray.jumpToElement(geometryIndex))
         {
+            MDataHandle geometryHandle =
+                geometryArray.inputValue(&status);
+            MDataHandle meshHandle =
+                geometryHandle.child(inputGeom);
             MObject meshObject = meshHandle.asMesh();
 
             if (!meshObject.isNull())
