@@ -2235,12 +2235,12 @@ MStatus initializePlugin(MObject pluginObject)
     MFnPlugin plugin(
         pluginObject,
         "Osher",
-        "2.3-python-object-space-profiles",
+        "2.4-reentrant-evaluation-guard",
         "Any"
     );
 
     MGlobal::displayInfo(
-        "Curvenet plugin build: 2.3-python-object-space-profiles"
+        "Curvenet plugin build: 2.4-reentrant-evaluation-guard"
     );
 
     status = plugin.registerNode(
