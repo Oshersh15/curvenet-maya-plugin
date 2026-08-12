@@ -831,7 +831,7 @@ unsigned int geometryIndex
         ::fsync(descriptor);
         ::close(descriptor);
     };
-    traceStage("ENTER deform 2.0");
+    traceStage("ENTER deform 2.1");
 #else
     const auto traceStage = [](const char*) {};
 #endif
@@ -1201,7 +1201,6 @@ unsigned int geometryIndex
 
         const bool curveClosed = false;
 
-        std::vector<MPoint> cvPositions;
         std::vector<Point3> controlPoints;
 
         const MString serializedCoordinates = curveHandle.asString();
@@ -1241,24 +1240,19 @@ unsigned int geometryIndex
             traceStage("invalid profile coordinates");
             continue;
         }
+        traceStage("profile coordinates validated");
 
         for (size_t coordinateIndex = 0;
              coordinateIndex < curveCoordinates.size();
              coordinateIndex += 3)
         {
-            const MPoint cvPosition(
+            controlPoints.push_back(Point3{
                 curveCoordinates[coordinateIndex],
                 curveCoordinates[coordinateIndex + 1],
                 curveCoordinates[coordinateIndex + 2]
-            );
-            cvPositions.push_back(cvPosition);
-
-            controlPoints.push_back(Point3{
-                cvPosition.x,
-                cvPosition.y,
-                cvPosition.z
             });
         }
+        traceStage("profile Point3 values ready");
 
         std::vector<Point3> densePoints = controlPoints;
 
@@ -1276,25 +1270,26 @@ unsigned int geometryIndex
 
         for (const Point3& sampledPoint : sampledPoints)
         {
-            const MPoint objectPoint =
-                MPoint(
-                    sampledPoint.x,
-                    sampledPoint.y,
-                    sampledPoint.z
-                ) * worldToLocalMatrix;
-
             objectSampledPoints.push_back(Point3{
-                objectPoint.x,
-                objectPoint.y,
-                objectPoint.z
+                sampledPoint.x * worldToLocalMatrix[0][0] +
+                    sampledPoint.y * worldToLocalMatrix[1][0] +
+                    sampledPoint.z * worldToLocalMatrix[2][0] +
+                    worldToLocalMatrix[3][0],
+                sampledPoint.x * worldToLocalMatrix[0][1] +
+                    sampledPoint.y * worldToLocalMatrix[1][1] +
+                    sampledPoint.z * worldToLocalMatrix[2][1] +
+                    worldToLocalMatrix[3][1],
+                sampledPoint.x * worldToLocalMatrix[0][2] +
+                    sampledPoint.y * worldToLocalMatrix[1][2] +
+                    sampledPoint.z * worldToLocalMatrix[2][2] +
+                    worldToLocalMatrix[3][2]
             });
         }
+        traceStage("profile object points ready");
 
         applyDriverDisplacement(curveIndex, objectSampledPoints);
 
         curvenetData.addCurve(
-            MObject::kNullObj,
-            cvPositions,
             sampledPoints,
             curveClosed
         );
@@ -2249,12 +2244,12 @@ MStatus initializePlugin(MObject pluginObject)
     MFnPlugin plugin(
         pluginObject,
         "Osher",
-        "2.0-serialized-profile-coordinates",
+        "2.1-native-profile-points",
         "Any"
     );
 
     MGlobal::displayInfo(
-        "Curvenet plugin build: 2.0-serialized-profile-coordinates"
+        "Curvenet plugin build: 2.1-native-profile-points"
     );
 
     status = plugin.registerNode(

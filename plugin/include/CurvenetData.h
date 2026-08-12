@@ -1,7 +1,5 @@
 #pragma once
 
-#include <maya/MObject.h>
-#include <maya/MPoint.h>
 #include "HalfEdge.h"
 #include "CurveConnectionDetector.h"
 
@@ -17,18 +15,16 @@ struct CurveConnection
     int targetSegmentId = -1;
     double targetSegmentT = 0.0;
 
-    MPoint position;
+    Point3 position;
 };
 
 struct ProfileCurveData
 {
     int id = -1;
-    MObject curveObject;
-    std::vector<MPoint> restCVPositions;
     std::vector<Point3> sampledPoints;
 
-    MPoint startPoint;
-    MPoint endPoint;
+    Point3 startPoint;
+    Point3 endPoint;
 
     bool closed = false;
 };
@@ -39,8 +35,6 @@ public:
     void clear();
 
     void addCurve(
-        const MObject& curveObject,
-        const std::vector<MPoint>& cvPositions,
         const std::vector<Point3>& sampledPoints,
         bool closed
     );

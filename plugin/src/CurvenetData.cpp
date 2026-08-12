@@ -12,8 +12,6 @@ void CurvenetData::clear()
 }
 
 void CurvenetData::addCurve(
-    const MObject& curveObject,
-    const std::vector<MPoint>& cvPositions,
     const std::vector<Point3>& sampledPoints,
     bool closed
 )
@@ -21,28 +19,12 @@ void CurvenetData::addCurve(
     ProfileCurveData curve;
     curve.closed = closed;
 
-    curve.curveObject = curveObject;
-    curve.restCVPositions = cvPositions;
     curve.sampledPoints = sampledPoints;
 
     if (!sampledPoints.empty())
     {
-        curve.startPoint = MPoint(
-            sampledPoints.front().x,
-            sampledPoints.front().y,
-            sampledPoints.front().z
-        );
-
-        curve.endPoint = MPoint(
-            sampledPoints.back().x,
-            sampledPoints.back().y,
-            sampledPoints.back().z
-        );
-    }
-    else if (!cvPositions.empty())
-    {
-        curve.startPoint = cvPositions.front();
-        curve.endPoint = cvPositions.back();
+        curve.startPoint = sampledPoints.front();
+        curve.endPoint = sampledPoints.back();
     }
 
     m_curves.push_back(curve);
@@ -95,12 +77,7 @@ void CurvenetData::detectConnections(
         connection.targetSegmentT =
             detected.targetSegmentT;
 
-        connection.position =
-            MPoint(
-                detected.position.x,
-                detected.position.y,
-                detected.position.z
-            );
+        connection.position = detected.position;
 
         m_connections.push_back(connection);
     }

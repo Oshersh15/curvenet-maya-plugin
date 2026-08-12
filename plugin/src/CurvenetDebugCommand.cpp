@@ -1,6 +1,7 @@
 #include "CurvenetDebugCommand.h"
 
 #include "CurvenetNode.h"
+#include <maya/MPoint.h>
 
 #include <maya/MFnDependencyNode.h>
 #include <maya/MArgList.h>
@@ -562,12 +563,20 @@ MStatus CurvenetDebugCommand::doIt(
         {
             {
                 "start",
-                profileCurve.startPoint,
+                MPoint(
+                    profileCurve.startPoint.x,
+                    profileCurve.startPoint.y,
+                    profileCurve.startPoint.z
+                ),
                 14
             },
             {
                 "end",
-                profileCurve.endPoint,
+                MPoint(
+                    profileCurve.endPoint.x,
+                    profileCurve.endPoint.y,
+                    profileCurve.endPoint.z
+                ),
                 13
             }
         };
