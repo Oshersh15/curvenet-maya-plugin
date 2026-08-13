@@ -55,6 +55,10 @@ public:
         bool fullSurface
     );
 
+    /* Installs a fully computed cache without running embedding work on the
+       Maya-owned dependency node. */
+    void installPreparedEmbedding(CurveDeformerNode&& preparedNode);
+
     void reportPreparedEmbedding() const;
 
     /* Returns the sampled points for every connected profile curve. */

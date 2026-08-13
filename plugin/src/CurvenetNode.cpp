@@ -907,6 +907,35 @@ MStatus CurveDeformerNode::prepareEmbedding(
     );
 }
 
+void CurveDeformerNode::installPreparedEmbedding(
+    CurveDeformerNode&& preparedNode
+)
+{
+    /* Only completed, Maya-independent data crosses onto the live node. The
+       atomic evaluation guard belongs to each node and is intentionally not
+       transferred. */
+    curvenetData = std::move(preparedNode.curvenetData);
+    debugSampledCurves = std::move(preparedNode.debugSampledCurves);
+    debugCrossings = std::move(preparedNode.debugCrossings);
+    neutralSampledCurves = std::move(preparedNode.neutralSampledCurves);
+    neutralSamplesCaptured = preparedNode.neutralSamplesCaptured;
+    currentSampledCurves = std::move(preparedNode.currentSampledCurves);
+    neutralDriverPositions = std::move(
+        preparedNode.neutralDriverPositions
+    );
+    neutralDriverFrames = std::move(preparedNode.neutralDriverFrames);
+    neutralDriverCaptured = preparedNode.neutralDriverCaptured;
+    vertexBindings = std::move(preparedNode.vertexBindings);
+    harmonicSolver = std::move(preparedNode.harmonicSolver);
+    vertexBindingsCaptured = preparedNode.vertexBindingsCaptured;
+    topologyCaptured = preparedNode.topologyCaptured;
+    preparedInfoMessages = std::move(preparedNode.preparedInfoMessages);
+    preparedWarningMessages = std::move(
+        preparedNode.preparedWarningMessages
+    );
+    preparedErrorMessages = std::move(preparedNode.preparedErrorMessages);
+}
+
 void CurveDeformerNode::reportPreparedEmbedding() const
 {
     for (const MString& message : preparedInfoMessages)
@@ -2441,7 +2470,12 @@ public:
             endNodeIds[curveIndex] = arguments.asInt(argumentIndex + 2);
         }
 
-        status = node->prepareEmbedding(
+        /* Do not run topology construction on the Maya-owned deformer. Maya
+           can inspect that node while this command is executing. Build the
+           complete cache on an ordinary C++ object, then install it in one
+           short, non-computational step. */
+        CurveDeformerNode preparedNode;
+        status = preparedNode.prepareEmbedding(
             meshPath,
             profilePoints,
             startNodeIds,
@@ -2455,6 +2489,7 @@ public:
             return status;
         }
 
+        node->installPreparedEmbedding(std::move(preparedNode));
         node->reportPreparedEmbedding();
         return MS::kSuccess;
     }
@@ -2479,12 +2514,12 @@ MStatus initializePlugin(MObject pluginObject)
     MFnPlugin plugin(
         pluginObject,
         "Osher",
-        "5.1-driver-gated-evaluation",
+        "6.0-isolated-embedding-cache",
         "Any"
     );
 
     MGlobal::displayInfo(
-        "Curvenet plugin build: 5.1-driver-gated-evaluation"
+        "Curvenet plugin build: 6.0-isolated-embedding-cache"
     );
 
     status = plugin.registerNode(

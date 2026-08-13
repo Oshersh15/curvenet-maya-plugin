@@ -163,3 +163,20 @@ target_link_libraries(HalfEdgeTests
 include(GoogleTest)
 
 gtest_discover_tests(HalfEdgeTests)
+
+if(UNIX AND NOT APPLE)
+    add_test(
+        NAME CurvenetLinuxMayaPipeline
+        COMMAND
+            ${CMAKE_COMMAND} -E env
+            CURVENET_PLUGIN_PATH=$<TARGET_FILE:CurvenetPlugin>
+            MAYA_DISABLE_CIP=1
+            MAYA_DISABLE_CER=1
+            ${MAYA_LOCATION}/bin/mayapy
+            ${CMAKE_CURRENT_SOURCE_DIR}/../maya/test_linux_curvenet_pipeline.py
+    )
+    set_tests_properties(
+        CurvenetLinuxMayaPipeline
+        PROPERTIES TIMEOUT 120
+    )
+endif()
