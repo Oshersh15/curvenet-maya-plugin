@@ -11,34 +11,113 @@
 #include <maya/MString.h>
 
 #include <cmath>
+#include <array>
+#include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 namespace
 {
-MColor regionColor(int regionId)
+MColor regionColor(int colorId)
 {
-    const float hue = std::fmod(
-        static_cast<float>(regionId) * 0.61803398875f,
-        1.0f
-    );
-    const float saturation = 0.72f;
-    const float value = 0.95f;
-    const float scaledHue = hue * 6.0f;
-    const int sector = static_cast<int>(std::floor(scaledHue));
-    const float fraction = scaledHue - static_cast<float>(sector);
-    const float minimum = value * (1.0f - saturation);
-    const float descending = value * (1.0f - saturation * fraction);
-    const float ascending = value * (1.0f - saturation * (1.0f - fraction));
+    static const std::array<MColor, 8> colors = {
+        MColor(0.95f, 0.25f, 0.25f, 1.0f),
+        MColor(0.15f, 0.75f, 0.95f, 1.0f),
+        MColor(0.25f, 0.90f, 0.35f, 1.0f),
+        MColor(0.95f, 0.75f, 0.20f, 1.0f),
+        MColor(0.70f, 0.35f, 0.95f, 1.0f),
+        MColor(0.95f, 0.35f, 0.75f, 1.0f),
+        MColor(0.20f, 0.90f, 0.80f, 1.0f),
+        MColor(0.95f, 0.55f, 0.20f, 1.0f)
+    };
 
-    switch (sector % 6)
+    return colors[static_cast<std::size_t>(colorId) % colors.size()];
+}
+
+std::vector<int> buildRegionColorIds(
+    const CurvenetCutResult& curvenetCutResult
+)
+{
+    const int regionCount = static_cast<int>(
+        curvenetCutResult.curvenetFaces.size()
+    );
+    std::vector<int> regionByMeshFace(
+        curvenetCutResult.mesh.faces.size(),
+        -1
+    );
+    std::vector<std::unordered_set<int>> neighbours(regionCount);
+
+    for (int regionId = 0; regionId < regionCount; ++regionId)
     {
-        case 0: return MColor(value, ascending, minimum, 1.0f);
-        case 1: return MColor(descending, value, minimum, 1.0f);
-        case 2: return MColor(minimum, value, ascending, 1.0f);
-        case 3: return MColor(minimum, descending, value, 1.0f);
-        case 4: return MColor(ascending, minimum, value, 1.0f);
-        default: return MColor(value, minimum, descending, 1.0f);
+        for (int meshFaceId :
+             curvenetCutResult.curvenetFaces[regionId].meshFaceIds)
+        {
+            if (meshFaceId >= 0 &&
+                meshFaceId < static_cast<int>(regionByMeshFace.size()))
+            {
+                regionByMeshFace[meshFaceId] = regionId;
+            }
+        }
     }
+
+    for (const HalfEdge& halfEdge : curvenetCutResult.mesh.halfEdges)
+    {
+        if (halfEdge.face < 0 ||
+            halfEdge.face >= static_cast<int>(regionByMeshFace.size()) ||
+            halfEdge.twin < 0 ||
+            halfEdge.twin >= static_cast<int>(
+                curvenetCutResult.mesh.halfEdges.size()
+            ))
+        {
+            continue;
+        }
+
+        const int oppositeFaceId =
+            curvenetCutResult.mesh.halfEdges[halfEdge.twin].face;
+
+        if (oppositeFaceId < 0 ||
+            oppositeFaceId >= static_cast<int>(regionByMeshFace.size()))
+        {
+            continue;
+        }
+
+        const int firstRegion = regionByMeshFace[halfEdge.face];
+        const int secondRegion = regionByMeshFace[oppositeFaceId];
+
+        if (firstRegion >= 0 && secondRegion >= 0 &&
+            firstRegion != secondRegion)
+        {
+            neighbours[firstRegion].insert(secondRegion);
+            neighbours[secondRegion].insert(firstRegion);
+        }
+    }
+
+    std::vector<int> colorIds(regionCount, -1);
+
+    for (int regionId = 0; regionId < regionCount; ++regionId)
+    {
+        std::unordered_set<int> unavailableColors;
+
+        for (int neighbourId : neighbours[regionId])
+        {
+            if (neighbourId >= 0 && neighbourId < regionId &&
+                colorIds[neighbourId] >= 0)
+            {
+                unavailableColors.insert(colorIds[neighbourId]);
+            }
+        }
+
+        int colorId = 0;
+
+        while (unavailableColors.count(colorId) > 0)
+        {
+            ++colorId;
+        }
+
+        colorIds[regionId] = colorId;
+    }
+
+    return colorIds;
 }
 }
 
@@ -75,6 +154,10 @@ void CurvenetRegionPreviewBuilder::build(
 
     MIntArray polygonCounts;
     MIntArray polygonVertexIds;
+    std::vector<int> previewFaceIdByMeshFaceId(
+        curvenetCutResult.mesh.faces.size(),
+        -1
+    );
 
     for (int faceId = 0;
          faceId < static_cast<int>(
@@ -84,24 +167,59 @@ void CurvenetRegionPreviewBuilder::build(
     {
         const std::vector<int> halfEdgeIds =
             curvenetCutResult.mesh.traverseFace(faceId);
-
-        if (halfEdgeIds.size() < 3)
-        {
-            return;
-        }
-
-        polygonCounts.append(
-            static_cast<int>(halfEdgeIds.size())
-        );
+        std::vector<int> faceVertexIds;
+        faceVertexIds.reserve(halfEdgeIds.size());
+        std::unordered_set<int> uniqueVertexIds;
 
         for (int halfEdgeId : halfEdgeIds)
         {
-            polygonVertexIds.append(
+            const int vertexId =
                 curvenetCutResult.mesh
                     .halfEdges[halfEdgeId]
-                    .startVertex
-            );
+                    .startVertex;
+
+            if (vertexId < 0 ||
+                vertexId >= static_cast<int>(points.length()))
+            {
+                faceVertexIds.clear();
+                break;
+            }
+
+            faceVertexIds.push_back(vertexId);
+            uniqueVertexIds.insert(vertexId);
         }
+
+        /*
+         * Cutting can leave zero-area slivers with fewer than three distinct
+         * vertices. They have no visible surface, and Maya rejects the whole
+         * preview mesh if they are submitted as polygons.
+         */
+        if (faceVertexIds.size() < 3 ||
+            uniqueVertexIds.size() < 3)
+        {
+            continue;
+        }
+
+        previewFaceIdByMeshFaceId[faceId] =
+            static_cast<int>(polygonCounts.length());
+        polygonCounts.append(
+            static_cast<int>(faceVertexIds.size())
+        );
+
+        for (int vertexId : faceVertexIds)
+        {
+            polygonVertexIds.append(vertexId);
+        }
+    }
+
+    if (polygonCounts.length() == 0)
+    {
+        MGlobal::displayError(
+            MString(
+                "Curvenet preview failed: no valid mesh faces were produced."
+            )
+        );
+        return;
     }
 
     MStatus status;
@@ -113,6 +231,10 @@ void CurvenetRegionPreviewBuilder::build(
 
     if (!status)
     {
+        MGlobal::displayError(
+            MString("Curvenet preview failed to create its transform: ") +
+            status.errorString()
+        );
         return;
     }
 
@@ -134,6 +256,10 @@ void CurvenetRegionPreviewBuilder::build(
 
     if (!status || meshObject.isNull())
     {
+        MGlobal::displayError(
+            MString("Curvenet preview failed to create its mesh: ") +
+            status.errorString()
+        );
         return;
     }
 
@@ -161,6 +287,9 @@ void CurvenetRegionPreviewBuilder::build(
         faceIds[faceId] = static_cast<int>(faceId);
     }
 
+    const std::vector<int> regionColorIds =
+        buildRegionColorIds(curvenetCutResult);
+
     for (int curvenetFaceId = 0;
          curvenetFaceId < static_cast<int>(
              curvenetCutResult.curvenetFaces.size()
@@ -168,7 +297,7 @@ void CurvenetRegionPreviewBuilder::build(
          ++curvenetFaceId)
     {
         const MColor color =
-            regionColor(curvenetFaceId);
+            regionColor(regionColorIds[curvenetFaceId]);
 
         for (int meshFaceId :
              curvenetCutResult
@@ -176,9 +305,17 @@ void CurvenetRegionPreviewBuilder::build(
                  .meshFaceIds)
         {
             if (meshFaceId >= 0 &&
-                meshFaceId < static_cast<int>(faceColors.length()))
+                meshFaceId < static_cast<int>(
+                    previewFaceIdByMeshFaceId.size()
+                ))
             {
-                faceColors[meshFaceId] = color;
+                const int previewFaceId =
+                    previewFaceIdByMeshFaceId[meshFaceId];
+
+                if (previewFaceId >= 0)
+                {
+                    faceColors[previewFaceId] = color;
+                }
             }
         }
     }

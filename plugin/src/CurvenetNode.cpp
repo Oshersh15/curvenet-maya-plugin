@@ -42,13 +42,358 @@
 #include "CurvenetEdgeBuilder.h"
 
 #include <vector>
+#include <array>
 #include <algorithm>
 #include <cmath>
 #include <limits>
 #include <unordered_map>
+#include <unordered_set>
 
 namespace
 {
+    struct LocalNodeTransform
+    {
+        std::array<double, 9> rotation = {
+            1.0, 0.0, 0.0,
+            0.0, 1.0, 0.0,
+            0.0, 0.0, 1.0
+        };
+        Point3 neutralAnchor;
+        Point3 currentAnchor;
+    };
+
+    Point3 crossProduct(const Point3& first, const Point3& second)
+    {
+        return Point3{
+            first.y * second.z - first.z * second.y,
+            first.z * second.x - first.x * second.z,
+            first.x * second.y - first.y * second.x
+        };
+    }
+
+    Point3 normalized(const Point3& value)
+    {
+        const double length = std::sqrt(
+            value.x * value.x + value.y * value.y + value.z * value.z
+        );
+
+        if (length <= 1.0e-12)
+        {
+            return Point3{};
+        }
+
+        return Point3{
+            value.x / length,
+            value.y / length,
+            value.z / length
+        };
+    }
+
+    Point3 applyLocalTransform(
+        const LocalNodeTransform& transform,
+        const Point3& point
+    )
+    {
+        const Point3 relative{
+            point.x - transform.neutralAnchor.x,
+            point.y - transform.neutralAnchor.y,
+            point.z - transform.neutralAnchor.z
+        };
+
+        return Point3{
+            transform.currentAnchor.x +
+                transform.rotation[0] * relative.x +
+                transform.rotation[1] * relative.y +
+                transform.rotation[2] * relative.z,
+            transform.currentAnchor.y +
+                transform.rotation[3] * relative.x +
+                transform.rotation[4] * relative.y +
+                transform.rotation[5] * relative.z,
+            transform.currentAnchor.z +
+                transform.rotation[6] * relative.x +
+                transform.rotation[7] * relative.y +
+                transform.rotation[8] * relative.z
+        };
+    }
+
+    LocalNodeTransform buildLocalNodeTransform(
+        int nodeId,
+        const std::vector<int>& neighbours,
+        const std::unordered_map<int, Point3>& neutralPositions,
+        const std::unordered_map<int, Point3>& currentPositions
+    )
+    {
+        LocalNodeTransform transform;
+        const auto neutralCentre = neutralPositions.find(nodeId);
+        const auto currentCentre = currentPositions.find(nodeId);
+
+        if (neutralCentre == neutralPositions.end() ||
+            currentCentre == currentPositions.end())
+        {
+            return transform;
+        }
+
+        transform.neutralAnchor = neutralCentre->second;
+        transform.currentAnchor = currentCentre->second;
+        int firstNeighbour = -1;
+        double firstLengthSquared = 0.0;
+
+        for (int neighbourId : neighbours)
+        {
+            const auto neutralNeighbour = neutralPositions.find(neighbourId);
+            const auto currentNeighbour = currentPositions.find(neighbourId);
+
+            if (neutralNeighbour == neutralPositions.end() ||
+                currentNeighbour == currentPositions.end())
+            {
+                continue;
+            }
+
+            const Point3 direction = GeometryUtils::subtract(
+                neutralNeighbour->second,
+                neutralCentre->second
+            );
+            const double lengthSquared =
+                direction.x * direction.x +
+                direction.y * direction.y +
+                direction.z * direction.z;
+
+            if (lengthSquared > firstLengthSquared)
+            {
+                firstLengthSquared = lengthSquared;
+                firstNeighbour = neighbourId;
+            }
+        }
+
+        if (firstNeighbour < 0)
+        {
+            return transform;
+        }
+
+        const Point3 neutralFirst = GeometryUtils::subtract(
+            neutralPositions.at(firstNeighbour),
+            neutralCentre->second
+        );
+        int secondNeighbour = -1;
+        double bestCrossLengthSquared = 0.0;
+
+        for (int neighbourId : neighbours)
+        {
+            if (neighbourId == firstNeighbour ||
+                neutralPositions.find(neighbourId) == neutralPositions.end() ||
+                currentPositions.find(neighbourId) == currentPositions.end())
+            {
+                continue;
+            }
+
+            const Point3 candidate = GeometryUtils::subtract(
+                neutralPositions.at(neighbourId),
+                neutralCentre->second
+            );
+            const Point3 cross = crossProduct(neutralFirst, candidate);
+            const double crossLengthSquared =
+                cross.x * cross.x + cross.y * cross.y + cross.z * cross.z;
+
+            if (crossLengthSquared > bestCrossLengthSquared)
+            {
+                bestCrossLengthSquared = crossLengthSquared;
+                secondNeighbour = neighbourId;
+            }
+        }
+
+        if (secondNeighbour < 0 || bestCrossLengthSquared <= 1.0e-16)
+        {
+            return transform;
+        }
+
+        const Point3 neutralSecond = GeometryUtils::subtract(
+            neutralPositions.at(secondNeighbour),
+            neutralCentre->second
+        );
+        const Point3 currentFirst = GeometryUtils::subtract(
+            currentPositions.at(firstNeighbour),
+            currentCentre->second
+        );
+        const Point3 currentSecond = GeometryUtils::subtract(
+            currentPositions.at(secondNeighbour),
+            currentCentre->second
+        );
+        const Point3 neutralX = normalized(neutralFirst);
+        const Point3 neutralZ = normalized(
+            crossProduct(neutralFirst, neutralSecond)
+        );
+        const Point3 neutralY = crossProduct(neutralZ, neutralX);
+        const Point3 currentX = normalized(currentFirst);
+        const Point3 currentZ = normalized(
+            crossProduct(currentFirst, currentSecond)
+        );
+        const Point3 currentY = crossProduct(currentZ, currentX);
+        const Point3 neutralBasis[3] = {neutralX, neutralY, neutralZ};
+        const Point3 currentBasis[3] = {currentX, currentY, currentZ};
+
+        for (int row = 0; row < 3; ++row)
+        {
+            const double currentValues[3] = {
+                row == 0 ? currentBasis[0].x :
+                    (row == 1 ? currentBasis[0].y : currentBasis[0].z),
+                row == 0 ? currentBasis[1].x :
+                    (row == 1 ? currentBasis[1].y : currentBasis[1].z),
+                row == 0 ? currentBasis[2].x :
+                    (row == 1 ? currentBasis[2].y : currentBasis[2].z)
+            };
+
+            for (int column = 0; column < 3; ++column)
+            {
+                const double neutralValues[3] = {
+                    column == 0 ? neutralBasis[0].x :
+                        (column == 1 ? neutralBasis[0].y : neutralBasis[0].z),
+                    column == 0 ? neutralBasis[1].x :
+                        (column == 1 ? neutralBasis[1].y : neutralBasis[1].z),
+                    column == 0 ? neutralBasis[2].x :
+                        (column == 1 ? neutralBasis[2].y : neutralBasis[2].z)
+                };
+                transform.rotation[row * 3 + column] =
+                    currentValues[0] * neutralValues[0] +
+                    currentValues[1] * neutralValues[1] +
+                    currentValues[2] * neutralValues[2];
+            }
+        }
+
+        return transform;
+    }
+
+    LocalNodeTransform buildEncodedNodeTransform(
+        const std::array<Point3, 4>& neutralFrame,
+        const std::vector<Point3>& currentFrame
+    )
+    {
+        if (currentFrame.size() < 4)
+        {
+            return LocalNodeTransform{};
+        }
+
+        const std::unordered_map<int, Point3> neutralPositions = {
+            {0, neutralFrame[0]}, {1, neutralFrame[1]},
+            {2, neutralFrame[2]}, {3, neutralFrame[3]}
+        };
+        const std::unordered_map<int, Point3> currentPositions = {
+            {0, currentFrame[0]}, {1, currentFrame[1]},
+            {2, currentFrame[2]}, {3, currentFrame[3]}
+        };
+        return buildLocalNodeTransform(
+            0,
+            {1, 2, 3},
+            neutralPositions,
+            currentPositions
+        );
+    }
+
+    int authoredCycleRank(
+        const std::vector<ProfileCutInput>& profileInputs
+    )
+    {
+        std::unordered_map<int, int> parent;
+
+        for (const ProfileCutInput& input : profileInputs)
+        {
+            if (input.authoredStartNodeId < 0 ||
+                input.authoredEndNodeId < 0)
+            {
+                return -1;
+            }
+
+            parent[input.authoredStartNodeId] =
+                input.authoredStartNodeId;
+            parent[input.authoredEndNodeId] =
+                input.authoredEndNodeId;
+        }
+
+        const auto findRoot = [&parent](int nodeId)
+        {
+            int root = nodeId;
+
+            while (parent[root] != root)
+            {
+                root = parent[root];
+            }
+
+            return root;
+        };
+
+        for (const ProfileCutInput& input : profileInputs)
+        {
+            const int startRoot = findRoot(input.authoredStartNodeId);
+            const int endRoot = findRoot(input.authoredEndNodeId);
+
+            if (startRoot != endRoot)
+            {
+                parent[endRoot] = startRoot;
+            }
+        }
+
+        std::unordered_set<int> componentRoots;
+
+        for (const auto& entry : parent)
+        {
+            componentRoots.insert(findRoot(entry.first));
+        }
+
+        return static_cast<int>(profileInputs.size()) -
+            static_cast<int>(parent.size()) +
+            static_cast<int>(componentRoots.size());
+    }
+
+    int meshBoundaryComponentCount(const HalfEdgeMesh& mesh)
+    {
+        std::unordered_map<int, std::vector<int>> boundaryNeighbours;
+
+        for (const HalfEdge& halfEdge : mesh.halfEdges)
+        {
+            if (halfEdge.twin >= 0)
+            {
+                continue;
+            }
+
+            boundaryNeighbours[halfEdge.startVertex].push_back(
+                halfEdge.endVertex
+            );
+            boundaryNeighbours[halfEdge.endVertex].push_back(
+                halfEdge.startVertex
+            );
+        }
+
+        std::unordered_set<int> visitedVertices;
+        int componentCount = 0;
+
+        for (const auto& entry : boundaryNeighbours)
+        {
+            if (!visitedVertices.insert(entry.first).second)
+            {
+                continue;
+            }
+
+            ++componentCount;
+            std::vector<int> pendingVertices = {entry.first};
+
+            while (!pendingVertices.empty())
+            {
+                const int vertexId = pendingVertices.back();
+                pendingVertices.pop_back();
+
+                for (int neighbourVertexId :
+                     boundaryNeighbours[vertexId])
+                {
+                    if (visitedVertices.insert(neighbourVertexId).second)
+                    {
+                        pendingVertices.push_back(neighbourVertexId);
+                    }
+                }
+            }
+        }
+
+        return componentCount;
+    }
+
     bool getSelectedNurbsCurvePath(MDagPath& curvePath)
     {
         MStatus status;
@@ -270,6 +615,47 @@ MStatus CurveDeformerNode::initialize()
     addAttribute(inputCurveEndNodeIds);
     attributeAffects(inputCurveEndNodeIds, outputGeom);
 
+    inputDriverCurve = typedAttr.create(
+        "inputDriverCurve",
+        "idc",
+        MFnData::kNurbsCurve,
+        &status
+    );
+
+    if (!status)
+    {
+        status.perror("Failed to create inputDriverCurve");
+        return status;
+    }
+
+    typedAttr.setStorable(false);
+    typedAttr.setReadable(false);
+    typedAttr.setWritable(true);
+    typedAttr.setConnectable(true);
+    typedAttr.setArray(false);
+    status = addAttribute(inputDriverCurve);
+
+    if (!status)
+    {
+        status.perror("Failed to add inputDriverCurve");
+        return status;
+    }
+
+    attributeAffects(inputDriverCurve, outputGeom);
+
+    inputDriverNodeIds = numericAttr.create(
+        "inputDriverNodeIds",
+        "idn",
+        MFnNumericData::kInt,
+        -1,
+        &status
+    );
+    numericAttr.setArray(true);
+    numericAttr.setUsesArrayDataBuilder(true);
+    numericAttr.setStorable(true);
+    addAttribute(inputDriverNodeIds);
+    attributeAffects(inputDriverNodeIds, outputGeom);
+
     inputMesh = typedAttr.create(
         "inputMesh",
         "im",
@@ -419,25 +805,49 @@ unsigned int geometryIndex
     debugSampledCurves.clear();
     debugCrossings.clear();
 
+    const bool requestedFullSurfaceCurvenet =
+        dataBlock.inputValue(
+            fullSurfaceCurvenet,
+            &status
+        ).asBool();
+
+    /* Maya may evaluate a newly created deformer before the workflow copies
+       its coverage setting. Rebuild the cached embedding when that setting
+       changes so transferred meshes use the same coverage as their source. */
+    if (topologyCaptured &&
+        requestedFullSurfaceCurvenet != capturedFullSurfaceCurvenet)
+    {
+        topologyCaptured = false;
+        vertexBindingsCaptured = false;
+        vertexBindings.clear();
+        scenePreviewBuilt = false;
+    }
+
     double meanMeshEdgeLength = 0.0;
     HalfEdgeMesh mayaHalfEdgeMesh;
 
-    MDataHandle meshHandle =
-        dataBlock.inputValue(inputMesh, &status);
-
-    if (status)
+    /* The half-edge mesh is needed only while constructing the neutral
+       embedding. Rebuilding it on every driver update made interactive
+       posing scale with the full mesh even though the CutPaths were cached. */
+    if (!topologyCaptured)
     {
-        MObject meshObject = meshHandle.asMesh();
+        MDataHandle meshHandle =
+            dataBlock.inputValue(inputMesh, &status);
 
-        if (!meshObject.isNull())
+        if (status)
         {
-            MFnMesh meshFn(meshObject);
+            MObject meshObject = meshHandle.asMesh();
 
-            mayaHalfEdgeMesh =
-                MayaMeshConverter::buildFromMayaMesh(meshFn);
+            if (!meshObject.isNull())
+            {
+                MFnMesh meshFn(meshObject);
 
-            meanMeshEdgeLength =
-                mayaHalfEdgeMesh.computeMeanEdgeLength();
+                mayaHalfEdgeMesh =
+                    MayaMeshConverter::buildFromMayaMesh(meshFn);
+
+                meanMeshEdgeLength =
+                    mayaHalfEdgeMesh.computeMeanEdgeLength();
+            }
         }
     }
 
@@ -469,10 +879,232 @@ unsigned int geometryIndex
             return handle.inputValue(&handleStatus).asInt();
         };
 
+    std::unordered_map<int, Point3> currentDriverPositions;
+    std::unordered_map<int, std::vector<Point3>> currentDriverFramePoints;
+    MDataHandle driverHandle =
+        dataBlock.inputValue(inputDriverCurve, &status);
+
+    if (status)
+    {
+        const MObject driverObject = driverHandle.asNurbsCurve();
+
+        if (!driverObject.isNull())
+        {
+            MFnNurbsCurve driverFn(driverObject, &status);
+
+            if (status)
+            {
+                MArrayDataHandle driverIdHandle =
+                    dataBlock.inputArrayValue(inputDriverNodeIds, &status);
+                const MMatrix worldToLocalMatrix =
+                    geometryLocalToWorldMatrix.inverse();
+
+                for (unsigned int cvIndex = 0;
+                     cvIndex < driverFn.numCVs();
+                     ++cvIndex)
+                {
+                    if (!status ||
+                        !driverIdHandle.jumpToArrayElement(cvIndex))
+                    {
+                        continue;
+                    }
+
+                    MStatus idStatus;
+                    const int logicalNodeId =
+                        driverIdHandle.inputValue(&idStatus).asInt();
+
+                    if (!idStatus || logicalNodeId < 0)
+                    {
+                        continue;
+                    }
+
+                    MPoint position;
+                    driverFn.getCV(cvIndex, position, MSpace::kObject);
+                    position *= worldToLocalMatrix;
+                    currentDriverFramePoints[logicalNodeId].push_back(Point3{
+                        position.x,
+                        position.y,
+                        position.z
+                    });
+                }
+            }
+        }
+    }
+
+    for (const auto& entry : currentDriverFramePoints)
+    {
+        if (entry.second.empty())
+        {
+            continue;
+        }
+
+        currentDriverPositions[entry.first] = entry.second.front();
+
+        if (!neutralDriverCaptured && entry.second.size() >= 4)
+        {
+            neutralDriverFrames[entry.first] = {
+                entry.second[0], entry.second[1],
+                entry.second[2], entry.second[3]
+            };
+        }
+    }
+
+    if (!neutralDriverCaptured && !currentDriverPositions.empty())
+    {
+        neutralDriverPositions = currentDriverPositions;
+        neutralDriverCaptured = true;
+    }
+
+    std::unordered_map<int, std::vector<int>> driverNeighbours;
+
+    for (unsigned int curveIndex = 0;
+         curveIndex < numConnectedCurves;
+         ++curveIndex)
+    {
+        const int startNodeId =
+            authoredNodeId(inputCurveStartNodeIds, curveIndex);
+        const int endNodeId =
+            authoredNodeId(inputCurveEndNodeIds, curveIndex);
+
+        if (startNodeId < 0 || endNodeId < 0 || startNodeId == endNodeId)
+        {
+            continue;
+        }
+
+        driverNeighbours[startNodeId].push_back(endNodeId);
+        driverNeighbours[endNodeId].push_back(startNodeId);
+    }
+
+    std::unordered_map<int, LocalNodeTransform> driverTransforms;
+
+    for (auto& entry : driverNeighbours)
+    {
+        std::vector<int>& neighbours = entry.second;
+        std::sort(neighbours.begin(), neighbours.end());
+        neighbours.erase(
+            std::unique(neighbours.begin(), neighbours.end()),
+            neighbours.end()
+        );
+        driverTransforms[entry.first] = buildLocalNodeTransform(
+            entry.first,
+            neighbours,
+            neutralDriverPositions,
+            currentDriverPositions
+        );
+    }
+
+    /* Orientation-aware drivers encode an origin and three skinned axis
+       points per logical node. Prefer that exact Maya skin transformation
+       over estimating rotation from neighbouring Curvenet nodes. */
+    for (const auto& entry : currentDriverFramePoints)
+    {
+        const auto neutralFrame = neutralDriverFrames.find(entry.first);
+
+        if (neutralFrame != neutralDriverFrames.end() &&
+            entry.second.size() >= 4)
+        {
+            driverTransforms[entry.first] = buildEncodedNodeTransform(
+                neutralFrame->second,
+                entry.second
+            );
+        }
+    }
+
+    const auto applyDriverDisplacement = [
+        &authoredNodeId,
+        &currentDriverPositions,
+        &driverTransforms,
+        this
+    ](
+        unsigned int curveIndex,
+        std::vector<Point3>& points
+    )
+    {
+        const int startLogicalNodeId =
+            authoredNodeId(inputCurveStartNodeIds, curveIndex);
+        const int endLogicalNodeId =
+            authoredNodeId(inputCurveEndNodeIds, curveIndex);
+        const auto neutralStart =
+            neutralDriverPositions.find(startLogicalNodeId);
+        const auto neutralEnd =
+            neutralDriverPositions.find(endLogicalNodeId);
+        const auto currentStart =
+            currentDriverPositions.find(startLogicalNodeId);
+        const auto currentEnd =
+            currentDriverPositions.find(endLogicalNodeId);
+        const auto startTransform =
+            driverTransforms.find(startLogicalNodeId);
+        const auto endTransform =
+            driverTransforms.find(endLogicalNodeId);
+
+        if (neutralStart == neutralDriverPositions.end() ||
+            neutralEnd == neutralDriverPositions.end() ||
+            currentStart == currentDriverPositions.end() ||
+            currentEnd == currentDriverPositions.end())
+        {
+            return;
+        }
+
+        LocalNodeTransform fallbackStart;
+        fallbackStart.neutralAnchor = neutralStart->second;
+        fallbackStart.currentAnchor = currentStart->second;
+        LocalNodeTransform fallbackEnd;
+        fallbackEnd.neutralAnchor = neutralEnd->second;
+        fallbackEnd.currentAnchor = currentEnd->second;
+        const LocalNodeTransform& resolvedStart =
+            startTransform != driverTransforms.end()
+                ? startTransform->second
+                : fallbackStart;
+        const LocalNodeTransform& resolvedEnd =
+            endTransform != driverTransforms.end()
+                ? endTransform->second
+                : fallbackEnd;
+
+        for (int pointIndex = 0;
+             pointIndex < static_cast<int>(points.size());
+             ++pointIndex)
+        {
+            const double parameter =
+                points.size() > 1
+                    ? static_cast<double>(pointIndex) /
+                        static_cast<double>(points.size() - 1)
+                    : 0.0;
+            const Point3 transformedStart = applyLocalTransform(
+                resolvedStart,
+                points[pointIndex]
+            );
+            const Point3 transformedEnd = applyLocalTransform(
+                resolvedEnd,
+                points[pointIndex]
+            );
+            points[pointIndex] = Point3{
+                transformedStart.x * (1.0 - parameter) +
+                    transformedEnd.x * parameter,
+                transformedStart.y * (1.0 - parameter) +
+                    transformedEnd.y * parameter,
+                transformedStart.z * (1.0 - parameter) +
+                    transformedEnd.z * parameter
+            };
+        }
+    };
+
     currentSampledCurves.clear();
 
     for (unsigned int curveIndex = 0; curveIndex < numConnectedCurves; ++curveIndex)
     {
+        if (topologyCaptured &&
+            !currentDriverPositions.empty() &&
+            curveIndex < neutralSampledCurves.size())
+        {
+            std::vector<Point3> objectSampledPoints =
+                neutralSampledCurves[curveIndex];
+            applyDriverDisplacement(curveIndex, objectSampledPoints);
+            currentSampledCurves.push_back(
+                std::move(objectSampledPoints)
+            );
+            continue;
+        }
+
         status = curveArrayHandle.jumpToArrayElement(curveIndex);
 
         if (!status)
@@ -580,6 +1212,8 @@ unsigned int geometryIndex
                 objectPoint.z
             });
         }
+
+        applyDriverDisplacement(curveIndex, objectSampledPoints);
 
         curvenetData.addCurve(
             curveObject,
@@ -898,6 +1532,31 @@ unsigned int geometryIndex
                 duplicateTolerance
             );
 
+        /* Cache the exact crossings used by the cutter, not the preliminary
+           proximity detections produced before the evolving-mesh pass. */
+        debugCrossings.clear();
+
+        for (const CutPath& attemptedPath :
+             curvenetCutResult.attemptedCutPaths)
+        {
+            for (const CutCrossing& objectCrossing :
+                 attemptedPath.crossings)
+            {
+                CutCrossing worldCrossing = objectCrossing;
+                const MPoint worldPosition = MPoint(
+                    objectCrossing.position.x,
+                    objectCrossing.position.y,
+                    objectCrossing.position.z
+                ) * geometryLocalToWorldMatrix;
+                worldCrossing.position = {
+                    worldPosition.x,
+                    worldPosition.y,
+                    worldPosition.z
+                };
+                debugCrossings.push_back(worldCrossing);
+            }
+        }
+
         MGlobal::displayInfo(
             MString("Curvenet cutting: ")
             + (curvenetCutResult.success
@@ -1000,6 +1659,10 @@ unsigned int geometryIndex
                     ClosingEdgeMismatch:
                     failureName = "ClosingEdgeMismatch";
                     break;
+                case CutPathSplitFailure::
+                    IncompleteSurfaceTracking:
+                    failureName = "IncompleteSurfaceTracking";
+                    break;
             }
 
             MGlobal::displayInfo(
@@ -1031,44 +1694,70 @@ unsigned int geometryIndex
             )
         );
 
+        int physicalNodeCount = 0;
+
+        for (const SharedCurvenetNode& node :
+             curvenetCutResult.sharedCurvenetNodes)
+        {
+            if (node.meshVertexId >= 0)
+            {
+                ++physicalNodeCount;
+            }
+        }
+
+        MGlobal::displayInfo(
+            MString("Physical Curvenet nodes: ") + physicalNodeCount +
+            "/" + static_cast<int>(
+                curvenetCutResult.sharedCurvenetNodes.size()
+            )
+        );
+
+        MString incompleteChains("CutChains without physical edges:");
+        int incompleteChainCount = 0;
+
+        for (const auto& entry :
+             curvenetCutResult.cutChainsByCurveId)
+        {
+            if (entry.second.halfEdgeIds.empty())
+            {
+                incompleteChains += MString(" ") + entry.first;
+                ++incompleteChainCount;
+            }
+        }
+
+        if (incompleteChainCount > 0)
+        {
+            MGlobal::displayWarning(incompleteChains);
+        }
+
+        MGlobal::displayInfo(
+            MString("Surface-tracked CutPaths: ") +
+            curvenetCutResult.surfaceTrackedCurveCount + "/" +
+            static_cast<int>(profileInputs.size())
+        );
+
+        if (!curvenetCutResult.surfaceTrackingFailures.empty())
+        {
+            MString details("Surface tracking fallback:");
+
+            for (const SurfaceTrackingFailure& failure :
+                 curvenetCutResult.surfaceTrackingFailures)
+            {
+                details += MString(" curve ") + failure.curveId +
+                    " (crossings " + failure.crossingCount +
+                    ", intervals " + failure.intervalCount +
+                    ", invalid " + failure.invalidIntervalCount + ")";
+            }
+
+            MGlobal::displayWarning(details);
+        }
+
         if (curvenetCutResult.success)
         {
             const bool buildFullSurface =
-                dataBlock.inputValue(
-                    fullSurfaceCurvenet,
-                    &status
-                ).asBool();
+                requestedFullSurfaceCurvenet;
 
-            if (buildFullSurface)
-            {
-                CurvenetFaceRegionBuilder::
-                    buildFullSurfacePartitions(
-                        curvenetCutResult
-                    );
-            }
-            else
-            {
-                curvenetCutResult.curvenetFaces =
-                    CurvenetFaceBuilder::build(
-                        curvenetCutResult
-                    );
-
-                CurvenetFaceRegionBuilder::build(
-                    curvenetCutResult
-                );
-            }
-
-            CurvenetEdgeBuilder::build(
-                curvenetCutResult,
-                profileInputs
-            );
-
-            harmonicSolver.initialize(
-                curvenetCutResult.mesh,
-                curvenetCutResult.cutChainsByCurveId,
-                originalVertexCount,
-                neutralSampledCurves
-            );
+            int expectedFullSurfaceFaceCount = -1;
 
             if (buildFullSurface && hasExplicitAuthoredTopology)
             {
@@ -1076,7 +1765,7 @@ unsigned int geometryIndex
 
                 for (int halfEdgeId = 0;
                      halfEdgeId < static_cast<int>(
-                         mayaHalfEdgeMesh.halfEdges.size()
+                        mayaHalfEdgeMesh.halfEdges.size()
                      );
                      ++halfEdgeId)
                 {
@@ -1093,14 +1782,73 @@ unsigned int geometryIndex
                     static_cast<int>(mayaHalfEdgeMesh.vertices.size()) -
                     meshEdgeCount +
                     static_cast<int>(mayaHalfEdgeMesh.faces.size());
+                const int cycleRank =
+                    authoredCycleRank(profileInputs);
+                const int cappedSurfaceEulerCharacteristic =
+                    surfaceEulerCharacteristic +
+                    meshBoundaryComponentCount(mayaHalfEdgeMesh);
+
+                if (cycleRank >= 0)
+                {
+                    expectedFullSurfaceFaceCount =
+                        cycleRank +
+                        cappedSurfaceEulerCharacteristic - 1;
+                }
+            }
+
+            if (buildFullSurface)
+            {
+                MGlobal::displayInfo("Curvenet coverage: FULL SURFACE");
+                CurvenetFaceRegionBuilder::
+                    buildFullSurfacePartitions(
+                        curvenetCutResult,
+                        expectedFullSurfaceFaceCount
+                    );
+            }
+            else
+            {
+                MGlobal::displayInfo("Curvenet coverage: AUTHORED FACES");
+                const int expectedAuthoredFaceCount =
+                    authoredCycleRank(profileInputs);
+                CurvenetFaceRegionBuilder::
+                    buildAuthoredSurfacePartitions(
+                        curvenetCutResult,
+                        expectedAuthoredFaceCount
+                    );
+
+                if (expectedAuthoredFaceCount >= 0 &&
+                    static_cast<int>(
+                        curvenetCutResult.curvenetFaces.size()
+                    ) != expectedAuthoredFaceCount)
+                {
+                    MGlobal::displayError(
+                        MString("Curvenet topology validation failed: ") +
+                        "expected " + expectedAuthoredFaceCount +
+                        " authored faces, actual " +
+                        static_cast<int>(
+                            curvenetCutResult.curvenetFaces.size()
+                        )
+                    );
+                }
+
+            }
+
+            CurvenetEdgeBuilder::build(
+                curvenetCutResult,
+                profileInputs
+            );
+
+            harmonicSolver.initialize(
+                curvenetCutResult.mesh,
+                curvenetCutResult.cutChainsByCurveId,
+                originalVertexCount,
+                neutralSampledCurves
+            );
+
+            if (buildFullSurface && hasExplicitAuthoredTopology)
+            {
                 const int expectedFaceCount =
-                    static_cast<int>(
-                        curvenetCutResult.curvenetEdges.size()
-                    ) -
-                    static_cast<int>(
-                        curvenetCutResult.sharedCurvenetNodes.size()
-                    ) +
-                    surfaceEulerCharacteristic;
+                    expectedFullSurfaceFaceCount;
                 const int actualFaceCount = static_cast<int>(
                     curvenetCutResult.curvenetFaces.size()
                 );
@@ -1173,13 +1921,47 @@ unsigned int geometryIndex
                         }
                     }
 
+                    MString cleanupDetails =
+                        MString(", regions before cleanup: ") +
+                        curvenetCutResult
+                            .fullSurfaceRegionCountBeforeCleanup +
+                        ", merged regions: " +
+                        static_cast<int>(
+                            curvenetCutResult
+                                .mergedFullSurfaceRegionAreas
+                                .size()
+                        );
+
+                    for (int mergedIndex = 0;
+                         mergedIndex < static_cast<int>(
+                            curvenetCutResult
+                                .mergedFullSurfaceRegionAreas
+                                .size()
+                         );
+                         ++mergedIndex)
+                    {
+                        cleanupDetails +=
+                            MString(" [") +
+                            curvenetCutResult
+                                .mergedFullSurfaceRegionPolygonCounts[
+                                    mergedIndex
+                                ] +
+                            " polygons, area " +
+                            curvenetCutResult
+                                .mergedFullSurfaceRegionAreas[
+                                    mergedIndex
+                                ] +
+                            "]";
+                    }
+
                     MGlobal::displayError(
                         MString("Curvenet topology validation failed: ") +
                         "expected " + expectedFaceCount +
                         " faces, actual " + actualFaceCount +
                         ", smallest region: " +
                         smallestRegionPolygonCount + " polygons, area " +
-                        smallestRegionArea
+                        smallestRegionArea +
+                        cleanupDetails
                     );
                 }
             }
@@ -1232,7 +2014,17 @@ unsigned int geometryIndex
                 + mappedMeshFaceCount
             );
 
+            MGlobal::displayInfo(
+                MString("Unmapped mesh faces: ") +
+                std::max(
+                    0,
+                    static_cast<int>(curvenetCutResult.mesh.faces.size()) -
+                        mappedMeshFaceCount
+                )
+            );
+
             topologyCaptured = true;
+            capturedFullSurfaceCurvenet = buildFullSurface;
 
         }
     }
@@ -1378,6 +2170,8 @@ MString CurveDeformerNode::nodeName("curvenetNode");
 MObject CurveDeformerNode::inputCurves;
 MObject CurveDeformerNode::inputCurveStartNodeIds;
 MObject CurveDeformerNode::inputCurveEndNodeIds;
+MObject CurveDeformerNode::inputDriverCurve;
+MObject CurveDeformerNode::inputDriverNodeIds;
 MObject CurveDeformerNode::inputMesh;
 MObject CurveDeformerNode::fullSurfaceCurvenet;
 MObject CurveDeformerNode::showGeneratedCurvenet;

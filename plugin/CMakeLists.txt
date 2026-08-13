@@ -2,9 +2,17 @@ cmake_minimum_required(VERSION 3.16)
 
 project(CurvenetPlugin)
 
+if(APPLE)
+    set(DEFAULT_MAYA_LOCATION "/Applications/Autodesk/maya2025")
+elseif(UNIX)
+    set(DEFAULT_MAYA_LOCATION "/usr/autodesk/maya2025")
+else()
+    set(DEFAULT_MAYA_LOCATION "C:/Program Files/Autodesk/Maya2025")
+endif()
+
 set(
     MAYA_LOCATION
-    "/Applications/Autodesk/maya2025"
+    "${DEFAULT_MAYA_LOCATION}"
     CACHE PATH
     "Path to the Maya installation"
 )
@@ -19,6 +27,15 @@ if(APPLE)
         MAYA_LIBRARY_DIR
         "${MAYA_LOCATION}/Maya.app/Contents/MacOS"
     )
+    set(MAYA_PLUGIN_SUFFIX ".bundle")
+elseif(UNIX)
+    set(MAYA_INCLUDE_DIR "${MAYA_LOCATION}/include")
+    set(MAYA_LIBRARY_DIR "${MAYA_LOCATION}/lib")
+    set(MAYA_PLUGIN_SUFFIX ".so")
+else()
+    set(MAYA_INCLUDE_DIR "${MAYA_LOCATION}/include")
+    set(MAYA_LIBRARY_DIR "${MAYA_LOCATION}/lib")
+    set(MAYA_PLUGIN_SUFFIX ".mll")
 endif()
 
 set(CMAKE_CXX_STANDARD 17)
@@ -62,8 +79,36 @@ target_link_libraries(CurvenetPlugin
 
 set_target_properties(CurvenetPlugin PROPERTIES
     PREFIX ""
-    SUFFIX ".bundle"
+    SUFFIX "${MAYA_PLUGIN_SUFFIX}"
+    LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}"
+    RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}"
 )
+
+foreach(CONFIGURATION DEBUG RELEASE RELWITHDEBINFO MINSIZEREL)
+    set_target_properties(CurvenetPlugin PROPERTIES
+        LIBRARY_OUTPUT_DIRECTORY_${CONFIGURATION} "${CMAKE_BINARY_DIR}"
+        RUNTIME_OUTPUT_DIRECTORY_${CONFIGURATION} "${CMAKE_BINARY_DIR}"
+    )
+endforeach()
+
+if(APPLE)
+    target_compile_definitions(CurvenetPlugin PRIVATE OSMac_ OSMac_MachO_)
+elseif(UNIX)
+    target_compile_definitions(
+        CurvenetPlugin
+        PRIVATE
+        _LINUX
+        LINUX
+        REQUIRE_IOSTREAM
+    )
+else()
+    target_compile_definitions(
+        CurvenetPlugin
+        PRIVATE
+        NT_PLUGIN
+        REQUIRE_IOSTREAM
+    )
+endif()
 
 enable_testing()
 

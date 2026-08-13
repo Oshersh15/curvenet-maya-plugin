@@ -10,6 +10,12 @@ public:
     );
 
     static void buildFullSurfacePartitions(
-        CurvenetCutResult& cutResult
+        CurvenetCutResult& cutResult,
+        int expectedRegionCount = -1
+    );
+
+    static void buildAuthoredSurfacePartitions(
+        CurvenetCutResult& cutResult,
+        int expectedFaceCount
     );
 };

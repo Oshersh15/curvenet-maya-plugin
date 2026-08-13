@@ -5,6 +5,35 @@
 
 TEST(
     CurvenetFaceRegionBuilder,
+    AuthoredPartitionsRemoveOnlyExteriorSurfaceRegion
+)
+{
+    CurvenetCutResult cutResult;
+    cutResult.mesh.createFourQuadGrid();
+
+    for (int halfEdgeId : {0, 1, 2, 3})
+    {
+        cutResult.embeddedHalfEdgeIds.insert(halfEdgeId);
+        const int twinId = cutResult.mesh.halfEdges[halfEdgeId].twin;
+
+        if (twinId >= 0)
+        {
+            cutResult.embeddedHalfEdgeIds.insert(twinId);
+        }
+    }
+
+    CurvenetFaceRegionBuilder::buildAuthoredSurfacePartitions(
+        cutResult,
+        1
+    );
+
+    ASSERT_EQ(cutResult.curvenetFaces.size(), 1);
+    ASSERT_EQ(cutResult.curvenetFaces[0].meshFaceIds.size(), 1);
+    EXPECT_EQ(cutResult.curvenetFaces[0].meshFaceIds[0], 0);
+}
+
+TEST(
+    CurvenetFaceRegionBuilder,
     StoresSingleMeshFaceInsideCurvenetRegion
 )
 {
@@ -295,6 +324,23 @@ TEST(
         curvenetFace
     };
 
+    /*
+        Simulate a numerical junction divider inside the logical boundary.
+        Both physical pieces still belong to the same Curvenet face.
+    */
+    for (int halfEdgeId = 0;
+         halfEdgeId < static_cast<int>(cutResult.mesh.halfEdges.size());
+         ++halfEdgeId)
+    {
+        const HalfEdge& halfEdge = cutResult.mesh.halfEdges[halfEdgeId];
+
+        if ((halfEdge.startVertex == 1 && halfEdge.endVertex == 4) ||
+            (halfEdge.startVertex == 4 && halfEdge.endVertex == 1))
+        {
+            cutResult.embeddedHalfEdgeIds.insert(halfEdgeId);
+        }
+    }
+
     CurvenetFaceRegionBuilder::build(
         cutResult
     );
@@ -471,10 +517,10 @@ TEST(
     faceALeft.reversed = false;
 
     faceA.boundary = {
-        faceATop,
         faceAShared,
         faceABottom,
-        faceALeft
+        faceALeft,
+        faceATop
     };
 
     /*
@@ -513,10 +559,10 @@ TEST(
     faceBShared.reversed = true;
 
     faceB.boundary = {
+        faceBShared,
         faceBTop,
         faceBRight,
-        faceBBottom,
-        faceBShared
+        faceBBottom
     };
 
     cutResult.curvenetFaces = {
@@ -885,7 +931,7 @@ TEST(
         }
     }
 
-    CurvenetFaceRegionBuilder::buildFullSurfacePartitions(cutResult);
+    CurvenetFaceRegionBuilder::buildFullSurfacePartitions(cutResult, 2);
 
     ASSERT_EQ(cutResult.curvenetFaces.size(), 2);
     EXPECT_EQ(cutResult.curvenetFaces[0].meshFaceIds.size(), 2);
@@ -894,7 +940,7 @@ TEST(
 
 TEST(
     CurvenetFaceRegionBuilder,
-    MergesNearZeroAreaFullSurfacePartition
+    PreservesNearZeroAreaPartitionAcrossCurvenetBoundary
 )
 {
     CurvenetCutResult cutResult;
@@ -927,16 +973,93 @@ TEST(
 
     /*
         Treat the shared edge as an embedded curve. The left
-        component is a numerical sliver and should be absorbed
-        into its normal-area neighbour.
+        component is a numerical sliver, but cleanup must not erase the
+        authored Curvenet boundary separating it from its neighbour.
     */
     cutResult.embeddedHalfEdgeIds.insert(1);
     cutResult.embeddedHalfEdgeIds.insert(7);
 
-    CurvenetFaceRegionBuilder::buildFullSurfacePartitions(cutResult);
+    CurvenetFaceRegionBuilder::buildFullSurfacePartitions(cutResult, 1);
 
-    ASSERT_EQ(cutResult.curvenetFaces.size(), 1);
+    ASSERT_EQ(cutResult.curvenetFaces.size(), 2);
+    EXPECT_EQ(cutResult.curvenetFaces[0].meshFaceIds.size(), 1);
+    EXPECT_EQ(cutResult.curvenetFaces[1].meshFaceIds.size(), 1);
+}
+
+TEST(
+    CurvenetFaceRegionBuilder,
+    DoesNotForceMergeAcrossCurvenetBoundary
+)
+{
+    CurvenetCutResult cutResult;
+    cutResult.mesh.createFourQuadGrid();
+
+    for (int halfEdgeId = 0;
+         halfEdgeId < static_cast<int>(cutResult.mesh.halfEdges.size());
+         ++halfEdgeId)
+    {
+        const HalfEdge& halfEdge = cutResult.mesh.halfEdges[halfEdgeId];
+        const bool divider =
+            (halfEdge.startVertex == 1 && halfEdge.endVertex == 4) ||
+            (halfEdge.startVertex == 4 && halfEdge.endVertex == 1) ||
+            (halfEdge.startVertex == 4 && halfEdge.endVertex == 7) ||
+            (halfEdge.startVertex == 7 && halfEdge.endVertex == 4);
+
+        if (divider)
+        {
+            cutResult.embeddedHalfEdgeIds.insert(halfEdgeId);
+        }
+    }
+
+    CurvenetFaceRegionBuilder::buildFullSurfacePartitions(cutResult, 1);
+
+    ASSERT_EQ(cutResult.curvenetFaces.size(), 2);
     EXPECT_EQ(cutResult.curvenetFaces[0].meshFaceIds.size(), 2);
-    EXPECT_EQ(cutResult.curvenetFaces[0].meshFaceIds[0], 0);
-    EXPECT_EQ(cutResult.curvenetFaces[0].meshFaceIds[1], 1);
+    EXPECT_EQ(cutResult.curvenetFaces[1].meshFaceIds.size(), 2);
+}
+
+TEST(
+    CurvenetFaceRegionBuilder,
+    PreservesSmallMultiPolygonFullSurfacePartition
+)
+{
+    CurvenetCutResult cutResult;
+    cutResult.mesh.createFourQuadGrid();
+
+    /*
+        Make the two left faces small relative to the full grid. They still
+        form a real region and must not be treated as numerical debris.
+    */
+    for (int vertexId : {1, 4, 7})
+    {
+        cutResult.mesh.vertices[vertexId].position.x = 0.01;
+    }
+
+    for (int vertexId : {2, 5, 8})
+    {
+        cutResult.mesh.vertices[vertexId].position.x = 1.01;
+    }
+
+    for (int halfEdgeId = 0;
+         halfEdgeId < static_cast<int>(cutResult.mesh.halfEdges.size());
+         ++halfEdgeId)
+    {
+        const HalfEdge& halfEdge = cutResult.mesh.halfEdges[halfEdgeId];
+        const bool divider =
+            (halfEdge.startVertex == 1 && halfEdge.endVertex == 4) ||
+            (halfEdge.startVertex == 4 && halfEdge.endVertex == 1) ||
+            (halfEdge.startVertex == 4 && halfEdge.endVertex == 7) ||
+            (halfEdge.startVertex == 7 && halfEdge.endVertex == 4);
+
+        if (divider)
+        {
+            cutResult.embeddedHalfEdgeIds.insert(halfEdgeId);
+        }
+    }
+
+    CurvenetFaceRegionBuilder::buildFullSurfacePartitions(cutResult, 2);
+
+    ASSERT_EQ(cutResult.curvenetFaces.size(), 2);
+    EXPECT_EQ(cutResult.curvenetFaces[0].meshFaceIds.size(), 2);
+    EXPECT_EQ(cutResult.curvenetFaces[1].meshFaceIds.size(), 2);
 }

@@ -276,7 +276,7 @@ CutPathMeshSplitter::apply(
             : cutVertexCount - 1;
 
     if (cutVertexCount <
-            (cutPath.closed ? 3 : 2))
+            (cutPath.closed ? 3 : 1))
     {
         result.failure =
             CutPathSplitFailure::

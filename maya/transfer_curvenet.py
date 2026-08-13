@@ -297,10 +297,16 @@ def _create_target_groups(target_prefix):
     return root_group, node_group, projected_group
 
 
-def _create_node_marker(target_prefix, node_id, position, node_group):
+def _create_node_marker(
+    target_prefix,
+    node_id,
+    position,
+    node_group,
+    radius,
+):
     marker = cmds.polySphere(
         name=f"{target_prefix}_CN_node_{node_id}",
-        radius=0.07,
+        radius=radius,
         subdivisionsX=12,
         subdivisionsY=12,
     )[0]
@@ -383,6 +389,7 @@ def attach_existing_curvenet_to_mesh(
     target_mesh,
     source_mesh="tubeA",
     source_curve_group="tubeA_drawnCurvenet_curves_GRP",
+    full_surface=False,
 ):
     """Transfer one authored Curvenet to another mesh and bind it."""
     if not cmds.objExists(source_mesh):
@@ -394,6 +401,44 @@ def attach_existing_curvenet_to_mesh(
     source_segments = _authored_segments(source_curve_group)
     target_prefix = _short_name(target_mesh)
     _, node_group, projected_group = _create_target_groups(target_prefix)
+
+    source_controls = []
+
+    for source_curve in source_segments:
+        for control in _endpoint_controls(source_curve):
+            if control not in source_controls:
+                source_controls.append(control)
+
+    source_bounds = cmds.exactWorldBoundingBox(source_mesh)
+    target_bounds = cmds.exactWorldBoundingBox(target_mesh)
+    source_diagonal = sum(
+        (source_bounds[index + 3] - source_bounds[index]) ** 2
+        for index in range(3)
+    ) ** 0.5
+    target_diagonal = sum(
+        (target_bounds[index + 3] - target_bounds[index]) ** 2
+        for index in range(3)
+    ) ** 0.5
+    source_radii = []
+
+    for control in source_controls:
+        bounds = cmds.exactWorldBoundingBox(control)
+        source_radii.append(
+            0.5 * (
+                (bounds[3] - bounds[0])
+                + (bounds[4] - bounds[1])
+                + (bounds[5] - bounds[2])
+            ) / 3.0
+        )
+
+    source_radius = (
+        sum(source_radii) / len(source_radii)
+        if source_radii else max(source_diagonal * 0.006, 1.0e-5)
+    )
+    marker_radius = source_radius * (
+        target_diagonal / source_diagonal
+        if source_diagonal > 1.0e-12 else 1.0
+    )
 
     source_inverse_matrix = _world_matrix(source_mesh).inverse()
     target_world_matrix = _world_matrix(target_mesh)
@@ -425,6 +470,7 @@ def attach_existing_curvenet_to_mesh(
                 logical_node_id,
                 projected_endpoint_by_control[control],
                 node_group,
+                marker_radius,
             )
             node_id_by_control[control] = logical_node_id
 
@@ -464,6 +510,20 @@ def attach_existing_curvenet_to_mesh(
             projected_curve + ".projectedCurvenetProfile",
             lock=True,
         )
+        for attribute, marker in (
+            ("curvenetStartControl", marker_by_control[start_control]),
+            ("curvenetEndControl", marker_by_control[end_control]),
+        ):
+            cmds.addAttr(
+                projected_curve,
+                longName=attribute,
+                attributeType="message",
+            )
+            cmds.connectAttr(
+                marker + ".message",
+                projected_curve + "." + attribute,
+                force=True,
+            )
         _create_endpoint_expression(
             projected_curve,
             marker_by_control[start_control],
@@ -485,6 +545,10 @@ def attach_existing_curvenet_to_mesh(
         type="curvenetNode",
         name=deformer_name,
     )[0]
+    cmds.setAttr(
+        deformer + ".fullSurfaceCurvenet",
+        bool(full_surface),
+    )
     cmds.connectAttr(
         _deformer_input_mesh_plug(deformer),
         deformer + ".inputMesh",

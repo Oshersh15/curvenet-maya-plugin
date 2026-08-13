@@ -15,6 +15,7 @@ import maya.cmds as cmds
 
 FEATURE_SNAP_DISTANCE = 0.22
 FEATURE_ANGLE_DEGREES = 45.0
+FEATURE_SNAPPING_ENABLED = True
 FEATURE_EDGE_ATTRIBUTE = "curvenetFeatureEdgeId"
 FEATURE_EDGE_T_ATTRIBUTE = "curvenetFeatureEdgeT"
 
@@ -113,6 +114,9 @@ def _closest_point_on_segment(position, start, end):
 
 
 def _nearest_feature_location(position):
+    if not FEATURE_SNAPPING_ENABLED:
+        return -1, 0.0, None
+
     _, _, edges = _feature_graph()
     best_edge = -1
     best_parameter = 0.0
@@ -260,7 +264,7 @@ def _shortest_feature_path(
     return min(candidates, key=lambda candidate: candidate[0])[1]
 
 
-def _surface_find_or_create_node(position):
+def _surface_find_or_create_node(position, reuse_existing=True):
     feature_edge, feature_parameter, feature_position = (
         _nearest_feature_location(position)
     )
@@ -272,19 +276,20 @@ def _surface_find_or_create_node(position):
 
     node = None
 
-    for existing_node in existing_nodes():
-        if _surface_distance(
-            position,
-            get_world_position(existing_node),
-        ) <= SNAP_DISTANCE:
-            node = existing_node
-            break
+    if reuse_existing:
+        for existing_node in existing_nodes():
+            if _surface_distance(
+                position,
+                get_world_position(existing_node),
+            ) <= SNAP_DISTANCE:
+                node = existing_node
+                break
 
     if node is None:
         node_id = next_index(NODE_PREFIX)
         node = cmds.polySphere(
             name=f"{NODE_PREFIX}{node_id}",
-            radius=0.07,
+            radius=NODE_RADIUS,
             subdivisionsX=12,
             subdivisionsY=12,
         )[0]
@@ -297,6 +302,7 @@ def _surface_find_or_create_node(position):
             defaultValue=True,
         )
         cmds.setAttr(node + ".curvenetNode", lock=True)
+        style_curvenet_node(node)
 
     if feature_edge >= 0:
         if not cmds.attributeQuery(FEATURE_EDGE_ATTRIBUTE, node=node, exists=True):
@@ -417,6 +423,7 @@ def _surface_create_curve_between_nodes(start_node, end_node):
     )
     cmds.setAttr(curve + ".curvenetSegment", lock=True)
     _surface_create_endpoint_expression(curve, start_node, end_node)
+    style_curvenet_curve(curve)
     print("Created feature-following Curvenet segment:", curve)
     return curve
 
@@ -435,11 +442,75 @@ def _logical_node_id(node):
     return node_id
 
 
-def _surface_connect_drawn_curvenet_to_plugin():
+def _restore_deformable_mesh_shape():
+    shapes = cmds.listRelatives(
+        MESH_NAME,
+        shapes=True,
+        fullPath=True,
+        type="mesh",
+    ) or []
+    shape_vertex_counts = []
+
+    for shape in shapes:
+        try:
+            vertex_count = cmds.polyEvaluate(shape, vertex=True)
+        except RuntimeError:
+            vertex_count = 0
+
+        shape_vertex_counts.append((shape, vertex_count))
+
+        if (
+            vertex_count > 0
+            and not cmds.getAttr(shape + ".intermediateObject")
+        ):
+            return shape
+
+    populated_shapes = [
+        item for item in shape_vertex_counts if item[1] > 0
+    ]
+
+    if not populated_shapes:
+        raise RuntimeError(
+            f"No polygon data remains under {MESH_NAME}."
+        )
+
+    source_shape = max(populated_shapes, key=lambda item: item[1])[0]
+
+    for shape, vertex_count in shape_vertex_counts:
+        if shape != source_shape and vertex_count == 0:
+            cmds.delete(shape)
+
+    cmds.setAttr(source_shape + ".intermediateObject", False)
+    cmds.setAttr(source_shape + ".visibility", True)
+    return source_shape
+
+
+def _deformer_source_mesh_shape(deformer):
+    source_plugs = cmds.listConnections(
+        deformer + ".input[0].inputGeometry",
+        source=True,
+        destination=False,
+        plugs=True,
+    ) or []
+
+    for source_plug in source_plugs:
+        source_shape = source_plug.split(".", 1)[0]
+
+        if cmds.nodeType(source_shape) == "mesh":
+            return source_shape
+
+    raise RuntimeError(
+        f"Could not find the neutral mesh connected to {deformer}."
+    )
+
+
+def _surface_connect_drawn_curvenet_to_plugin(full_surface=False):
     ensure_groups()
 
     if cmds.objExists(DEFORMER_NAME):
         cmds.delete(DEFORMER_NAME)
+
+    _restore_deformable_mesh_shape()
 
     preview_group = DEFORMER_NAME + "_curvenet_group"
 
@@ -453,8 +524,13 @@ def _surface_connect_drawn_curvenet_to_plugin():
         type="curvenetNode",
         name=DEFORMER_NAME,
     )[0]
+    cmds.setAttr(
+        deformer + ".fullSurfaceCurvenet",
+        bool(full_surface),
+    )
+    source_mesh_shape = _deformer_source_mesh_shape(deformer)
     cmds.connectAttr(
-        mesh_shape() + ".outMesh",
+        source_mesh_shape + ".outMesh",
         deformer + ".inputMesh",
         force=True,
     )
@@ -501,9 +577,10 @@ def _surface_connect_drawn_curvenet_to_plugin():
     return deformer
 
 
-if "_surface_authoring_base_find_or_create_node" not in globals():
-    _surface_authoring_base_find_or_create_node = find_or_create_node
-    _surface_authoring_base_create_curve = create_curve_between_nodes
+# The base authoring script is executed immediately before this extension.
+# Refresh these references so Maya reloads use the latest implementation.
+_surface_authoring_base_find_or_create_node = find_or_create_node
+_surface_authoring_base_create_curve = create_curve_between_nodes
 
 find_or_create_node = _surface_find_or_create_node
 create_endpoint_expression = _surface_create_endpoint_expression

@@ -649,10 +649,11 @@ void CurvenetSceneBuilder::build(
             leave a transferred preview at the source mesh position.
         */
         MGlobal::executeCommand(
-            MString("setAttr \"") + previewName +
+            MString("if (`objExists \"") + previewName +
+                "\"`) { setAttr \"" + previewName +
                 ".inheritsTransform\" 0; connectAttr -f \"" +
                 geometryTransformName + ".worldMatrix[0]\" \"" +
-                previewName + ".offsetParentMatrix\";",
+                previewName + ".offsetParentMatrix\"; }",
             false,
             false
         );

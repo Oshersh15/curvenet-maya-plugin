@@ -20,7 +20,8 @@ enum class CutPathSplitFailure
     CreateCutHalfEdgesFailed,
     InsertCutHalfEdgesFailed,
     InvalidClosingHalfEdge,
-    ClosingEdgeMismatch
+    ClosingEdgeMismatch,
+    IncompleteSurfaceTracking
 };
 
 /*

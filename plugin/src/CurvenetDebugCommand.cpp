@@ -3,6 +3,7 @@
 #include "CurvenetNode.h"
 
 #include <maya/MFnDependencyNode.h>
+#include <maya/MArgList.h>
 #include <maya/MGlobal.h>
 #include <maya/MItDependencyNodes.h>
 #include <maya/MObject.h>
@@ -22,6 +23,19 @@ MStatus CurvenetDebugCommand::doIt(
     const MArgList& arguments
 )
 {
+    MStatus argumentStatus;
+    const int requestedCurveId = arguments.length() > 0
+        ? arguments.asInt(0, &argumentStatus)
+        : -1;
+
+    if (arguments.length() > 0 && !argumentStatus)
+    {
+        MGlobal::displayError(
+            "visualizeCurvenetDebug expects an integer curve ID."
+        );
+        return MS::kFailure;
+    }
+
     CurveDeformerNode* curvenetNode = nullptr;
 
     MItDependencyNodes nodeIterator(
@@ -74,11 +88,8 @@ MStatus CurvenetDebugCommand::doIt(
     const std::vector<CutCrossing> crossings =
         curvenetNode->getDebugCrossings();
 
-    const std::vector<CurveConnection> connections =
-        curvenetNode->getDebugConnections();
-
-    const std::vector<ProfileCurveData> profileCurves =
-        curvenetNode->getDebugProfileCurves();
+    const std::vector<CurveConnection> connections;
+    const std::vector<ProfileCurveData> profileCurves;
 
     if (sampledCurves.empty() &&
         crossings.empty() &&
@@ -130,6 +141,11 @@ MStatus CurvenetDebugCommand::doIt(
          curveIndex < static_cast<int>(sampledCurves.size());
          ++curveIndex)
     {
+        if (requestedCurveId >= 0 && curveIndex != requestedCurveId)
+        {
+            continue;
+        }
+
         const std::vector<Point3>& sampledPoints =
             sampledCurves[curveIndex];
 
@@ -250,6 +266,8 @@ MStatus CurvenetDebugCommand::doIt(
         }
     }
 
+    if (false)
+    {
     std::vector<Point3> graphNodePositions;
 
     for (int curveIndex = 0;
@@ -524,6 +542,8 @@ MStatus CurvenetDebugCommand::doIt(
         }
     }
 
+    }
+
     for (int curveIndex = 0;
          curveIndex < static_cast<int>(profileCurves.size());
          ++curveIndex)
@@ -659,8 +679,16 @@ MStatus CurvenetDebugCommand::doIt(
         const CutCrossing& crossing =
             crossings[crossingIndex];
 
+        if (requestedCurveId >= 0 &&
+            crossing.curveId != requestedCurveId)
+        {
+            continue;
+        }
+
         MString locatorName =
-            MString("curvenetDebug_crossing_")
+            MString("curvenetDebug_curve_")
+            + crossing.curveId
+            + "_crossing_"
             + crossingIndex;
 
         MString locatorCommand =
@@ -693,13 +721,19 @@ MStatus CurvenetDebugCommand::doIt(
         MString scaleCommand =
             MString("setAttr \"")
             + locatorName
-            + "Shape.localScaleX\" 0.08; "
+            + "Shape.localScaleX\" 0.02; "
             + "setAttr \""
             + locatorName
-            + "Shape.localScaleY\" 0.08; "
+            + "Shape.localScaleY\" 0.02; "
             + "setAttr \""
             + locatorName
-            + "Shape.localScaleZ\" 0.08;";
+            + "Shape.localScaleZ\" 0.02; "
+            + "setAttr \""
+            + locatorName
+            + "Shape.overrideEnabled\" 1; "
+            + "setAttr \""
+            + locatorName
+            + "Shape.overrideColor\" 13;";
 
         status = MGlobal::executeCommand(
             scaleCommand,

@@ -81,6 +81,60 @@ namespace
 
 TEST(
     CurvenetMeshCutter,
+    TracksProfileThroughDiagonalFacesAtSharedVertices
+)
+{
+    ProfileCutInput profile;
+    profile.curveId = 0;
+
+    const std::vector<Point3> samples = {
+        Point3{0.5, 0.5, 0.0},
+        Point3{0.9, 0.9, 0.0},
+        Point3{1.1, 1.1, 0.0},
+        Point3{1.9, 1.9, 0.0},
+        Point3{2.1, 2.1, 0.0},
+        Point3{2.9, 2.9, 0.0},
+        Point3{3.1, 3.1, 0.0},
+        Point3{3.5, 3.5, 0.0}
+    };
+
+    for (int index = 0;
+         index + 1 < static_cast<int>(samples.size());
+         ++index)
+    {
+        profile.sampledSegments.push_back(
+            PolylineSegment{samples[index], samples[index + 1]}
+        );
+    }
+
+    const CurvenetCutResult result = CurvenetMeshCutter::apply(
+        createQuadGrid(4, 4),
+        {profile},
+        0.01,
+        0.0001
+    );
+
+    ASSERT_TRUE(result.success);
+    ASSERT_EQ(result.surfaceTrackedCurveCount, 1);
+    ASSERT_TRUE(result.surfaceTrackingFailures.empty());
+
+    const CutChain& chain = result.cutChainsByCurveId.at(0);
+    ASSERT_EQ(chain.vertexIds.size(), 3);
+    ASSERT_EQ(chain.halfEdgeIds.size(), 2);
+
+    for (int index = 0; index < 3; ++index)
+    {
+        const Point3& position =
+            result.mesh.vertices[chain.vertexIds[index]].position;
+        const double expected = static_cast<double>(index + 1);
+        EXPECT_DOUBLE_EQ(position.x, expected);
+        EXPECT_DOUBLE_EQ(position.y, expected);
+        EXPECT_DOUBLE_EQ(position.z, 0.0);
+    }
+}
+
+TEST(
+    CurvenetMeshCutter,
     EmbedsSampledProfilesMeetingAtExistingMeshVertex
 )
 {
@@ -569,9 +623,21 @@ TEST(
 
     result.curvenetFaces = CurvenetFaceBuilder::build(result);
 
-    ASSERT_EQ(result.curvenetFaces.size(), 3);
+    ASSERT_EQ(result.curvenetFaces.size(), 4);
 
     CurvenetFaceRegionBuilder::build(result);
+
+    const auto exteriorIterator = std::max_element(
+        result.curvenetFaces.begin(),
+        result.curvenetFaces.end(),
+        [](const CurvenetFace& first, const CurvenetFace& second)
+        {
+            return first.meshFaceIds.size() < second.meshFaceIds.size();
+        }
+    );
+    ASSERT_NE(exteriorIterator, result.curvenetFaces.end());
+    result.curvenetFaces.erase(exteriorIterator);
+    ASSERT_EQ(result.curvenetFaces.size(), 3);
 
     std::set<int> mappedFaceIds;
     std::vector<std::size_t> mappedCounts;

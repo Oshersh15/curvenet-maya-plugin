@@ -30,7 +30,9 @@ Current areas of investigation include:
 - Topology-independent articulation.
 - Potential subdivision-based deformation approaches.
 
-The current implementation focuses on constructing the Curvenet and its relationship to the mesh topology before implementing deformation behaviour.
+The current implementation constructs a Curvenet, embeds it into the mesh
+topology and uses the resulting CutChains as constraints for joint-driven
+harmonic deformation.
 
 ---
 
@@ -89,7 +91,7 @@ The current implementation focuses on constructing the Curvenet and its relation
 - Shared Curvenet node tests.
 - Curvenet face construction tests.
 - Curvenet face-region mapping tests.
-- 145 automated tests currently passing.
+- 150 automated tests currently passing.
 
 ### Debug Visualisation
 
@@ -365,6 +367,33 @@ The following deformation behaviour was verified on both meshes:
 - resetting joint rotations returns both meshes to their neutral state;
 - all 14 logical Curvenet-node weights transfer from Tube A to Tube B.
 
+### Hand Curvenet Validation
+
+A complete Curvenet has been authored on a hand and transferred to a second,
+geometrically corresponding hand with different polygon topology. The
+workflow preserves the logical Curvenet nodes, profile edges, joint binding
+and edited projected-curve weights.
+
+Full-surface region mapping is invalidated and rebuilt when its coverage mode
+changes. This prevents an early Maya evaluation from leaving a transferred
+deformer with a stale partial-surface topology cache.
+
+Near-coincident CutPaths require special care when they lie very close to an
+existing mesh edge. Numerical sliver cleanup now preserves every embedded
+Curvenet boundary instead of merging a small region through that boundary.
+This keeps corresponding logical regions separate on meshes whose underlying
+edge layouts differ. The preview uses graph-coloured regions so neighbouring
+physical regions cannot accidentally receive the same display colour.
+
+Manual macOS validation confirmed complete coverage on both hand meshes:
+
+```text
+Shared Curvenet nodes: 96
+Curvenet edges: 187
+Curvenet faces: 93
+Unmapped mesh faces: 0
+```
+
 ---
 
 ## Technologies
@@ -427,12 +456,17 @@ ctest --test-dir plugin/build --output-on-failure
 - Harmonic mesh deformation constrained by embedded Curvenet CutChains.
 - Rigid-motion separation for stable root rotation and neutral reset.
 - Consolidated fresh-scene Maya authoring, binding and transfer workflow.
+- Full hand Curvenet transfer between different polygon topologies.
+- Coverage-aware topology-cache invalidation for transferred deformers.
+- Preservation of embedded boundaries during near-zero-area region cleanup.
+- Graph-coloured previews that distinguish adjacent physical regions.
 
 ### In Progress
 
-- Validation of complete surface Curvenets on additional meshes and topology variants.
-- Evaluation of joint-driven Curvenet deformation on hand meshes.
+- Node-based Curvenet weight editing with smooth propagation along incident
+  profile curves.
 - Refinement of local deformation quality around articulated joints.
+- Interactive validation on additional operating systems and Maya installs.
 
 ### Planned
 
