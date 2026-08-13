@@ -7,6 +7,271 @@ import maya.cmds as cmds
 PROJECTED_SAMPLES = 80
 
 
+class _ContinuousSurfaceProjector:
+    """Project samples without jumping between disconnected surface faces."""
+
+    def __init__(self, mesh):
+        selection = om.MSelectionList()
+        selection.add(_mesh_shape(mesh))
+        self.dag_path = selection.getDagPath(0)
+        self.mesh_fn = om.MFnMesh(self.dag_path)
+        self.face_iterator = om.MItMeshPolygon(self.dag_path)
+        self.neighbours = {}
+        self.face_vertices = {}
+
+    def closest_point_and_face(self, point):
+        projected, face_id = self.mesh_fn.getClosestPoint(
+            om.MPoint(point),
+            om.MSpace.kWorld,
+        )
+        return list(projected)[:3], int(face_id)
+
+    def _face_neighbours(self, face_id):
+        if face_id not in self.neighbours:
+            self.face_iterator.setIndex(face_id)
+            self.neighbours[face_id] = list(
+                self.face_iterator.getConnectedFaces()
+            )
+        return self.neighbours[face_id]
+
+    def _face_vertex_ids(self, face_id):
+        if face_id not in self.face_vertices:
+            self.face_iterator.setIndex(face_id)
+            self.face_vertices[face_id] = list(
+                self.face_iterator.getVertices()
+            )
+        return self.face_vertices[face_id]
+
+    def _shared_edge_point(self, first_face, second_face, target):
+        shared_vertices = list(
+            set(self._face_vertex_ids(first_face)).intersection(
+                self._face_vertex_ids(second_face)
+            )
+        )
+
+        if len(shared_vertices) != 2:
+            raise RuntimeError(
+                "Adjacent target faces do not share exactly one mesh edge."
+            )
+
+        first = self.mesh_fn.getPoint(
+            shared_vertices[0], om.MSpace.kWorld
+        )
+        second = self.mesh_fn.getPoint(
+            shared_vertices[1], om.MSpace.kWorld
+        )
+        edge = om.MVector(second) - om.MVector(first)
+        length_squared = edge * edge
+
+        if length_squared <= 1.0e-20:
+            return list(first)[:3]
+
+        parameter = (
+            edge * (om.MVector(target) - om.MVector(first))
+        ) / length_squared
+        parameter = max(0.0, min(1.0, parameter))
+        crossing = om.MVector(first) + edge * parameter
+        return [crossing.x, crossing.y, crossing.z]
+
+    def _surface_points(self, points, faces):
+        result = [points[0]]
+
+        for index in range(1, len(points)):
+            if faces[index] != faces[index - 1]:
+                midpoint = [
+                    0.5 * (points[index - 1][axis] + points[index][axis])
+                    for axis in range(3)
+                ]
+                result.append(
+                    self._shared_edge_point(
+                        faces[index - 1],
+                        faces[index],
+                        midpoint,
+                    )
+                )
+
+            result.append(points[index])
+
+        return result
+
+    @staticmethod
+    def _closest_point_on_triangle(point, first, second, third):
+        """Return the closest point on one triangle (Ericson regions)."""
+        point = om.MVector(point)
+        first = om.MVector(first)
+        second = om.MVector(second)
+        third = om.MVector(third)
+        first_second = second - first
+        first_third = third - first
+        first_point = point - first
+        d1 = first_second * first_point
+        d2 = first_third * first_point
+
+        if d1 <= 0.0 and d2 <= 0.0:
+            return first
+
+        second_point = point - second
+        d3 = first_second * second_point
+        d4 = first_third * second_point
+
+        if d3 >= 0.0 and d4 <= d3:
+            return second
+
+        vc = d1 * d4 - d3 * d2
+        if vc <= 0.0 and d1 >= 0.0 and d3 <= 0.0:
+            weight = d1 / (d1 - d3)
+            return first + first_second * weight
+
+        third_point = point - third
+        d5 = first_second * third_point
+        d6 = first_third * third_point
+
+        if d6 >= 0.0 and d5 <= d6:
+            return third
+
+        vb = d5 * d2 - d1 * d6
+        if vb <= 0.0 and d2 >= 0.0 and d6 <= 0.0:
+            weight = d2 / (d2 - d6)
+            return first + first_third * weight
+
+        va = d3 * d6 - d5 * d4
+        if va <= 0.0 and (d4 - d3) >= 0.0 and (d5 - d6) >= 0.0:
+            edge = third - second
+            weight = (d4 - d3) / ((d4 - d3) + (d5 - d6))
+            return second + edge * weight
+
+        denominator = 1.0 / (va + vb + vc)
+        second_weight = vb * denominator
+        third_weight = vc * denominator
+        return (
+            first
+            + first_second * second_weight
+            + first_third * third_weight
+        )
+
+    def _point_on_face(self, face_id, point):
+        self.face_iterator.setIndex(face_id)
+        triangle_points, _ = self.face_iterator.getTriangles(
+            om.MSpace.kWorld,
+        )
+        closest = None
+        closest_distance = float("inf")
+
+        for index in range(0, len(triangle_points), 3):
+            candidate = self._closest_point_on_triangle(
+                point,
+                triangle_points[index],
+                triangle_points[index + 1],
+                triangle_points[index + 2],
+            )
+            squared_distance = sum(
+                (candidate[axis] - point[axis]) ** 2
+                for axis in range(3)
+            )
+
+            if squared_distance < closest_distance:
+                closest = candidate
+                closest_distance = squared_distance
+
+        if closest is None:
+            raise RuntimeError(
+                f"Target mesh face {face_id} has no triangles."
+            )
+
+        return [closest.x, closest.y, closest.z]
+
+    def _distance_to_face(self, start_face, end_face):
+        distances = {end_face: 0}
+        pending = [end_face]
+
+        for face_id in pending:
+            next_distance = distances[face_id] + 1
+            for neighbour in self._face_neighbours(face_id):
+                if neighbour not in distances:
+                    distances[neighbour] = next_distance
+                    pending.append(neighbour)
+
+        return distances.get(start_face), distances
+
+    def project_polyline(self, targets, start_point, end_point):
+        if len(targets) < 2:
+            return [start_point, end_point]
+
+        _, start_face = self.closest_point_and_face(start_point)
+        _, end_face = self.closest_point_and_face(end_point)
+        face_distance, distance_to_end = self._distance_to_face(
+            start_face,
+            end_face,
+        )
+
+        if face_distance is None or face_distance > len(targets) - 1:
+            raise RuntimeError(
+                "Transferred Curvenet edge needs more surface samples "
+                f"({face_distance} face steps for {len(targets) - 1} intervals)."
+            )
+
+        # Dynamic programming chooses the closest surface samples while only
+        # allowing the curve to remain in a face or enter an adjacent face.
+        states = {
+            start_face: (0.0, [list(start_point)], [start_face])
+        }
+
+        for sample_index in range(1, len(targets) - 1):
+            target = targets[sample_index]
+            remaining_steps = len(targets) - 1 - sample_index
+            next_states = {}
+
+            for face_id, (cost, points, faces) in states.items():
+                candidates = [face_id] + self._face_neighbours(face_id)
+
+                for candidate in candidates:
+                    if distance_to_end.get(candidate, 10 ** 9) > remaining_steps:
+                        continue
+
+                    projected = self._point_on_face(candidate, target)
+                    squared_distance = sum(
+                        (projected[axis] - target[axis]) ** 2
+                        for axis in range(3)
+                    )
+                    candidate_cost = cost + squared_distance
+                    existing = next_states.get(candidate)
+
+                    if existing is None or candidate_cost < existing[0]:
+                        next_states[candidate] = (
+                            candidate_cost,
+                            points + [projected],
+                            faces + [candidate],
+                        )
+
+            if not next_states:
+                raise RuntimeError(
+                    "Could not project a continuous Curvenet edge onto the target mesh."
+                )
+
+            # Keep the search bounded on dense production meshes.
+            states = dict(
+                sorted(next_states.items(), key=lambda item: item[1][0])[:64]
+            )
+
+        final_candidates = []
+        for face_id, (cost, points, faces) in states.items():
+            if face_id == end_face or end_face in self._face_neighbours(face_id):
+                final_candidates.append((cost, points, faces))
+
+        if not final_candidates:
+            raise RuntimeError(
+                "Transferred Curvenet edge did not reach its logical endpoint continuously."
+            )
+
+        _, best_points, best_faces = min(
+            final_candidates,
+            key=lambda item: item[0],
+        )
+        best_points.append(list(end_point))
+        best_faces.append(end_face)
+        return self._surface_points(best_points, best_faces)
+
+
 def _mesh_shape(mesh):
     shapes = cmds.listRelatives(
         mesh,
@@ -389,7 +654,7 @@ def attach_existing_curvenet_to_mesh(
     target_mesh,
     source_mesh="tubeA",
     source_curve_group="tubeA_drawnCurvenet_curves_GRP",
-    full_surface=False,
+    full_surface=None,
 ):
     """Transfer one authored Curvenet to another mesh and bind it."""
     if not cmds.objExists(source_mesh):
@@ -401,6 +666,15 @@ def attach_existing_curvenet_to_mesh(
     source_segments = _authored_segments(source_curve_group)
     target_prefix = _short_name(target_mesh)
     _, node_group, projected_group = _create_target_groups(target_prefix)
+
+    if full_surface is None:
+        source_prefix = _short_name(source_mesh)
+        coverage_attribute = source_prefix + "CurvenetNode.fullSurfaceCurvenet"
+        full_surface = (
+            bool(cmds.getAttr(coverage_attribute))
+            if cmds.objExists(coverage_attribute)
+            else False
+        )
 
     source_controls = []
 
@@ -446,6 +720,7 @@ def attach_existing_curvenet_to_mesh(
     marker_by_control = {}
     node_id_by_control = {}
     projected_curves = []
+    surface_projector = _ContinuousSurfaceProjector(target_mesh)
 
     def projected_endpoint(control):
         if control not in projected_endpoint_by_control:
@@ -478,7 +753,9 @@ def attach_existing_curvenet_to_mesh(
 
     for curve_id, source_curve in enumerate(source_segments):
         start_control, end_control = _endpoint_controls(source_curve)
-        points = [projected_endpoint(start_control)]
+        start_point = projected_endpoint(start_control)
+        end_point = projected_endpoint(end_control)
+        transferred_points = [start_point]
 
         for sample_index in range(1, PROJECTED_SAMPLES - 1):
             parameter = sample_index / float(PROJECTED_SAMPLES - 1)
@@ -488,11 +765,14 @@ def attach_existing_curvenet_to_mesh(
                 source_inverse_matrix,
                 target_world_matrix,
             )
-            points.append(
-                _project_world_point(transferred, target_mesh)
-            )
+            transferred_points.append(transferred)
 
-        points.append(projected_endpoint(end_control))
+        transferred_points.append(end_point)
+        points = surface_projector.project_polyline(
+            transferred_points,
+            start_point,
+            end_point,
+        )
 
         projected_curve = cmds.curve(
             name=f"{target_prefix}_CN_projected_{curve_id}",

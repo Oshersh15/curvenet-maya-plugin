@@ -504,8 +504,26 @@ def _deformer_source_mesh_shape(deformer):
     )
 
 
-def _surface_connect_drawn_curvenet_to_plugin(full_surface=False):
+def _surface_connect_drawn_curvenet_to_plugin(full_surface=None):
     ensure_groups()
+
+    source_curves = authored_segments()
+
+    if full_surface is None:
+        node_degrees = {}
+
+        for curve in source_curves:
+            controls = get_curve_endpoint_controls(curve)
+
+            if len(controls) != 2:
+                node_degrees = {}
+                break
+
+            for control in controls:
+                control = control.rsplit("|", 1)[-1]
+                node_degrees[control] = node_degrees.get(control, 0) + 1
+
+        full_surface = bool(node_degrees) and min(node_degrees.values()) >= 3
 
     if cmds.objExists(DEFORMER_NAME):
         cmds.delete(DEFORMER_NAME)
@@ -517,7 +535,6 @@ def _surface_connect_drawn_curvenet_to_plugin(full_surface=False):
     if cmds.objExists(preview_group):
         cmds.delete(preview_group)
 
-    source_curves = authored_segments()
     projected_curves = build_projected_curves()
     deformer = cmds.deformer(
         MESH_NAME,
@@ -573,6 +590,10 @@ def _surface_connect_drawn_curvenet_to_plugin(full_surface=False):
         for curve in source_curves
         for control in get_curve_endpoint_controls(curve)
     }))
+    print(
+        "Resolved Curvenet coverage:",
+        "FULL SURFACE" if full_surface else "AUTHORED FACES",
+    )
     print("Deformer:", deformer)
     return deformer
 
