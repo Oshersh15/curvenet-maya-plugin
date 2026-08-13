@@ -448,17 +448,12 @@ def _rebuild_target_deformer_from_skinned_curves(mesh, full_surface):
             (coordinates, start_node_id, end_node_id)
         )
 
-    preparation_token = cmds.prepareCurvenetEmbedding(
-        mesh,
-        bool(full_surface),
-        *preparation_arguments,
-    )
     deformer = cmds.deformer(
         mesh,
         type="curvenetNode",
         name=deformer_name,
     )[0]
-    cmds.setAttr(deformer + ".nodeState", 2)
+    cmds.setAttr(deformer + ".nodeState", 1)
     cmds.setAttr(deformer + ".fullSurfaceCurvenet", bool(full_surface))
     for curve_index, (coordinates, start_node_id, end_node_id) in enumerate(
         curve_inputs
@@ -476,7 +471,12 @@ def _rebuild_target_deformer_from_skinned_curves(mesh, full_surface):
             "{}.inputCurveEndNodeIds[{}]".format(deformer, curve_index),
             end_node_id,
         )
-    cmds.installPreparedCurvenetEmbedding(preparation_token, deformer)
+    cmds.initializeCurvenetEmbedding(
+        deformer,
+        mesh,
+        bool(full_surface),
+        *preparation_arguments,
+    )
     cmds.setAttr(deformer + ".nodeState", 0)
     cmds.dgdirty(deformer)
     cmds.refresh(force=True)

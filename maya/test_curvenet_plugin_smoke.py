@@ -54,17 +54,12 @@ for curve_id, (start, end, start_id, end_id) in enumerate(curves):
     curve_inputs.append((serialized, start_id, end_id))
     preparation_arguments.extend((serialized, start_id, end_id))
 
-token = cmds.prepareCurvenetEmbedding(
-    mesh,
-    False,
-    *preparation_arguments,
-)
 deformer = cmds.deformer(
     mesh,
     type="curvenetNode",
     name="curvenetSmokeNode",
 )[0]
-cmds.setAttr(deformer + ".nodeState", 2)
+cmds.setAttr(deformer + ".nodeState", 1)
 
 for curve_id, (serialized, start_id, end_id) in enumerate(curve_inputs):
     cmds.setAttr(
@@ -75,7 +70,12 @@ for curve_id, (serialized, start_id, end_id) in enumerate(curve_inputs):
     cmds.setAttr(f"{deformer}.inputCurveStartNodeIds[{curve_id}]", start_id)
     cmds.setAttr(f"{deformer}.inputCurveEndNodeIds[{curve_id}]", end_id)
 
-cmds.installPreparedCurvenetEmbedding(token, deformer)
+cmds.initializeCurvenetEmbedding(
+    deformer,
+    mesh,
+    False,
+    *preparation_arguments,
+)
 cmds.setAttr(deformer + ".nodeState", 0)
 cmds.dgdirty(deformer)
 mesh_selection = om.MSelectionList()

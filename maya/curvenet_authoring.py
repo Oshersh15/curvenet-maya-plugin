@@ -992,17 +992,12 @@ def connect_drawn_curvenet_to_plugin():
 
         print(f"Logical profile ID {curve_id}:", curve)
 
-    preparation_token = cmds.prepareCurvenetEmbedding(
-        MESH_NAME,
-        False,
-        *preparation_arguments,
-    )
     deformer = cmds.deformer(
         MESH_NAME,
         type="curvenetNode",
         name=DEFORMER_NAME,
     )[0]
-    cmds.setAttr(deformer + ".nodeState", 2)
+    cmds.setAttr(deformer + ".nodeState", 1)
     for curve_id, (coordinates, start_node_id, end_node_id) in enumerate(
         curve_inputs
     ):
@@ -1019,7 +1014,12 @@ def connect_drawn_curvenet_to_plugin():
             f"{deformer}.inputCurveEndNodeIds[{curve_id}]",
             end_node_id,
         )
-    cmds.installPreparedCurvenetEmbedding(preparation_token, deformer)
+    cmds.initializeCurvenetEmbedding(
+        deformer,
+        MESH_NAME,
+        False,
+        *preparation_arguments,
+    )
     cmds.setAttr(deformer + ".nodeState", 0)
     cmds.dgdirty(deformer)
     print("\nConnected projected Curvenet to plugin.")

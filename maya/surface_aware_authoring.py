@@ -554,20 +554,12 @@ def _surface_connect_drawn_curvenet_to_plugin(full_surface=False):
             (coordinates, start_node_id, end_node_id)
         )
 
-    # Build CutPaths, half-edges, regions and harmonic constraints before the
-    # Maya deformer exists. The completed cache is installed atomically below.
-    preparation_token = cmds.prepareCurvenetEmbedding(
-        MESH_NAME,
-        bool(full_surface),
-        *preparation_arguments,
-    )
-
     deformer = cmds.deformer(
         MESH_NAME,
         type="curvenetNode",
         name=DEFORMER_NAME,
     )[0]
-    cmds.setAttr(deformer + ".nodeState", 2)
+    cmds.setAttr(deformer + ".nodeState", 1)
     cmds.setAttr(
         deformer + ".fullSurfaceCurvenet",
         bool(full_surface),
@@ -589,7 +581,12 @@ def _surface_connect_drawn_curvenet_to_plugin(full_surface=False):
             end_node_id,
         )
 
-    cmds.installPreparedCurvenetEmbedding(preparation_token, deformer)
+    cmds.initializeCurvenetEmbedding(
+        deformer,
+        MESH_NAME,
+        bool(full_surface),
+        *preparation_arguments,
+    )
     cmds.setAttr(deformer + ".nodeState", 0)
     cmds.dgdirty(deformer)
 

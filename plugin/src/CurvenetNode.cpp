@@ -34,8 +34,6 @@
 #include <maya/MItSelectionList.h>
 #include <maya/MDagPath.h>
 #include <maya/MFnDagNode.h>
-#include <maya/MDGModifier.h>
-#include <maya/MObjectHandle.h>
 #include "ProfileCurveSampler.h"
 #include "GeometryUtils.h"
 #include "CurveMeshIntersector.h"
@@ -906,25 +904,6 @@ MStatus CurveDeformerNode::prepareEmbedding(
         &endNodeIds,
         &fullSurface
     );
-}
-
-void CurveDeformerNode::installPreparedEmbedding(
-    CurveDeformerNode& preparedNode
-)
-{
-    curvenetData = std::move(preparedNode.curvenetData);
-    debugSampledCurves = std::move(preparedNode.debugSampledCurves);
-    debugCrossings = std::move(preparedNode.debugCrossings);
-    neutralSampledCurves = std::move(preparedNode.neutralSampledCurves);
-    currentSampledCurves = neutralSampledCurves;
-    vertexBindings = std::move(preparedNode.vertexBindings);
-    harmonicSolver = std::move(preparedNode.harmonicSolver);
-    preparedInfoMessages = std::move(preparedNode.preparedInfoMessages);
-    preparedWarningMessages = std::move(preparedNode.preparedWarningMessages);
-    preparedErrorMessages = std::move(preparedNode.preparedErrorMessages);
-    neutralSamplesCaptured = preparedNode.neutralSamplesCaptured;
-    vertexBindingsCaptured = preparedNode.vertexBindingsCaptured;
-    topologyCaptured = preparedNode.topologyCaptured;
 }
 
 void CurveDeformerNode::reportPreparedEmbedding() const
@@ -2367,32 +2346,51 @@ CurveDeformerNode::getDebugProfileCurves() const
 
 namespace
 {
-std::unordered_map<int, MObjectHandle>
-    preparedEmbeddingByToken;
-int nextPreparedEmbeddingToken = 1;
-
-class PrepareCurvenetEmbeddingCommand : public MPxCommand
+class InitializeCurvenetEmbeddingCommand : public MPxCommand
 {
 public:
     static void* creator()
     {
-        return new PrepareCurvenetEmbeddingCommand();
+        return new InitializeCurvenetEmbeddingCommand();
     }
 
     MStatus doIt(const MArgList& arguments) override
     {
-        if (arguments.length() < 5 ||
-            (arguments.length() - 2) % 3 != 0)
+        if (arguments.length() < 6 ||
+            (arguments.length() - 3) % 3 != 0)
         {
             MGlobal::displayError(
-                "prepareCurvenetEmbedding expects a mesh, coverage flag, "
+                "initializeCurvenetEmbedding expects a deformer, mesh, "
+                "coverage flag, "
                 "and coordinate/start/end triples."
             );
             return MS::kInvalidParameter;
         }
 
+        MStatus status;
+        MSelectionList nodeSelection;
+        status = nodeSelection.add(arguments.asString(0));
+        MObject nodeObject;
+
+        if (!status || !nodeSelection.getDependNode(0, nodeObject))
+        {
+            MGlobal::displayError("Curvenet deformer was not found.");
+            return MS::kInvalidParameter;
+        }
+
+        MFnDependencyNode dependencyNode(nodeObject, &status);
+        auto* node = status
+            ? dynamic_cast<CurveDeformerNode*>(dependencyNode.userNode())
+            : nullptr;
+
+        if (node == nullptr)
+        {
+            MGlobal::displayError("Selected node is not a Curvenet deformer.");
+            return MS::kInvalidParameter;
+        }
+
         MSelectionList meshSelection;
-        MStatus status = meshSelection.add(arguments.asString(0));
+        status = meshSelection.add(arguments.asString(1));
         MDagPath meshPath;
 
         if (!status || !meshSelection.getDagPath(0, meshPath))
@@ -2412,21 +2410,21 @@ public:
             return MS::kInvalidParameter;
         }
 
-        const bool fullSurface = arguments.asBool(1, &status);
+        const bool fullSurface = arguments.asBool(2, &status);
 
         if (!status)
         {
             return status;
         }
 
-        const unsigned int curveCount = (arguments.length() - 2) / 3;
+        const unsigned int curveCount = (arguments.length() - 3) / 3;
         std::vector<std::vector<Point3>> profilePoints(curveCount);
         std::vector<int> startNodeIds(curveCount, -1);
         std::vector<int> endNodeIds(curveCount, -1);
 
         for (unsigned int curveIndex = 0; curveIndex < curveCount; ++curveIndex)
         {
-            const unsigned int argumentIndex = 2 + curveIndex * 3;
+            const unsigned int argumentIndex = 3 + curveIndex * 3;
             if (!parseProfileCoordinates(
                     arguments.asString(argumentIndex),
                     profilePoints[curveIndex]
@@ -2442,31 +2440,7 @@ public:
             endNodeIds[curveIndex] = arguments.asInt(argumentIndex + 2);
         }
 
-        MDGModifier modifier;
-        MObject preparedObject = modifier.createNode(
-            CurveDeformerNode::id,
-            &status
-        );
-
-        if (!status || !modifier.doIt())
-        {
-            MGlobal::displayError(
-                "Could not create the disconnected Curvenet preparation node."
-            );
-            return MS::kFailure;
-        }
-
-        MFnDependencyNode preparedDependency(preparedObject, &status);
-        auto* preparedNode = status
-            ? dynamic_cast<CurveDeformerNode*>(preparedDependency.userNode())
-            : nullptr;
-
-        if (preparedNode == nullptr)
-        {
-            return MS::kFailure;
-        }
-
-        status = preparedNode->prepareEmbedding(
+        status = node->prepareEmbedding(
             meshPath,
             profilePoints,
             startNodeIds,
@@ -2476,100 +2450,10 @@ public:
 
         if (!status)
         {
-            MDGModifier cleanup;
-            cleanup.deleteNode(preparedObject);
-            cleanup.doIt();
             MGlobal::displayError("Curvenet embedding preparation failed.");
             return status;
         }
 
-        const int token = nextPreparedEmbeddingToken++;
-        preparedEmbeddingByToken.emplace(token, MObjectHandle(preparedObject));
-        setResult(token);
-        return MS::kSuccess;
-    }
-};
-
-class InstallPreparedCurvenetEmbeddingCommand : public MPxCommand
-{
-public:
-    static void* creator()
-    {
-        return new InstallPreparedCurvenetEmbeddingCommand();
-    }
-
-    MStatus doIt(const MArgList& arguments) override
-    {
-        if (arguments.length() != 2)
-        {
-            MGlobal::displayError(
-                "installPreparedCurvenetEmbedding expects a token and deformer."
-            );
-            return MS::kInvalidParameter;
-        }
-
-        MStatus status;
-        const int token = arguments.asInt(0, &status);
-        auto prepared = preparedEmbeddingByToken.find(token);
-
-        if (!status || prepared == preparedEmbeddingByToken.end())
-        {
-            MGlobal::displayError("Prepared Curvenet embedding was not found.");
-            return MS::kInvalidParameter;
-        }
-
-        MSelectionList selection;
-        status = selection.add(arguments.asString(1));
-        MObject nodeObject;
-
-        if (!status || !selection.getDependNode(0, nodeObject))
-        {
-            MGlobal::displayError("Curvenet deformer was not found.");
-            return MS::kInvalidParameter;
-        }
-
-        MFnDependencyNode dependencyNode(nodeObject, &status);
-        auto* node = status
-            ? dynamic_cast<CurveDeformerNode*>(dependencyNode.userNode())
-            : nullptr;
-
-        if (node == nullptr)
-        {
-            MGlobal::displayError("Selected node is not a Curvenet deformer.");
-            return MS::kInvalidParameter;
-        }
-
-        if (!prepared->second.isValid() || !prepared->second.isAlive())
-        {
-            preparedEmbeddingByToken.erase(prepared);
-            MGlobal::displayError("Prepared Curvenet cache is no longer valid.");
-            return MS::kFailure;
-        }
-
-        MObject preparedObject = prepared->second.object();
-        MFnDependencyNode preparedDependency(preparedObject, &status);
-        auto* preparedNode = status
-            ? dynamic_cast<CurveDeformerNode*>(preparedDependency.userNode())
-            : nullptr;
-
-        if (preparedNode == nullptr)
-        {
-            return MS::kFailure;
-        }
-
-        node->installPreparedEmbedding(*preparedNode);
-        preparedEmbeddingByToken.erase(prepared);
-
-        MDGModifier cleanup;
-        cleanup.deleteNode(preparedObject);
-        status = cleanup.doIt();
-        if (!status)
-        {
-            return status;
-        }
-
-        /* Detached preparation must not re-enter Maya's UI while topology is
-           being constructed. Report only after the live node owns the cache. */
         node->reportPreparedEmbedding();
         return MS::kSuccess;
     }
@@ -2594,12 +2478,12 @@ MStatus initializePlugin(MObject pluginObject)
     MFnPlugin plugin(
         pluginObject,
         "Osher",
-        "4.2-deferred-preparation-reporting",
+        "5.0-direct-live-node-preparation",
         "Any"
     );
 
     MGlobal::displayInfo(
-        "Curvenet plugin build: 4.2-deferred-preparation-reporting"
+        "Curvenet plugin build: 5.0-direct-live-node-preparation"
     );
 
     status = plugin.registerNode(
@@ -2625,26 +2509,13 @@ MStatus initializePlugin(MObject pluginObject)
     }
 
     status = plugin.registerCommand(
-        "prepareCurvenetEmbedding",
-        PrepareCurvenetEmbeddingCommand::creator
+        "initializeCurvenetEmbedding",
+        InitializeCurvenetEmbeddingCommand::creator
     );
 
     if (!status)
     {
-        status.perror("Failed to register prepareCurvenetEmbedding command");
-        return status;
-    }
-
-    status = plugin.registerCommand(
-        "installPreparedCurvenetEmbedding",
-        InstallPreparedCurvenetEmbeddingCommand::creator
-    );
-
-    if (!status)
-    {
-        status.perror(
-            "Failed to register installPreparedCurvenetEmbedding command"
-        );
+        status.perror("Failed to register initializeCurvenetEmbedding command");
         return status;
     }
 
@@ -2661,21 +2532,11 @@ MStatus uninitializePlugin(MObject pluginObject)
     MStatus status;
     MFnPlugin plugin(pluginObject);
 
-    status = plugin.deregisterCommand("installPreparedCurvenetEmbedding");
+    status = plugin.deregisterCommand("initializeCurvenetEmbedding");
 
     if (!status)
     {
-        status.perror(
-            "Failed to deregister installPreparedCurvenetEmbedding command"
-        );
-        return status;
-    }
-
-    status = plugin.deregisterCommand("prepareCurvenetEmbedding");
-
-    if (!status)
-    {
-        status.perror("Failed to deregister prepareCurvenetEmbedding command");
+        status.perror("Failed to deregister initializeCurvenetEmbedding command");
         return status;
     }
 

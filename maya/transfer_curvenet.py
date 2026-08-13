@@ -574,17 +574,12 @@ def attach_existing_curvenet_to_mesh(
             (coordinates, start_node_id, end_node_id)
         )
 
-    preparation_token = cmds.prepareCurvenetEmbedding(
-        target_mesh,
-        bool(full_surface),
-        *preparation_arguments,
-    )
     deformer = cmds.deformer(
         target_mesh,
         type="curvenetNode",
         name=deformer_name,
     )[0]
-    cmds.setAttr(deformer + ".nodeState", 2)
+    cmds.setAttr(deformer + ".nodeState", 1)
     cmds.setAttr(
         deformer + ".fullSurfaceCurvenet",
         bool(full_surface),
@@ -605,7 +600,12 @@ def attach_existing_curvenet_to_mesh(
             f"{deformer}.inputCurveEndNodeIds[{curve_id}]",
             end_node_id,
         )
-    cmds.installPreparedCurvenetEmbedding(preparation_token, deformer)
+    cmds.initializeCurvenetEmbedding(
+        deformer,
+        target_mesh,
+        bool(full_surface),
+        *preparation_arguments,
+    )
     cmds.setAttr(deformer + ".nodeState", 0)
     cmds.dgdirty(deformer)
 

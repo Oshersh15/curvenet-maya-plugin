@@ -55,7 +55,6 @@ public:
         bool fullSurface
     );
 
-    void installPreparedEmbedding(CurveDeformerNode& preparedNode);
     void reportPreparedEmbedding() const;
 
     /* Returns the sampled points for every connected profile curve. */
