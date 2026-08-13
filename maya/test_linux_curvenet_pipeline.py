@@ -130,8 +130,65 @@ def main():
     cmds.connectAttr(driver_shape + ".local", deformer + ".inputDriverCurve")
     cmds.setAttr(deformer + ".nodeState", 0)
     cmds.dgdirty(deformer)
-    cmds.getAttr(mesh + ".worldMesh[0]")
+    # Force evaluation through Maya's mesh API. Querying worldMesh with
+    # getAttr prints a misleading error because mesh data is not scalar.
+    import maya.api.OpenMaya as om
+
+    selection = om.MSelectionList()
+    selection.add(mesh)
+    mesh_path = selection.getDagPath(0)
+    mesh_path.extendToShape()
+    evaluated_points = om.MFnMesh(mesh_path).getPoints(om.MSpace.kObject)
+    if not evaluated_points:
+        return _fail("live deformation produced no mesh points")
     print("CURVENET_LINUX_STAGE: evaluated", flush=True)
+
+    # Exercise the same Python authoring/finish path used by the UI. This is
+    # deliberately separate from the direct API test above so its stage label
+    # identifies a workflow-layer failure unambiguously.
+    cmds.file(new=True, force=True)
+    workflow_mesh = cmds.polyCylinder(
+        name="linuxWorkflowTube",
+        radius=radius,
+        height=5.0,
+        subdivisionsAxis=24,
+        subdivisionsHeight=18,
+        subdivisionsCaps=1,
+        createUVs=3,
+    )[0]
+    cmds.delete(workflow_mesh, constructionHistory=True)
+    project_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    os.environ["CURVENET_PROJECT_DIR"] = project_dir
+    workflow_path = os.path.join(project_dir, "maya", "curvenet_workflow.py")
+    workflow = {"__file__": workflow_path, "__name__": "curvenet_linux_test"}
+    with open(workflow_path, "r") as workflow_file:
+        exec(
+            compile(workflow_file.read(), workflow_path, "exec"),
+            workflow,
+        )
+
+    cmds.select(workflow_mesh, replace=True)
+    workflow["_configure_source_mesh"](workflow_mesh, False)
+    workflow["ensure_groups"]()
+    corner_positions = (
+        profile_points[0][0],
+        profile_points[0][-1],
+        profile_points[2][0],
+        profile_points[2][-1],
+    )
+    authored_nodes = [
+        workflow["find_or_create_node"](position, reuse_existing=False)
+        for position in corner_positions
+    ]
+    for start_index, end_index in ((0, 1), (1, 2), (2, 3), (3, 0)):
+        workflow["create_curve_between_nodes"](
+            authored_nodes[start_index],
+            authored_nodes[end_index],
+        )
+    cmds.select(workflow_mesh, replace=True)
+    print("CURVENET_LINUX_STAGE: workflow_finish", flush=True)
+    workflow["finish_curvenet"](full_surface=False)
+    print("CURVENET_LINUX_STAGE: workflow_finished", flush=True)
     print("CURVENET_LINUX_PIPELINE: PASS", flush=True)
     maya.standalone.uninitialize()
     return 0
