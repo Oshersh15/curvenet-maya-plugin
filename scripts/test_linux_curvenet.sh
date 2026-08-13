@@ -3,7 +3,10 @@ set -euo pipefail
 
 project_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 maya_location="${MAYA_LOCATION:-/usr/autodesk/maya2025}"
-build_dir="${CURVENET_LINUX_BUILD_DIR:-${project_dir}/plugin/build-linux-test}"
+# Use the same location loaded by curvenet_workflow.py and the installed UI.
+# This prevents an older plugin/build binary from being tested interactively
+# after a different build-linux-test binary passed automation.
+build_dir="${CURVENET_LINUX_BUILD_DIR:-${project_dir}/plugin/build}"
 log_file="${CURVENET_LINUX_LOG:-/tmp/curvenet-linux-pipeline.log}"
 
 if [[ ! -x "${maya_location}/bin/mayapy" ]]; then
@@ -27,6 +30,8 @@ export MAYA_DISABLE_CIP=1
 export MAYA_DISABLE_CER=1
 
 echo "Running the complete Curvenet pipeline in Maya standalone..."
+echo "Tested plugin: ${CURVENET_PLUGIN_PATH}"
+sha256sum "${CURVENET_PLUGIN_PATH}"
 set +e
 timeout 120 "${maya_location}/bin/mayapy" \
     "${project_dir}/maya/test_linux_curvenet_pipeline.py" \
