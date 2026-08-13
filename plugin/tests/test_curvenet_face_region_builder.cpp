@@ -940,7 +940,7 @@ TEST(
 
 TEST(
     CurvenetFaceRegionBuilder,
-    MergesNearZeroAreaFullSurfacePartition
+    PreservesNearZeroAreaPartitionAcrossCurvenetBoundary
 )
 {
     CurvenetCutResult cutResult;
@@ -973,23 +973,22 @@ TEST(
 
     /*
         Treat the shared edge as an embedded curve. The left
-        component is a numerical sliver and should be absorbed
-        into its normal-area neighbour.
+        component is a numerical sliver, but cleanup must not erase the
+        authored Curvenet boundary separating it from its neighbour.
     */
     cutResult.embeddedHalfEdgeIds.insert(1);
     cutResult.embeddedHalfEdgeIds.insert(7);
 
     CurvenetFaceRegionBuilder::buildFullSurfacePartitions(cutResult, 1);
 
-    ASSERT_EQ(cutResult.curvenetFaces.size(), 1);
-    EXPECT_EQ(cutResult.curvenetFaces[0].meshFaceIds.size(), 2);
-    EXPECT_EQ(cutResult.curvenetFaces[0].meshFaceIds[0], 0);
-    EXPECT_EQ(cutResult.curvenetFaces[0].meshFaceIds[1], 1);
+    ASSERT_EQ(cutResult.curvenetFaces.size(), 2);
+    EXPECT_EQ(cutResult.curvenetFaces[0].meshFaceIds.size(), 1);
+    EXPECT_EQ(cutResult.curvenetFaces[1].meshFaceIds.size(), 1);
 }
 
 TEST(
     CurvenetFaceRegionBuilder,
-    MergesSurplusFullSurfacePartitionToExpectedCount
+    DoesNotForceMergeAcrossCurvenetBoundary
 )
 {
     CurvenetCutResult cutResult;
@@ -1014,8 +1013,9 @@ TEST(
 
     CurvenetFaceRegionBuilder::buildFullSurfacePartitions(cutResult, 1);
 
-    ASSERT_EQ(cutResult.curvenetFaces.size(), 1);
-    EXPECT_EQ(cutResult.curvenetFaces[0].meshFaceIds.size(), 4);
+    ASSERT_EQ(cutResult.curvenetFaces.size(), 2);
+    EXPECT_EQ(cutResult.curvenetFaces[0].meshFaceIds.size(), 2);
+    EXPECT_EQ(cutResult.curvenetFaces[1].meshFaceIds.size(), 2);
 }
 
 TEST(

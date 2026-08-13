@@ -805,6 +805,24 @@ unsigned int geometryIndex
     debugSampledCurves.clear();
     debugCrossings.clear();
 
+    const bool requestedFullSurfaceCurvenet =
+        dataBlock.inputValue(
+            fullSurfaceCurvenet,
+            &status
+        ).asBool();
+
+    /* Maya may evaluate a newly created deformer before the workflow copies
+       its coverage setting. Rebuild the cached embedding when that setting
+       changes so transferred meshes use the same coverage as their source. */
+    if (topologyCaptured &&
+        requestedFullSurfaceCurvenet != capturedFullSurfaceCurvenet)
+    {
+        topologyCaptured = false;
+        vertexBindingsCaptured = false;
+        vertexBindings.clear();
+        scenePreviewBuilt = false;
+    }
+
     double meanMeshEdgeLength = 0.0;
     HalfEdgeMesh mayaHalfEdgeMesh;
 
@@ -1737,10 +1755,7 @@ unsigned int geometryIndex
         if (curvenetCutResult.success)
         {
             const bool buildFullSurface =
-                dataBlock.inputValue(
-                    fullSurfaceCurvenet,
-                    &status
-                ).asBool();
+                requestedFullSurfaceCurvenet;
 
             int expectedFullSurfaceFaceCount = -1;
 
@@ -2009,6 +2024,7 @@ unsigned int geometryIndex
             );
 
             topologyCaptured = true;
+            capturedFullSurfaceCurvenet = buildFullSurface;
 
         }
     }

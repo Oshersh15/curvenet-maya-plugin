@@ -1054,6 +1054,14 @@ void CurvenetFaceRegionBuilder::buildFullSurfacePartitions(
                     continue;
                 }
 
+                /* Never remove an authored Curvenet boundary while cleaning
+                   a numerical sliver beside an almost coincident mesh edge. */
+                if (cutResult.embeddedHalfEdgeIds.count(halfEdgeId) > 0 ||
+                    cutResult.embeddedHalfEdgeIds.count(halfEdge.twin) > 0)
+                {
+                    continue;
+                }
+
                 const int neighbouringFaceId =
                     cutResult.mesh.halfEdges[halfEdge.twin].face;
 
@@ -1210,6 +1218,12 @@ void CurvenetFaceRegionBuilder::buildFullSurfacePartitions(
                         halfEdge.twin >= static_cast<int>(
                             cutResult.mesh.halfEdges.size()
                         ))
+                    {
+                        continue;
+                    }
+
+                    if (cutResult.embeddedHalfEdgeIds.count(halfEdgeId) > 0 ||
+                        cutResult.embeddedHalfEdgeIds.count(halfEdge.twin) > 0)
                     {
                         continue;
                     }
