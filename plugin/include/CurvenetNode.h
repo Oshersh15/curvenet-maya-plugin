@@ -38,6 +38,8 @@ public:
     static void* creator();
     static MStatus initialize();
 
+    void postConstructor() override;
+
     SchedulingType schedulingType() const override;
 
     MStatus deform(

@@ -80,7 +80,8 @@ def main():
         type="curvenetNode",
         name="linuxCurvenetNode",
     )[0]
-    cmds.setAttr(deformer + ".nodeState", 1)
+    if cmds.getAttr(deformer + ".nodeState") != 1:
+        return _fail("new Curvenet node was not blocked during construction")
 
     arguments = [deformer, mesh, False]
     for curve_id, (points, node_ids) in enumerate(

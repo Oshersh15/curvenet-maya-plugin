@@ -852,6 +852,17 @@ MStatus CurveDeformerNode::initialize()
     return MS::kSuccess;
 }
 
+void CurveDeformerNode::postConstructor()
+{
+    /* cmds.deformer() connects geometry before returning to Python. In an
+       interactive viewport Maya may evaluate that connection immediately,
+       before the workflow can block the node with setAttr. Start every new
+       Curvenet node in HasNoEffect; joint binding activates it only after the
+       complete embedding cache and driver have been installed. */
+    MPlug statePlug(thisMObject(), MPxNode::state);
+    statePlug.setShort(1);
+}
+
 MStatus CurveDeformerNode::deform(
 MDataBlock& dataBlock,
 MItGeometry& geoIterator,
@@ -2514,12 +2525,12 @@ MStatus initializePlugin(MObject pluginObject)
     MFnPlugin plugin(
         pluginObject,
         "Osher",
-        "6.0-isolated-embedding-cache",
+        "6.1-blocked-from-construction",
         "Any"
     );
 
     MGlobal::displayInfo(
-        "Curvenet plugin build: 6.0-isolated-embedding-cache"
+        "Curvenet plugin build: 6.1-blocked-from-construction"
     );
 
     status = plugin.registerNode(
