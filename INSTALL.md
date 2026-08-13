@@ -33,8 +33,10 @@ Current development environment:
 | C++ standard | C++17 |
 | Python | Maya 2025 embedded Python |
 
-The current macOS build is tested. Linux and Windows build configuration is
-provided but must be compiled and validated on those operating systems.
+The complete interactive Maya workflow is currently validated on macOS.
+Linux compilation, the C++ test suite and Maya standalone pipeline validation
+have succeeded, but interactive Maya evaluation remains unresolved on the
+tested university Linux workstation. Windows has not yet been validated.
 
 ---
 
@@ -80,6 +82,10 @@ ctest --test-dir plugin/build --output-on-failure
 ```
 
 Change `MAYA_LOCATION` if Maya is installed elsewhere.
+
+The Linux commands above build the plugin and tests successfully in the
+currently tested environment. They do not yet imply support for the complete
+interactive Maya workflow; see **Platform Validation Status** below.
 
 ### Windows
 
@@ -192,6 +198,23 @@ ctest --test-dir plugin/build --output-on-failure
 The current suite contains 150 tests covering HalfEdges, CutPaths, mesh
 cutting, shared logical nodes, Curvenet edges and faces, face-region mapping,
 and harmonic deformation.
+
+---
+
+## Platform Validation Status
+
+| Platform | Status |
+|---|---|
+| macOS, Maya 2025 | Complete interactive workflow manually validated |
+| Linux, Maya 2025 | Builds successfully; 150 C++ tests and Maya standalone pipeline pass; interactive Maya evaluation unresolved on the tested workstation |
+| Windows, Maya 2025 | Build configuration provided; not yet validated |
+
+On the tested Linux workstation, the plugin compiled and loaded and the
+automated standalone pipeline completed successfully. Interactive connection
+of an authored Curvenet caused Maya to become unresponsive or terminate during
+evaluation. This remains a known limitation. The currently supported
+demonstration platform is therefore macOS; Linux and Windows interactive
+support are future development work.
 
 ---
 
