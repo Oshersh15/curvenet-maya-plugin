@@ -340,6 +340,15 @@ The binding workflow:
 - skins the projected curve control points to the joint hierarchy;
 - transfers stored node weights to corresponding logical Curvenet nodes on another mesh.
 
+Joint weights can be refined directly from the existing logical-node spheres.
+The selected joint remains the active influence while different spheres are
+edited. For every incident profile edge, curve-CV weights are deterministically
+reconstructed by smoothly interpolating the complete weight vectors stored at
+its two endpoint nodes. The edited node receives the full change, the opposite
+node remains unchanged, and no stale influence can remain in the middle of the
+curve. Curves are display-only during editing and can be shown for the selected
+node, shown in full, or hidden.
+
 The deformer uses the physically embedded CutChains as positional constraints for a harmonic surface deformation. Constraint displacement is propagated across the cut half-edge mesh using a uniform graph Laplacian.
 
 Global rigid motion is separated from local deformation. A best-fit rigid transform is recovered from the neutral and posed profile curves and applied directly to the mesh. The harmonic system then propagates only the remaining local deformation. This prevents a root-joint rotation from introducing an unwanted bend and ensures that resetting the joints returns the mesh to its neutral state.
@@ -463,8 +472,7 @@ ctest --test-dir plugin/build --output-on-failure
 
 ### In Progress
 
-- Node-based Curvenet weight editing with smooth propagation along incident
-  profile curves.
+- Validation on additional articulated meshes and topology variants.
 - Refinement of local deformation quality around articulated joints.
 - Interactive validation on additional operating systems and Maya installs.
 

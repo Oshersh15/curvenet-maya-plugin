@@ -416,8 +416,11 @@ def open_curvenet_ui():
         ),
     )
     cmds.button(
-        label="Open Curve Weight Editor",
-        annotation="Select one bound mesh. Opens detailed Curvenet CV painting.",
+        label="Open Node Weight Editor",
+        annotation=(
+            "Select one bound mesh. Edit joint weights on logical Curvenet "
+            "nodes; connected profile curves follow the posed nodes."
+        ),
         command=lambda *_: _run_ui_action(_paint_from_ui),
     )
     cmds.rowLayout(numberOfColumns=2, adjustableColumn=1)

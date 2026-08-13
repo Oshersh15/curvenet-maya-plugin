@@ -13,7 +13,7 @@ The public Maya interface supports:
 - Partial/local and closed/wrapping Curvenets
 - CutPath and Curvenet topology construction
 - Curvenet-to-joint binding
-- Projected-curve weight refinement
+- Logical Curvenet-node weight refinement
 - Skeleton, Curvenet and painted-weight transfer
 - Curvenet-driven mesh deformation
 
@@ -158,10 +158,15 @@ The selected joint influences are remembered for later transfer.
 ### 4. Refine Weights
 
 1. Select the bound mesh.
-2. Click **Open Curve Weight Editor**.
-3. Select projected Curvenet curves or CVs.
-4. Capture the selection, choose a joint, and adjust its weight and soft
-   radius.
+2. Click **Open Node Weight Editor**.
+3. Select one or more existing Curvenet node spheres.
+4. Choose the active joint in the viewport or editor list.
+5. Adjust the node weight. Every incident profile curve is updated smoothly
+   from the edited node to its opposite endpoint.
+
+The curve display is read-only while editing. Use **Connected only**, **All
+curves** or **Hidden** to control how much of the Curvenet is shown. Curve CVs
+do not need to be selected manually.
 
 ### 5. Transfer to Another Mesh
 
@@ -170,7 +175,7 @@ The selected joint influences are remembered for later transfer.
 3. Shift-select the target mesh.
 4. Click **Transfer Complete Curvenet Rig**.
 
-The workflow transfers the skeleton, Curvenet, logical-node weights, painted
+The workflow transfers the skeleton, Curvenet, logical-node weights, derived
 curve-CV weights and plugin deformation setup.
 
 ---
