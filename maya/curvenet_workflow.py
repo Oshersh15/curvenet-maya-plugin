@@ -477,9 +477,6 @@ def _rebuild_target_deformer_from_skinned_curves(mesh, full_surface):
         bool(full_surface),
         *preparation_arguments,
     )
-    cmds.setAttr(deformer + ".nodeState", 0)
-    cmds.dgdirty(deformer)
-    cmds.refresh(force=True)
     print("Target plugin connected to skinned curves:", len(curves))
     return deformer
 

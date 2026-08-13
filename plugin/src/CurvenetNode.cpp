@@ -862,7 +862,8 @@ unsigned int geometryIndex
     /* Embedding construction is an explicit setup operation. Keeping it out
        of DG evaluation prevents Maya from recursively evaluating partially
        populated curve inputs. */
-    if (!topologyCaptured)
+    if (!topologyCaptured ||
+        !MPlug(thisMObject(), inputDriverCurve).isConnected())
     {
         return MS::kSuccess;
     }
@@ -2478,12 +2479,12 @@ MStatus initializePlugin(MObject pluginObject)
     MFnPlugin plugin(
         pluginObject,
         "Osher",
-        "5.0-direct-live-node-preparation",
+        "5.1-driver-gated-evaluation",
         "Any"
     );
 
     MGlobal::displayInfo(
-        "Curvenet plugin build: 5.0-direct-live-node-preparation"
+        "Curvenet plugin build: 5.1-driver-gated-evaluation"
     );
 
     status = plugin.registerNode(

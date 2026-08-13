@@ -587,8 +587,6 @@ def _surface_connect_drawn_curvenet_to_plugin(full_surface=False):
         bool(full_surface),
         *preparation_arguments,
     )
-    cmds.setAttr(deformer + ".nodeState", 0)
-    cmds.dgdirty(deformer)
 
     print("\nConnected projected Curvenet to plugin.")
     print("Projected curves:", len(projected_curves))

@@ -1020,8 +1020,6 @@ def connect_drawn_curvenet_to_plugin():
         False,
         *preparation_arguments,
     )
-    cmds.setAttr(deformer + ".nodeState", 0)
-    cmds.dgdirty(deformer)
     print("\nConnected projected Curvenet to plugin.")
     print("Projected curves:", len(projected_curves))
     print("Deformer:", deformer)

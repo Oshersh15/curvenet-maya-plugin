@@ -24,7 +24,10 @@ SCRIPT_PATH = globals().get(
 )
 PROJECT = os.path.dirname(os.path.dirname(os.path.abspath(SCRIPT_PATH)))
 EXTENSION = ".bundle" if sys.platform == "darwin" else ".so"
-PLUGIN = os.path.join(PROJECT, "plugin", "build", "CurvenetPlugin" + EXTENSION)
+PLUGIN = os.environ.get(
+    "CURVENET_PLUGIN_PATH",
+    os.path.join(PROJECT, "plugin", "build", "CurvenetPlugin" + EXTENSION),
+)
 
 cmds.loadPlugin(PLUGIN)
 mesh = cmds.polyPlane(
@@ -76,6 +79,38 @@ cmds.initializeCurvenetEmbedding(
     False,
     *preparation_arguments,
 )
+
+driver_points = []
+for logical_id, position in enumerate(
+    (
+        (-0.6, 0.0, -0.6),
+        (0.6, 0.0, -0.6),
+        (0.6, 0.0, 0.6),
+        (-0.6, 0.0, 0.6),
+    )
+):
+    x, y, z = position
+    driver_points.extend(
+        (
+            (x, y, z),
+            (x + 0.05, y, z),
+            (x, y + 0.05, z),
+            (x, y, z + 0.05),
+        )
+    )
+    for frame_point in range(4):
+        cmds.setAttr(
+            f"{deformer}.inputDriverNodeIds[{logical_id * 4 + frame_point}]",
+            logical_id,
+        )
+
+driver = cmds.curve(
+    name="curvenetSmokeDriver",
+    degree=1,
+    point=driver_points,
+)
+driver_shape = cmds.listRelatives(driver, shapes=True, fullPath=True)[0]
+cmds.connectAttr(driver_shape + ".local", deformer + ".inputDriverCurve")
 cmds.setAttr(deformer + ".nodeState", 0)
 cmds.dgdirty(deformer)
 mesh_selection = om.MSelectionList()

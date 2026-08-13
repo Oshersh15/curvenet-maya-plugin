@@ -606,8 +606,6 @@ def attach_existing_curvenet_to_mesh(
         bool(full_surface),
         *preparation_arguments,
     )
-    cmds.setAttr(deformer + ".nodeState", 0)
-    cmds.dgdirty(deformer)
 
     print("Transferred Curvenet to:", target_mesh)
     print("Projected curves:", len(projected_curves))

@@ -494,6 +494,8 @@ def bind_curvenet_driver_to_joint_hierarchy(
         deformer + ".inputDriverCurve",
         force=True,
     )
+    cmds.setAttr(deformer + ".nodeState", 0)
+    cmds.dgdirty(deformer)
 
     if cmds.objExists(nodes_group + ".visibility"):
         cmds.setAttr(nodes_group + ".visibility", False)
@@ -542,6 +544,9 @@ def ensure_curvenet_driver_to_joint_hierarchy(
                     deformer + ".inputDriverCurve",
                     force=True,
                 )
+
+            cmds.setAttr(deformer + ".nodeState", 0)
+            cmds.dgdirty(deformer)
 
             print("Reusing painted Curvenet driver:", driver_name)
             return driver_name, skins[0]
