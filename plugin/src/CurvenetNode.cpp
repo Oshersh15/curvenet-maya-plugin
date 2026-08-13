@@ -891,6 +891,9 @@ MStatus CurveDeformerNode::prepareEmbedding(
     neutralDriverPositions.clear();
     neutralDriverFrames.clear();
     vertexBindings.clear();
+    preparedInfoMessages.clear();
+    preparedWarningMessages.clear();
+    preparedErrorMessages.clear();
 
     return evaluatePreparedState(
         nullptr,
@@ -916,9 +919,22 @@ void CurveDeformerNode::installPreparedEmbedding(
     currentSampledCurves = neutralSampledCurves;
     vertexBindings = std::move(preparedNode.vertexBindings);
     harmonicSolver = std::move(preparedNode.harmonicSolver);
+    preparedInfoMessages = std::move(preparedNode.preparedInfoMessages);
+    preparedWarningMessages = std::move(preparedNode.preparedWarningMessages);
+    preparedErrorMessages = std::move(preparedNode.preparedErrorMessages);
     neutralSamplesCaptured = preparedNode.neutralSamplesCaptured;
     vertexBindingsCaptured = preparedNode.vertexBindingsCaptured;
     topologyCaptured = preparedNode.topologyCaptured;
+}
+
+void CurveDeformerNode::reportPreparedEmbedding() const
+{
+    for (const MString& message : preparedInfoMessages)
+        MGlobal::displayInfo(message);
+    for (const MString& message : preparedWarningMessages)
+        MGlobal::displayWarning(message);
+    for (const MString& message : preparedErrorMessages)
+        MGlobal::displayError(message);
 }
 
 MStatus CurveDeformerNode::evaluatePreparedState(
@@ -936,6 +952,28 @@ MDataBlock* dataBlock,
     MStatus status;
 
     const auto traceStage = [](const char*) {};
+    const bool preparingDetachedCache = preparationMeshPath != nullptr;
+    const auto reportInfo = [this, preparingDetachedCache](const MString& message)
+    {
+        if (preparingDetachedCache)
+            preparedInfoMessages.push_back(message);
+        else
+            MGlobal::displayInfo(message);
+    };
+    const auto reportWarning = [this, preparingDetachedCache](const MString& message)
+    {
+        if (preparingDetachedCache)
+            preparedWarningMessages.push_back(message);
+        else
+            MGlobal::displayWarning(message);
+    };
+    const auto reportError = [this, preparingDetachedCache](const MString& message)
+    {
+        if (preparingDetachedCache)
+            preparedErrorMessages.push_back(message);
+        else
+            MGlobal::displayError(message);
+    };
 
     /* Maya may request this output recursively while resolving connected
        geometry. A nested evaluation must not mutate the outer evaluation's
@@ -1025,7 +1063,7 @@ MDataBlock* dataBlock,
 
                 if (!status)
                 {
-                    MGlobal::displayError(
+                    reportError(
                         "Curvenet could not snapshot the input mesh topology."
                     );
                     return status;
@@ -1715,7 +1753,7 @@ MDataBlock* dataBlock,
         }
         traceStage("after debug crossing snapshot");
 
-        MGlobal::displayInfo(
+        reportInfo(
             MString("Curvenet cutting: ")
             + (curvenetCutResult.success
                 ? "SUCCESS"
@@ -1824,7 +1862,7 @@ MDataBlock* dataBlock,
                     break;
             }
 
-            MGlobal::displayInfo(
+            reportInfo(
                 MString("Fresh CutPath failed for curve ID: ")
                 + curvenetCutResult.failedCurveId
                 + ", reason: "
@@ -1844,7 +1882,7 @@ MDataBlock* dataBlock,
             );
         }
 
-        MGlobal::displayInfo(
+        reportInfo(
             MString("Shared Curvenet nodes: ")
             + static_cast<int>(
                 curvenetCutResult
@@ -1864,7 +1902,7 @@ MDataBlock* dataBlock,
             }
         }
 
-        MGlobal::displayInfo(
+        reportInfo(
             MString("Physical Curvenet nodes: ") + physicalNodeCount +
             "/" + static_cast<int>(
                 curvenetCutResult.sharedCurvenetNodes.size()
@@ -1886,10 +1924,10 @@ MDataBlock* dataBlock,
 
         if (incompleteChainCount > 0)
         {
-            MGlobal::displayWarning(incompleteChains);
+            reportWarning(incompleteChains);
         }
 
-        MGlobal::displayInfo(
+        reportInfo(
             MString("Surface-tracked CutPaths: ") +
             curvenetCutResult.surfaceTrackedCurveCount + "/" +
             static_cast<int>(profileInputs.size())
@@ -1908,7 +1946,7 @@ MDataBlock* dataBlock,
                     ", invalid " + failure.invalidIntervalCount + ")";
             }
 
-            MGlobal::displayWarning(details);
+            reportWarning(details);
         }
 
         if (curvenetCutResult.success)
@@ -1961,7 +1999,7 @@ MDataBlock* dataBlock,
             if (buildFullSurface)
             {
                 traceStage("before full-surface face regions");
-                MGlobal::displayInfo("Curvenet coverage: FULL SURFACE");
+                reportInfo("Curvenet coverage: FULL SURFACE");
                 CurvenetFaceRegionBuilder::
                     buildFullSurfacePartitions(
                         curvenetCutResult,
@@ -1972,7 +2010,7 @@ MDataBlock* dataBlock,
             else
             {
                 traceStage("before authored face regions");
-                MGlobal::displayInfo("Curvenet coverage: AUTHORED FACES");
+                reportInfo("Curvenet coverage: AUTHORED FACES");
                 const int expectedAuthoredFaceCount =
                     authoredCycleRank(profileInputs);
                 CurvenetFaceRegionBuilder::
@@ -1987,7 +2025,7 @@ MDataBlock* dataBlock,
                         curvenetCutResult.curvenetFaces.size()
                     ) != expectedAuthoredFaceCount)
                 {
-                    MGlobal::displayError(
+                    reportError(
                         MString("Curvenet topology validation failed: ") +
                         "expected " + expectedAuthoredFaceCount +
                         " authored faces, actual " +
@@ -2124,7 +2162,7 @@ MDataBlock* dataBlock,
                             "]";
                     }
 
-                    MGlobal::displayError(
+                    reportError(
                         MString("Curvenet topology validation failed: ") +
                         "expected " + expectedFaceCount +
                         " faces, actual " + actualFaceCount +
@@ -2136,7 +2174,7 @@ MDataBlock* dataBlock,
                 }
             }
 
-            MGlobal::displayInfo(
+            reportInfo(
                 MString("Curvenet faces: ")
                 + static_cast<int>(
                     curvenetCutResult
@@ -2158,12 +2196,12 @@ MDataBlock* dataBlock,
                     );
             }
 
-            MGlobal::displayInfo(
+            reportInfo(
                 MString("Mapped mesh faces: ")
                 + mappedMeshFaceCount
             );
 
-            MGlobal::displayInfo(
+            reportInfo(
                 MString("Unmapped mesh faces: ") +
                 std::max(
                     0,
@@ -2524,7 +2562,15 @@ public:
 
         MDGModifier cleanup;
         cleanup.deleteNode(preparedObject);
-        cleanup.doIt();
+        status = cleanup.doIt();
+        if (!status)
+        {
+            return status;
+        }
+
+        /* Detached preparation must not re-enter Maya's UI while topology is
+           being constructed. Report only after the live node owns the cache. */
+        node->reportPreparedEmbedding();
         return MS::kSuccess;
     }
 };
@@ -2548,12 +2594,12 @@ MStatus initializePlugin(MObject pluginObject)
     MFnPlugin plugin(
         pluginObject,
         "Osher",
-        "4.1-maya-owned-preparation-cache",
+        "4.2-deferred-preparation-reporting",
         "Any"
     );
 
     MGlobal::displayInfo(
-        "Curvenet plugin build: 4.1-maya-owned-preparation-cache"
+        "Curvenet plugin build: 4.2-deferred-preparation-reporting"
     );
 
     status = plugin.registerNode(

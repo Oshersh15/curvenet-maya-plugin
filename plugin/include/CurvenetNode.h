@@ -56,6 +56,7 @@ public:
     );
 
     void installPreparedEmbedding(CurveDeformerNode& preparedNode);
+    void reportPreparedEmbedding() const;
 
     /* Returns the sampled points for every connected profile curve. */
     const std::vector<std::vector<Point3>>&
@@ -118,4 +119,8 @@ private:
     CurvenetHarmonicSolver harmonicSolver;
     bool vertexBindingsCaptured = false;
     bool topologyCaptured = false;
+
+    std::vector<MString> preparedInfoMessages;
+    std::vector<MString> preparedWarningMessages;
+    std::vector<MString> preparedErrorMessages;
 };
