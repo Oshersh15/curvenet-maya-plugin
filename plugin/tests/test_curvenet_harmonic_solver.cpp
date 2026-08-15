@@ -2,6 +2,34 @@
 
 #include <gtest/gtest.h>
 
+namespace
+{
+HalfEdgeMesh createLongStrip(int vertexCount)
+{
+    HalfEdgeMesh mesh;
+    mesh.vertices.resize(vertexCount);
+
+    for (int vertexId = 0; vertexId < vertexCount; ++vertexId)
+    {
+        mesh.vertices[vertexId].position = Point3{
+            static_cast<double>(vertexId), 0.0, 0.0
+        };
+
+        if (vertexId + 1 < vertexCount)
+        {
+            mesh.halfEdges.push_back(
+                HalfEdge{vertexId, vertexId + 1, -1, -1, -1}
+            );
+            mesh.halfEdges.push_back(
+                HalfEdge{vertexId + 1, vertexId, -1, -1, -1}
+            );
+        }
+    }
+
+    return mesh;
+}
+}
+
 TEST(CurvenetHarmonicSolver, SpreadsUniformBoundaryTranslationAcrossQuad)
 {
     HalfEdgeMesh mesh;
@@ -117,4 +145,40 @@ TEST(CurvenetHarmonicSolver, PreservesGlobalRigidRotation)
         EXPECT_NEAR(result[vertexId].y, expected.y, 1.0e-5);
         EXPECT_NEAR(result[vertexId].z, expected.z, 1.0e-5);
     }
+}
+
+TEST(CurvenetHarmonicSolver, InitializesDenseStripFromBothConstraintSides)
+{
+    constexpr int vertexCount = 65;
+    HalfEdgeMesh mesh = createLongStrip(vertexCount);
+    const Point3 left = mesh.vertices.front().position;
+    const Point3 right = mesh.vertices.back().position;
+    CutChain leftChain;
+    leftChain.curveId = 0;
+    leftChain.points = {
+        EmbeddedCurvePoint{0, 0, 0.0, left}
+    };
+    CutChain rightChain;
+    rightChain.curveId = 1;
+    rightChain.points = {
+        EmbeddedCurvePoint{vertexCount - 1, 0, 0.0, right}
+    };
+    const std::unordered_map<int, CutChain> chains = {
+        {0, leftChain},
+        {1, rightChain}
+    };
+    const std::vector<std::vector<Point3>> neutral = {
+        {left, Point3{left.x, 1.0, left.z}},
+        {right, Point3{right.x, 1.0, right.z}}
+    };
+    std::vector<std::vector<Point3>> current = neutral;
+    current[1][0].y += 8.0;
+    current[1][1].y += 8.0;
+
+    CurvenetHarmonicSolver solver;
+    solver.initialize(mesh, chains, vertexCount, neutral);
+    const std::vector<Point3> result = solver.solve(current, 1);
+
+    ASSERT_EQ(result.size(), static_cast<std::size_t>(vertexCount));
+    EXPECT_NEAR(result[vertexCount / 2].y, 4.0, 0.25);
 }

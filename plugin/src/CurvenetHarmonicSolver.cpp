@@ -4,6 +4,9 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <functional>
+#include <queue>
+#include <tuple>
 #include <unordered_set>
 
 namespace
@@ -538,6 +541,113 @@ void CurvenetHarmonicSolver::initialize(
             );
         }
     }
+
+    /* The iterative solve starts from these topology-aware coordinates rather
+       than zero motion. This keeps dense regions from lagging behind their
+       Curvenet constraints when only a small fixed iteration count is used. */
+    constexpr int maximumNearbyConstraints = 4;
+    using DistanceState = std::tuple<double, int, int>;
+    std::priority_queue<
+        DistanceState,
+        std::vector<DistanceState>,
+        std::greater<DistanceState>
+    > pending;
+    std::vector<std::vector<std::pair<int, double>>> nearest(
+        cutMesh.vertices.size()
+    );
+
+    for (int vertexId = 0;
+         vertexId < static_cast<int>(constraintsByVertex.size());
+         ++vertexId)
+    {
+        if (!constraintsByVertex[vertexId].empty())
+        {
+            pending.emplace(0.0, vertexId, vertexId);
+        }
+    }
+
+    while (!pending.empty())
+    {
+        const auto [distance, vertexId, sourceVertexId] = pending.top();
+        pending.pop();
+
+        bool sourceAlreadyStored = false;
+
+        for (const auto& entry : nearest[vertexId])
+        {
+            if (entry.first == sourceVertexId)
+            {
+                sourceAlreadyStored = true;
+                break;
+            }
+        }
+
+        if (sourceAlreadyStored ||
+            nearest[vertexId].size() >= maximumNearbyConstraints)
+        {
+            continue;
+        }
+
+        nearest[vertexId].emplace_back(sourceVertexId, distance);
+
+        for (int neighbourId : adjacentVertexIds[vertexId])
+        {
+            const Point3& start = neutralVertexPositions[vertexId];
+            const Point3& end = neutralVertexPositions[neighbourId];
+            const double dx = end.x - start.x;
+            const double dy = end.y - start.y;
+            const double dz = end.z - start.z;
+            const double edgeLength = std::max(
+                1.0e-12,
+                std::sqrt(dx * dx + dy * dy + dz * dz)
+            );
+            pending.emplace(
+                distance + edgeLength,
+                neighbourId,
+                sourceVertexId
+            );
+        }
+    }
+
+    nearbyConstraintVertexIds.assign(cutMesh.vertices.size(), {});
+    nearbyConstraintWeights.assign(cutMesh.vertices.size(), {});
+
+    for (int vertexId = 0;
+         vertexId < static_cast<int>(nearest.size());
+         ++vertexId)
+    {
+        if (nearest[vertexId].empty())
+        {
+            continue;
+        }
+
+        if (nearest[vertexId].front().second <= 1.0e-12)
+        {
+            nearbyConstraintVertexIds[vertexId].push_back(
+                nearest[vertexId].front().first
+            );
+            nearbyConstraintWeights[vertexId].push_back(1.0);
+            continue;
+        }
+
+        double weightSum = 0.0;
+
+        for (const auto& entry : nearest[vertexId])
+        {
+            const double weight = 1.0 / std::max(1.0e-12, entry.second);
+            nearbyConstraintVertexIds[vertexId].push_back(entry.first);
+            nearbyConstraintWeights[vertexId].push_back(weight);
+            weightSum += weight;
+        }
+
+        if (weightSum > 0.0)
+        {
+            for (double& weight : nearbyConstraintWeights[vertexId])
+            {
+                weight /= weightSum;
+            }
+        }
+    }
 }
 
 std::vector<Point3> CurvenetHarmonicSolver::solve(
@@ -634,6 +744,54 @@ std::vector<Point3> CurvenetHarmonicSolver::solve(
             prescribed[vertexId].y *= inverseCount;
             prescribed[vertexId].z *= inverseCount;
             displacements[vertexId] = prescribed[vertexId];
+        }
+    }
+
+    for (int vertexId = 0;
+         vertexId < static_cast<int>(displacements.size());
+         ++vertexId)
+    {
+        if (prescribedCounts[vertexId] > 0 ||
+            vertexId >= static_cast<int>(nearbyConstraintVertexIds.size()))
+        {
+            continue;
+        }
+
+        Point3 initial;
+        double validWeightSum = 0.0;
+
+        for (int influenceId = 0;
+             influenceId < static_cast<int>(
+                 nearbyConstraintVertexIds[vertexId].size()
+             );
+             ++influenceId)
+        {
+            const int sourceVertexId =
+                nearbyConstraintVertexIds[vertexId][influenceId];
+
+            if (sourceVertexId < 0 ||
+                sourceVertexId >= static_cast<int>(prescribed.size()) ||
+                prescribedCounts[sourceVertexId] <= 0)
+            {
+                continue;
+            }
+
+            const double weight =
+                nearbyConstraintWeights[vertexId][influenceId];
+            initial.x += prescribed[sourceVertexId].x * weight;
+            initial.y += prescribed[sourceVertexId].y * weight;
+            initial.z += prescribed[sourceVertexId].z * weight;
+            validWeightSum += weight;
+        }
+
+        if (validWeightSum > 0.0)
+        {
+            const double inverseWeightSum = 1.0 / validWeightSum;
+            displacements[vertexId] = Point3{
+                initial.x * inverseWeightSum,
+                initial.y * inverseWeightSum,
+                initial.z * inverseWeightSum
+            };
         }
     }
 
@@ -769,6 +927,70 @@ std::vector<Point3> CurvenetHarmonicSolver::solve(
         Point3{0.0, 1.0, 0.0},
         Point3{0.0, 0.0, 1.0}
     };
+
+    for (int vertexId = 0;
+         vertexId < static_cast<int>(localRotations.size());
+         ++vertexId)
+    {
+        if (hasCurveRotation[vertexId] ||
+            vertexId >= static_cast<int>(nearbyConstraintVertexIds.size()))
+        {
+            continue;
+        }
+
+        std::vector<Point3> averageBasis(3, Point3{});
+        double validWeightSum = 0.0;
+
+        for (int influenceId = 0;
+             influenceId < static_cast<int>(
+                 nearbyConstraintVertexIds[vertexId].size()
+             );
+             ++influenceId)
+        {
+            const int sourceVertexId =
+                nearbyConstraintVertexIds[vertexId][influenceId];
+
+            if (sourceVertexId < 0 ||
+                sourceVertexId >= static_cast<int>(localRotations.size()) ||
+                !hasCurveRotation[sourceVertexId])
+            {
+                continue;
+            }
+
+            const double weight =
+                nearbyConstraintWeights[vertexId][influenceId];
+
+            for (int axis = 0; axis < 3; ++axis)
+            {
+                const Point3 transformed = applyRotation(
+                    localRotations[sourceVertexId],
+                    basis[axis]
+                );
+                averageBasis[axis].x += transformed.x * weight;
+                averageBasis[axis].y += transformed.y * weight;
+                averageBasis[axis].z += transformed.z * weight;
+            }
+
+            validWeightSum += weight;
+        }
+
+        if (validWeightSum > 0.0)
+        {
+            const double inverseWeightSum = 1.0 / validWeightSum;
+
+            for (Point3& axis : averageBasis)
+            {
+                axis.x *= inverseWeightSum;
+                axis.y *= inverseWeightSum;
+                axis.z *= inverseWeightSum;
+            }
+
+            localRotations[vertexId] = fitRotationFromEdges(
+                basis,
+                averageBasis
+            );
+        }
+    }
 
     for (int iteration = 0; iteration < std::max(1, iterationCount); ++iteration)
     {
