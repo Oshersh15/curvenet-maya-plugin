@@ -1,5 +1,7 @@
 #pragma once
 
+/* Defines lightweight Maya runtime objects for Curvenet controls and edges. */
+
 #include <vector>
 
 #include <maya/MObject.h>

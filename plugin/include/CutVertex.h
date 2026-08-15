@@ -1,5 +1,7 @@
 #pragma once
 
+/* Stores a vertex to reuse or insert while embedding a CutPath. */
+
 #include "HalfEdge.h"
 
 /*

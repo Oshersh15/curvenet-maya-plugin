@@ -1,3 +1,5 @@
+/* Implements half-edge traversal, validation, splitting, and test fixtures. */
+
 #include "HalfEdge.h"
 
 #include <algorithm>

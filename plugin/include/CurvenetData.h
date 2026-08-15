@@ -1,5 +1,7 @@
 #pragma once
 
+/* Owns the sampled Maya profile inputs cached by a Curvenet node. */
+
 #include <maya/MObject.h>
 #include <maya/MPoint.h>
 #include "HalfEdge.h"

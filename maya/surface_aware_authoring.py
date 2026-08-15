@@ -1,8 +1,10 @@
-"""Feature-edge support for the interactive Curvenet drawing script.
+"""Add optional feature-edge snapping to interactive Curvenet authoring.
 
 Run the base drawing script first, then execute this file in the same Maya
 Python namespace. Clicks near hard or boundary edges snap to that feature,
 and connections between snapped nodes follow the shortest feature-edge path.
+Ordinary surface clicks remain topology independent when snapping is disabled
+or no eligible feature lies within the configured tolerance.
 """
 
 import heapq
@@ -505,6 +507,8 @@ def _deformer_source_mesh_shape(deformer):
 
 
 def _surface_connect_drawn_curvenet_to_plugin(full_surface=None):
+    """Project authored curves and connect their metadata to a new deformer."""
+
     ensure_groups()
 
     source_curves = authored_segments()

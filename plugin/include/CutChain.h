@@ -1,5 +1,7 @@
 #pragma once
 
+/* Stores the ordered embedded mesh vertices representing one profile curve. */
+
 #include <vector>
 
 #include "EmbeddedCurvePoint.h"

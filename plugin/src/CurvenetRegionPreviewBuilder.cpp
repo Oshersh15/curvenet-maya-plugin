@@ -1,3 +1,5 @@
+/* Builds the optional graph-coloured mesh used to inspect surface regions. */
+
 #include "CurvenetRegionPreviewBuilder.h"
 
 #include <maya/MColor.h>

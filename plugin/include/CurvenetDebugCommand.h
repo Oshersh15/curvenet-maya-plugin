@@ -1,5 +1,7 @@
 #pragma once
 
+/* Declares the Maya command that visualises cached embedding diagnostics. */
+
 #include <maya/MPxCommand.h>
 #include <maya/MStatus.h>
 #include <maya/MString.h>

@@ -1,3 +1,5 @@
+/* Tests endpoint connection detection, including tolerance and duplicates. */
+
 #include "CurveConnectionDetector.h"
 
 #include <gtest/gtest.h>

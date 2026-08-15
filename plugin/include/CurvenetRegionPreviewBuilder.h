@@ -1,5 +1,7 @@
 #pragma once
 
+/* Declares creation of the optional coloured surface-region preview. */
+
 #include "CurvenetCutResult.h"
 
 #include <string>

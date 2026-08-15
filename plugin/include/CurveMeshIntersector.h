@@ -1,5 +1,7 @@
 #pragma once
 
+/* Declares profile-to-mesh crossing and face-interval detection. */
+
 #include "HalfEdge.h"
 #include "ProfileCurveSampler.h"
 #include "CutCrossing.h"

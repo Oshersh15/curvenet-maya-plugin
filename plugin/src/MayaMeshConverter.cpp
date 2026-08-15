@@ -1,3 +1,5 @@
+/* Converts Maya polygon meshes into the plugin's independent half-edge form. */
+
 #include "MayaMeshConverter.h"
 
 #include <maya/MIntArray.h>

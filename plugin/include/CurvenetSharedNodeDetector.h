@@ -1,5 +1,7 @@
 #pragma once
 
+/* Declares resolution of embedded endpoints into shared logical nodes. */
+
 #include <optional>
 
 #include "CurvenetCutResult.h"

@@ -1,3 +1,5 @@
+/* Traces closed cycles in the logical Curvenet graph to build authored faces. */
+
 #include "CurvenetFaceBuilder.h"
 
 #include <unordered_map>

@@ -1,5 +1,8 @@
 cmake_minimum_required(VERSION 3.16)
 
+# Builds the Maya Curvenet deformer and the Maya-independent GoogleTest suite.
+# Platform branches only describe Maya's SDK layout and plugin file suffix.
+
 project(CurvenetPlugin)
 
 if(APPLE)

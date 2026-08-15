@@ -1,3 +1,5 @@
+/* Integration tests for authored grids from embedding through face regions. */
+
 #include <gtest/gtest.h>
 
 #include <algorithm>

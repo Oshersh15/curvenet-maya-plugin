@@ -1,3 +1,5 @@
+/* Tests ordered crossings, face intervals, and degenerate intersections. */
+
 #include "CurveMeshIntersector.h"
 
 #include <gtest/gtest.h>

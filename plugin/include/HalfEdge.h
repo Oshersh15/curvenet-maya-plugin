@@ -1,5 +1,7 @@
 #pragma once
 
+/* Defines the mutable half-edge mesh used by cutting and deformation. */
+
 #include <vector>
 
 struct Point3

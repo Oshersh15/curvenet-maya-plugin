@@ -33,10 +33,10 @@ Current development environment:
 | C++ standard | C++17 |
 | Python | Maya 2025 embedded Python |
 
-The complete interactive Maya workflow is currently validated on macOS.
-Linux compilation, the C++ test suite and Maya standalone pipeline validation
-have succeeded, but interactive Maya evaluation remains unresolved on the
-tested university Linux workstation. Windows has not yet been validated.
+The complete interactive Maya workflow is validated on macOS. Linux
+compilation, the C++ test suite and Maya standalone pipeline validation have
+succeeded, but interactive evaluation remains unresolved on the university
+Linux workstation used during development. Windows has not been validated.
 
 ---
 
@@ -200,7 +200,7 @@ Run the C++ test suite from the project root:
 ctest --test-dir plugin/build --output-on-failure
 ```
 
-The current suite contains 150 tests covering HalfEdges, CutPaths, mesh
+The current suite contains 155 tests covering HalfEdges, CutPaths, mesh
 cutting, shared logical nodes, Curvenet edges and faces, face-region mapping,
 and harmonic deformation.
 
@@ -211,7 +211,7 @@ and harmonic deformation.
 | Platform | Status |
 |---|---|
 | macOS, Maya 2025 | Complete interactive workflow manually validated |
-| Linux, Maya 2025 | Builds successfully; 150 C++ tests and Maya standalone pipeline pass; interactive Maya evaluation unresolved on the tested workstation |
+| Linux, Maya 2025 | Builds successfully; 155 C++ tests and Maya standalone pipeline pass; interactive Maya evaluation unresolved on the tested workstation |
 | Windows, Maya 2025 | Build configuration provided; not yet validated |
 
 On the tested Linux workstation, the plugin compiled and loaded and the

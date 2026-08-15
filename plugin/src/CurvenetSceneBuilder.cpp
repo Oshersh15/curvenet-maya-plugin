@@ -1,3 +1,5 @@
+/* Creates Maya controls and display curves for a successfully embedded net. */
+
 #include "CurvenetSceneBuilder.h"
 #include "CurvenetEdge.h"
 #include "CurvenetRegionPreviewBuilder.h"

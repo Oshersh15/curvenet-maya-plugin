@@ -1,3 +1,5 @@
+/* Maps cut-mesh polygons to Curvenet faces without crossing embedded barriers. */
+
 #include "CurvenetFaceRegionBuilder.h"
 #include "GeometryUtils.h"
 

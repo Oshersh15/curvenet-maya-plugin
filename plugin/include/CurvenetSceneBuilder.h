@@ -1,5 +1,7 @@
 #pragma once
 
+/* Declares creation of Curvenet controls and viewport curve geometry. */
+
 #include "CurvenetCutResult.h"
 
 #include <maya/MString.h>

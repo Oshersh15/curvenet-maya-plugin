@@ -1,3 +1,5 @@
+/* Resamples authored profile polylines at approximately uniform arc length. */
+
 #include "ProfileCurveSampler.h"
 
 #include <cmath>

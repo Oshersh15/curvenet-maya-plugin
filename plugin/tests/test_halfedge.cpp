@@ -1,3 +1,5 @@
+/* Tests half-edge construction, traversal, validation, and splitting. */
+
 #include "HalfEdge.h"
 
 #include <gtest/gtest.h>

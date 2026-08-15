@@ -1,3 +1,5 @@
+/* Detects endpoint-to-curve relationships in sampled authored profiles. */
+
 #include "CurveConnectionDetector.h"
 
 #include "ProfileCurveSampler.h"

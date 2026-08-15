@@ -1,5 +1,7 @@
 #pragma once
 
+/* Declares the Maya deformer node that owns embedding and deformation state. */
+
 #include "CurvenetData.h"
 #include "CurvenetHarmonicSolver.h"
 #include "CutCrossing.h"

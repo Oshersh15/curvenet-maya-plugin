@@ -1,3 +1,5 @@
+/* Implements the Maya command used to inspect Curvenet embedding data. */
+
 #include "CurvenetDebugCommand.h"
 
 #include "CurvenetNode.h"

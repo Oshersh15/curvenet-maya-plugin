@@ -1,5 +1,7 @@
 #pragma once
 
+/* Identifies a mesh vertex and its corresponding profile-curve parameter. */
+
 #include "HalfEdge.h"
 
 struct EmbeddedCurvePoint

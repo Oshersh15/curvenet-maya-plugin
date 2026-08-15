@@ -1,8 +1,12 @@
-"""Single-window Maya interface for the public Curvenet workflow."""
+"""Build the single-window Maya interface for the public Curvenet workflow.
+
+The window is intentionally a thin orchestration layer. Drawing, embedding,
+joint binding, weight editing, and transfer remain in their dedicated modules;
+callbacks here only validate selection and invoke those public operations.
+"""
 
 import maya.cmds as cmds
 import maya.mel as mel
-
 
 CURVENET_UI_WINDOW = "curvenetWorkflowWindow"
 BOUND_JOINTS_ATTRIBUTE = "curvenetBoundJointPaths"
@@ -14,13 +18,16 @@ def _ui_meshes():
         if cmds.nodeType(node) == "mesh":
             parents = cmds.listRelatives(node, parent=True, fullPath=True) or []
             node = parents[0] if parents else node
-        shapes = cmds.listRelatives(
-            node,
-            shapes=True,
-            noIntermediate=True,
-            type="mesh",
-            fullPath=True,
-        ) or []
+        shapes = (
+            cmds.listRelatives(
+                node,
+                shapes=True,
+                noIntermediate=True,
+                type="mesh",
+                fullPath=True,
+            )
+            or []
+        )
         if shapes and node not in meshes:
             meshes.append(node)
     return meshes
@@ -52,11 +59,7 @@ def _remembered_bound_joints(mesh):
     attribute = mesh + "." + BOUND_JOINTS_ATTRIBUTE
     if not cmds.objExists(attribute):
         return []
-    return [
-        joint
-        for joint in (cmds.getAttr(attribute) or [])
-        if cmds.objExists(joint)
-    ]
+    return [joint for joint in (cmds.getAttr(attribute) or []) if cmds.objExists(joint)]
 
 
 def _run_ui_action(action):
@@ -122,9 +125,7 @@ def _bind_from_ui():
         key=lambda joint: len(joint.split("|")),
     )
     if not joints:
-        raise RuntimeError(
-            "Select the mesh, then Shift-select every joint influence."
-        )
+        raise RuntimeError("Select the mesh, then Shift-select every joint influence.")
     result = bind_selected_curvenet_rig()
     _remember_bound_joints(mesh, joints)
     return result
@@ -151,12 +152,15 @@ def _set_curvenet_display(mesh, visible):
         for group in groups:
             if not cmds.objExists(group):
                 continue
-            for shape in cmds.listRelatives(
-                group,
-                allDescendents=True,
-                type="nurbsCurve",
-                fullPath=True,
-            ) or []:
+            for shape in (
+                cmds.listRelatives(
+                    group,
+                    allDescendents=True,
+                    type="nurbsCurve",
+                    fullPath=True,
+                )
+                or []
+            ):
                 if cmds.objExists(shape + ".dispCV"):
                     cmds.setAttr(shape + ".dispCV", False)
                 if cmds.objExists(shape + ".alwaysDrawOnTop"):
@@ -191,11 +195,14 @@ def _source_root_for_transfer(source_mesh):
     influences = []
     for curve in curves:
         skin = _connected_curve_skin(curve)
-        for joint in cmds.skinCluster(
-            skin,
-            query=True,
-            influence=True,
-        ) or []:
+        for joint in (
+            cmds.skinCluster(
+                skin,
+                query=True,
+                influence=True,
+            )
+            or []
+        ):
             joint = cmds.ls(joint, long=True)[0]
             if joint not in influences:
                 influences.append(joint)
@@ -221,10 +228,7 @@ def install_curvenet_shelf_button():
     shelf = mel.eval("$tmpVar = $gShelfTopLevel")
     shelf_name = "Curvenet"
     existing_shelves = cmds.tabLayout(shelf, query=True, childArray=True) or []
-    existing_names = {
-        child.rsplit("|", 1)[-1]
-        for child in existing_shelves
-    }
+    existing_names = {child.rsplit("|", 1)[-1] for child in existing_shelves}
 
     if shelf_name not in existing_names:
         cmds.setParent(shelf)
@@ -236,11 +240,14 @@ def install_curvenet_shelf_button():
         )
 
     existing_button = None
-    for child in cmds.shelfLayout(
-        shelf_name,
-        query=True,
-        childArray=True,
-    ) or []:
+    for child in (
+        cmds.shelfLayout(
+            shelf_name,
+            query=True,
+            childArray=True,
+        )
+        or []
+    ):
         if cmds.objectTypeUI(child) != "shelfButton":
             continue
         if cmds.shelfButton(child, query=True, label=True) == "Open Curvenet":
@@ -389,8 +396,7 @@ def open_curvenet_ui():
             "and connects the Curvenet deformer."
         ),
         command=lambda *_: _run_long_ui_action(
-            "Connecting Curvenet",
-            lambda: _finish_from_ui(coverage_menu)
+            "Connecting Curvenet", lambda: _finish_from_ui(coverage_menu)
         ),
     )
     _end_section()
@@ -407,7 +413,7 @@ def open_curvenet_ui():
     cmds.button(
         label="Bind Curvenet to Selected Joints",
         annotation=(
-            "The mesh is not skinned. Joints drive the Curvenet; the Curvenet "
+            "The mesh is not skinned. Joints drive the Curvenet, the Curvenet "
             "drives the mesh. The selected influences are remembered."
         ),
         command=lambda *_: _run_long_ui_action(
@@ -419,7 +425,7 @@ def open_curvenet_ui():
         label="Open Node Weight Editor",
         annotation=(
             "Select one bound mesh. Edit joint weights on logical Curvenet "
-            "nodes; connected profile curves follow the posed nodes."
+            "nodes. Connected profile curves follow the posed nodes."
         ),
         command=lambda *_: _run_ui_action(_paint_from_ui),
     )

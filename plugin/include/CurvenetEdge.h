@@ -1,5 +1,7 @@
 #pragma once
 
+/* Stores a logical Curvenet edge and its embedded mesh path. */
+
 #include "HalfEdge.h"
 
 #include <vector>
