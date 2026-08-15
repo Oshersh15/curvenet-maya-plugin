@@ -1,4 +1,4 @@
-# Curvenet Plugin — Installation Guide
+# Curvenet Plugin - Installation Guide
 
 ## Overview
 
