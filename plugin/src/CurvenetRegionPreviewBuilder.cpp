@@ -3,11 +3,14 @@
 #include <maya/MColor.h>
 #include <maya/MColorArray.h>
 #include <maya/MFnMesh.h>
+#include <maya/MFnStringData.h>
 #include <maya/MFnTransform.h>
+#include <maya/MFnTypedAttribute.h>
 #include <maya/MGlobal.h>
 #include <maya/MIntArray.h>
 #include <maya/MObject.h>
 #include <maya/MPointArray.h>
+#include <maya/MPlug.h>
 #include <maya/MString.h>
 
 #include <cmath>
@@ -15,6 +18,7 @@
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
+#include <sstream>
 
 namespace
 {
@@ -308,6 +312,10 @@ void CurvenetRegionPreviewBuilder::build(
 
     const std::vector<int> regionColorIds =
         buildRegionColorIds(curvenetCutResult);
+    std::vector<int> regionByPreviewFace(
+        polygonCounts.length(),
+        -1
+    );
 
     for (int curvenetFaceId = 0;
          curvenetFaceId < static_cast<int>(
@@ -334,6 +342,7 @@ void CurvenetRegionPreviewBuilder::build(
                 if (previewFaceId >= 0)
                 {
                     faceColors[previewFaceId] = color;
+                    regionByPreviewFace[previewFaceId] = curvenetFaceId;
                 }
             }
         }
@@ -344,6 +353,36 @@ void CurvenetRegionPreviewBuilder::build(
         faceIds
     );
     meshFn.setDisplayColors(true);
+
+    std::ostringstream regionIds;
+
+    for (std::size_t faceId = 0;
+         faceId < regionByPreviewFace.size();
+         ++faceId)
+    {
+        if (faceId > 0)
+        {
+            regionIds << ',';
+        }
+
+        regionIds << regionByPreviewFace[faceId];
+    }
+
+    MFnStringData stringDataFn;
+    MObject defaultRegionIds = stringDataFn.create("");
+    MFnTypedAttribute typedAttributeFn;
+    MObject regionAttribute = typedAttributeFn.create(
+        "curvenetRegionByFace",
+        "cnrbf",
+        MFnData::kString,
+        defaultRegionIds
+    );
+    typedAttributeFn.setHidden(true);
+    typedAttributeFn.setStorable(true);
+    transformFn.addAttribute(regionAttribute);
+    transformFn.findPlug(regionAttribute, true).setString(
+        MString(regionIds.str().c_str())
+    );
 
     MGlobal::executeCommand(
         MString("parent -relative \"") + transformName +

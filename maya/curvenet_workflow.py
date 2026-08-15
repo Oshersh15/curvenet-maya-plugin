@@ -460,6 +460,17 @@ def _rebuild_target_deformer_from_skinned_curves(mesh, full_surface):
         name=deformer_name,
     )[0]
     cmds.setAttr(deformer + ".fullSurfaceCurvenet", bool(full_surface))
+    transferred_group = prefix + "_transferredCurvenet_GRP"
+    transferred_regions = (
+        transferred_group + ".transferredRegionTriangles"
+    )
+
+    if cmds.objExists(transferred_regions):
+        cmds.setAttr(
+            deformer + ".transferredRegionTriangles",
+            cmds.getAttr(transferred_regions) or "",
+            type="string",
+        )
     source_mesh_shape = _deformer_source_mesh_shape(deformer)
     cmds.connectAttr(
         source_mesh_shape + ".outMesh",

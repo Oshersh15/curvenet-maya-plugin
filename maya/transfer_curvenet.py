@@ -386,6 +386,147 @@ def _world_matrix(node):
     return om.MMatrix(values)
 
 
+def _source_region_triangles(source_mesh):
+    """Encode the source preview's logical face ownership geometrically."""
+    source_prefix = _short_name(source_mesh)
+    preview_name = source_prefix + "CurvenetNode_curvenet_regionPreview"
+    previews = cmds.ls(preview_name, long=True, type="transform") or []
+
+    if not previews:
+        raise RuntimeError(
+            "The source Curvenet region preview is missing. "
+            "Finish and connect the source Curvenet before transferring it."
+        )
+
+    preview = previews[0]
+    region_attribute = preview + ".curvenetRegionByFace"
+
+    preview_shape = _mesh_shape(preview)
+    selection = om.MSelectionList()
+    selection.add(preview_shape)
+    dag_path = selection.getDagPath(0)
+    mesh_fn = om.MFnMesh(dag_path)
+    face_count = mesh_fn.numPolygons
+
+    if cmds.objExists(region_attribute):
+        encoded_region_ids = cmds.getAttr(region_attribute) or ""
+        region_ids = [
+            int(value)
+            for value in encoded_region_ids.split(",")
+            if value != ""
+        ]
+    else:
+        # Existing scenes can contain a correct preview created before the
+        # logical IDs were stored. Recover them from connected colour areas.
+        face_colors = []
+        all_face_vertex_colors = mesh_fn.getFaceVertexColors(
+            mesh_fn.currentColorSetName(),
+            om.MColor(),
+        )
+
+        for face_id in range(face_count):
+            colors = [
+                all_face_vertex_colors[
+                    mesh_fn.getFaceVertexIndex(face_id, vertex_index)
+                ]
+                for vertex_index in range(
+                    len(mesh_fn.getPolygonVertices(face_id))
+                )
+            ]
+
+            if not colors:
+                raise RuntimeError(
+                    "The source Curvenet preview has no region colours."
+                )
+
+            inverse_count = 1.0 / len(colors)
+            face_colors.append(
+                tuple(
+                    round(
+                        sum(color[channel] for color in colors)
+                        * inverse_count,
+                        5,
+                    )
+                    for channel in range(3)
+                )
+            )
+
+        region_ids = [-1] * face_count
+        face_iterator = om.MItMeshPolygon(dag_path)
+        region_id = 0
+
+        for first_face_id in range(face_count):
+            if region_ids[first_face_id] >= 0:
+                continue
+
+            region_ids[first_face_id] = region_id
+            pending = [first_face_id]
+
+            while pending:
+                face_id = pending.pop()
+                face_iterator.setIndex(face_id)
+
+                for neighbour_id in face_iterator.getConnectedFaces():
+                    if (
+                        region_ids[neighbour_id] < 0
+                        and face_colors[neighbour_id] == face_colors[face_id]
+                    ):
+                        region_ids[neighbour_id] = region_id
+                        pending.append(neighbour_id)
+
+            region_id += 1
+
+        print("Recovered source logical regions:", region_id)
+
+    if len(region_ids) != face_count:
+        raise RuntimeError(
+            "Source Curvenet region metadata does not match its preview mesh."
+        )
+
+    points = mesh_fn.getPoints(om.MSpace.kObject)
+    face_iterator = om.MItMeshPolygon(dag_path)
+    triangles = []
+
+    while not face_iterator.isDone():
+        face_id = face_iterator.index()
+
+        if face_id >= len(region_ids):
+            raise RuntimeError(
+                "Source Curvenet region metadata does not match its preview mesh."
+            )
+
+        region_id = region_ids[face_id]
+        vertex_ids = list(face_iterator.getVertices())
+
+        if region_id >= 0 and len(vertex_ids) >= 3:
+            first = points[vertex_ids[0]]
+
+            for index in range(1, len(vertex_ids) - 1):
+                second = points[vertex_ids[index]]
+                third = points[vertex_ids[index + 1]]
+                values = (
+                    region_id,
+                    first.x, first.y, first.z,
+                    second.x, second.y, second.z,
+                    third.x, third.y, third.z,
+                )
+                triangles.append(
+                    ",".join(
+                        str(value) if position == 0 else f"{value:.17g}"
+                        for position, value in enumerate(values)
+                    )
+                )
+
+        face_iterator.next()
+
+    if not triangles:
+        raise RuntimeError(
+            "The source Curvenet preview contains no logical face samples."
+        )
+
+    return ";".join(triangles)
+
+
 def _transfer_world_point(
     point,
     source_inverse_matrix,
@@ -664,8 +805,19 @@ def attach_existing_curvenet_to_mesh(
         raise RuntimeError(f"Target mesh does not exist: {target_mesh}")
 
     source_segments = _authored_segments(source_curve_group)
+    source_region_triangles = _source_region_triangles(source_mesh)
     target_prefix = _short_name(target_mesh)
-    _, node_group, projected_group = _create_target_groups(target_prefix)
+    root_group, node_group, projected_group = _create_target_groups(target_prefix)
+    cmds.addAttr(
+        root_group,
+        longName="transferredRegionTriangles",
+        dataType="string",
+    )
+    cmds.setAttr(
+        root_group + ".transferredRegionTriangles",
+        source_region_triangles,
+        type="string",
+    )
 
     if full_surface is None:
         source_prefix = _short_name(source_mesh)
@@ -828,6 +980,11 @@ def attach_existing_curvenet_to_mesh(
     cmds.setAttr(
         deformer + ".fullSurfaceCurvenet",
         bool(full_surface),
+    )
+    cmds.setAttr(
+        deformer + ".transferredRegionTriangles",
+        source_region_triangles,
+        type="string",
     )
     cmds.connectAttr(
         _deformer_input_mesh_plug(deformer),

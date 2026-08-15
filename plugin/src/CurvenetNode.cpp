@@ -11,6 +11,7 @@
 #include <maya/MTypeId.h>
 #include <maya/MStatus.h>
 #include <maya/MFnTypedAttribute.h>
+#include <maya/MFnStringData.h>
 #include <maya/MFnNumericAttribute.h>
 #include <maya/MFnNurbsCurve.h>
 #include <maya/MGlobal.h>
@@ -48,9 +49,63 @@
 #include <limits>
 #include <unordered_map>
 #include <unordered_set>
+#include <sstream>
+#include <string>
 
 namespace
 {
+    std::vector<TransferredRegionTriangle> parseTransferredRegionTriangles(
+        const MString& encodedTriangles
+    )
+    {
+        std::vector<TransferredRegionTriangle> triangles;
+        std::stringstream entries(encodedTriangles.asChar());
+        std::string entry;
+
+        while (std::getline(entries, entry, ';'))
+        {
+            if (entry.empty())
+            {
+                continue;
+            }
+
+            std::stringstream values(entry);
+            std::string value;
+            std::array<double, 10> parsed{};
+            int valueIndex = 0;
+
+            while (valueIndex < static_cast<int>(parsed.size()) &&
+                   std::getline(values, value, ','))
+            {
+                try
+                {
+                    parsed[valueIndex] = std::stod(value);
+                }
+                catch (const std::exception&)
+                {
+                    valueIndex = -1;
+                    break;
+                }
+
+                ++valueIndex;
+            }
+
+            if (valueIndex != static_cast<int>(parsed.size()))
+            {
+                continue;
+            }
+
+            TransferredRegionTriangle triangle;
+            triangle.regionId = static_cast<int>(parsed[0]);
+            triangle.first = {parsed[1], parsed[2], parsed[3]};
+            triangle.second = {parsed[4], parsed[5], parsed[6]};
+            triangle.third = {parsed[7], parsed[8], parsed[9]};
+            triangles.push_back(triangle);
+        }
+
+        return triangles;
+    }
+
     struct LocalNodeTransform
     {
         std::array<double, 9> rotation = {
@@ -756,6 +811,43 @@ MStatus CurveDeformerNode::initialize()
         return status;
     }
 
+    MFnStringData stringDataFn;
+    MObject emptyString = stringDataFn.create("");
+    transferredRegionTriangles = typedAttr.create(
+        "transferredRegionTriangles",
+        "trt",
+        MFnData::kString,
+        emptyString,
+        &status
+    );
+
+    if (!status)
+    {
+        status.perror("Failed to create transferredRegionTriangles");
+        return status;
+    }
+
+    typedAttr.setStorable(true);
+    typedAttr.setReadable(true);
+    typedAttr.setWritable(true);
+    typedAttr.setConnectable(false);
+
+    status = addAttribute(transferredRegionTriangles);
+
+    if (!status)
+    {
+        status.perror("Failed to add transferredRegionTriangles");
+        return status;
+    }
+
+    status = attributeAffects(transferredRegionTriangles, outputGeom);
+
+    if (!status)
+    {
+        status.perror("Failed to set transferredRegionTriangles affects");
+        return status;
+    }
+
     return MS::kSuccess;
 }
 
@@ -810,12 +902,19 @@ unsigned int geometryIndex
             fullSurfaceCurvenet,
             &status
         ).asBool();
+    const std::string requestedTransferredRegionTriangles =
+        dataBlock.inputValue(
+            transferredRegionTriangles,
+            &status
+        ).asString().asChar();
 
     /* Maya may evaluate a newly created deformer before the workflow copies
        its coverage setting. Rebuild the cached embedding when that setting
        changes so transferred meshes use the same coverage as their source. */
     if (topologyCaptured &&
-        requestedFullSurfaceCurvenet != capturedFullSurfaceCurvenet)
+        (requestedFullSurfaceCurvenet != capturedFullSurfaceCurvenet ||
+         requestedTransferredRegionTriangles !=
+            capturedTransferredRegionTriangles))
     {
         topologyCaptured = false;
         vertexBindingsCaptured = false;
@@ -1799,11 +1898,32 @@ unsigned int geometryIndex
             if (buildFullSurface)
             {
                 MGlobal::displayInfo("Curvenet coverage: FULL SURFACE");
-                CurvenetFaceRegionBuilder::
-                    buildFullSurfacePartitions(
-                        curvenetCutResult,
-                        expectedFullSurfaceFaceCount
-                    );
+                const std::vector<TransferredRegionTriangle>
+                    sourceRegionTriangles =
+                        parseTransferredRegionTriangles(
+                            dataBlock.inputValue(
+                                transferredRegionTriangles,
+                                &status
+                            ).asString()
+                        );
+
+                if (!sourceRegionTriangles.empty())
+                {
+                    CurvenetFaceRegionBuilder::
+                        buildTransferredLogicalPartitions(
+                            curvenetCutResult,
+                            sourceRegionTriangles,
+                            expectedFullSurfaceFaceCount
+                        );
+                }
+                else
+                {
+                    CurvenetFaceRegionBuilder::
+                        buildFullSurfacePartitions(
+                            curvenetCutResult,
+                            expectedFullSurfaceFaceCount
+                        );
+                }
             }
             else
             {
@@ -2025,6 +2145,8 @@ unsigned int geometryIndex
 
             topologyCaptured = true;
             capturedFullSurfaceCurvenet = buildFullSurface;
+            capturedTransferredRegionTriangles =
+                requestedTransferredRegionTriangles;
 
         }
     }
@@ -2175,6 +2297,7 @@ MObject CurveDeformerNode::inputDriverNodeIds;
 MObject CurveDeformerNode::inputMesh;
 MObject CurveDeformerNode::fullSurfaceCurvenet;
 MObject CurveDeformerNode::showGeneratedCurvenet;
+MObject CurveDeformerNode::transferredRegionTriangles;
 
 MStatus initializePlugin(MObject pluginObject)
 {
