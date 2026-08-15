@@ -34,6 +34,8 @@ private:
     int outputVertexCount = 0;
     std::vector<std::vector<int>> adjacentVertexIds;
     std::vector<std::vector<CurveConstraint>> constraintsByVertex;
+    std::vector<std::vector<int>> nearbyConstraintVertexIds;
+    std::vector<std::vector<double>> nearbyConstraintWeights;
     std::vector<std::vector<Point3>> neutralCurves;
     std::vector<Point3> neutralVertexPositions;
     std::vector<Point3> displacements;
