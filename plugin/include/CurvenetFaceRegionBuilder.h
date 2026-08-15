@@ -1,5 +1,7 @@
 #pragma once
 
+/* Declares flood-fill mapping from mesh polygons to Curvenet faces. */
+
 #include "CurvenetCutResult.h"
 #include <vector>
 

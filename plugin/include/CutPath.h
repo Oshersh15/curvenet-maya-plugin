@@ -1,5 +1,7 @@
 #pragma once
 
+/* Stores crossings, intervals, and inserted vertices for one profile path. */
+
 #include "CutCrossing.h"
 #include "CutVertex.h"
 

@@ -1,3 +1,5 @@
+/* Finds ordered crossings between sampled profile segments and mesh edges. */
+
 #include "CurveMeshIntersector.h"
 
 #include "GeometryUtils.h"

@@ -1,3 +1,5 @@
+/* Converts embedded curve chains into the logical edges of a Curvenet graph. */
+
 #include "CurvenetEdgeBuilder.h"
 #include "CurvenetCutResult.h"
 #include "GeometryUtils.h"

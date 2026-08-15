@@ -1,3 +1,5 @@
+/* Resolves physical or authored endpoints into shared logical Curvenet nodes. */
+
 #include "CurvenetSharedNodeDetector.h"
 
 #include "GeometryUtils.h"

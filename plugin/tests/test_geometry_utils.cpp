@@ -1,3 +1,5 @@
+/* Tests shared geometry primitives and numerical edge cases. */
+
 #include "GeometryUtils.h"
 
 #include <gtest/gtest.h>

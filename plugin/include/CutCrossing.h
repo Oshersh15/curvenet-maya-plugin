@@ -1,5 +1,7 @@
 #pragma once
 
+/* Describes one ordered intersection between a profile and a mesh edge. */
+
 #include "HalfEdge.h"
 
 /*

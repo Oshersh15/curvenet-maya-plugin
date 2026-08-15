@@ -1,6 +1,9 @@
-"""Interactive authoring of a Curvenet on Tube A.
+"""Create and edit artist-authored Curvenet curves on a selected Maya mesh.
 
-Load this through curvenet_workflow.py rather than executing it directly.
+The module owns the click-based drawing context, logical node markers, visible
+curve proxies, surface projection, and the connections passed to the plugin.
+It is loaded through ``curvenet_workflow.py`` so the public workflow can supply
+the active mesh and naming convention.
 """
 
 import heapq
@@ -609,6 +612,8 @@ def create_curve_between_nodes(start_node, end_node):
 
 
 def create_curve_display_proxy(source_curve):
+    """Create a readable viewport proxy without changing authored geometry."""
+
     ensure_groups()
     proxy_name = DISPLAY_PREFIX + source_curve.rsplit("_", 1)[-1]
 

@@ -1,3 +1,5 @@
+/* Provides small geometry operations shared by embedding and deformation. */
+
 #include "GeometryUtils.h"
 #include <cmath>
 
@@ -26,7 +28,7 @@ namespace GeometryUtils
             a.z * b.z;
     }
 
-    double GeometryUtils::length(
+    double length(
         const Point3& vector
     )
     {
@@ -35,7 +37,7 @@ namespace GeometryUtils
         );
     }
 
-    double GeometryUtils::pointToPointDistance(
+    double pointToPointDistance(
         const Point3& a,
         const Point3& b
     )
@@ -46,7 +48,7 @@ namespace GeometryUtils
         return length(direction);
     }
 
-    double GeometryUtils::clamp(
+    double clamp(
         double value,
         double minimum,
         double maximum
@@ -65,7 +67,7 @@ namespace GeometryUtils
         return value;
     }
 
-    Point3 GeometryUtils::addScaled(
+    Point3 addScaled(
         const Point3& start,
         const Point3& direction,
         double scale
@@ -78,7 +80,7 @@ namespace GeometryUtils
         };
     }
 
-    ClosestPointResult GeometryUtils::closestPointOnSegment(
+    ClosestPointResult closestPointOnSegment(
         const Point3& point,
         const Point3& segmentStart,
         const Point3& segmentEnd
@@ -116,7 +118,7 @@ namespace GeometryUtils
         };
     }
 
-    ClosestCurveSegmentResult GeometryUtils::findClosestPolylineSegment(
+    ClosestCurveSegmentResult findClosestPolylineSegment(
         const Point3& point,
         const std::vector<PolylineSegment>& segments
     )
@@ -163,7 +165,7 @@ namespace GeometryUtils
         return result;
     }
 
-    Point3 GeometryUtils::interpolateSegmentDisplacement(
+    Point3 interpolateSegmentDisplacement(
         const Point3& neutralStart,
         const Point3& neutralEnd,
         const Point3& posedStart,
@@ -200,7 +202,7 @@ namespace GeometryUtils
         return displacement;
     }
 
-    SegmentDistanceResult GeometryUtils::segmentToSegmentDistance(
+    SegmentDistanceResult segmentToSegmentDistance(
         const Point3& firstSegmentStart,
         const Point3& firstSegmentEnd,
         const Point3& secondSegmentStart,
@@ -290,7 +292,7 @@ namespace GeometryUtils
         };
     }
 
-    bool GeometryUtils::areSegmentsNearlyParallel(
+    bool areSegmentsNearlyParallel(
         const Point3& firstStart,
         const Point3& firstEnd,
         const Point3& secondStart,

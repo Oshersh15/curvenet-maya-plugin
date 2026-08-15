@@ -1,5 +1,7 @@
 #pragma once
 
+/* Declares topology-independent arc-length sampling of profile polylines. */
+
 #include "HalfEdge.h"
 #include <vector>
 

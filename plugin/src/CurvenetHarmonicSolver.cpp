@@ -1,3 +1,5 @@
+/* Propagates posed Curvenet boundary motion smoothly through the cut mesh. */
+
 #include "CurvenetHarmonicSolver.h"
 #include "GeometryUtils.h"
 

@@ -1,3 +1,10 @@
+"""Bind an authored Curvenet to Maya joints and edit its joint influences.
+
+Only Curvenet nodes and projected curve CVs are skinned; polygon meshes remain
+unskinned and are deformed by the plugin from the posed Curvenet. This module
+also stores transferable weights and provides the Maya weight-editing tools.
+"""
+
 import math
 import re
 
@@ -16,6 +23,9 @@ NODE_MARKER_ATTRIBUTES = (
 DRIVER_MARKER_ATTRIBUTE = "curvenetWeightDriver"
 DRIVER_FRAME_POINT_COUNT_ATTRIBUTE = "curvenetFramePointCount"
 WEIGHT_CONTROL_ATTRIBUTE = "curvenetWeightControlIndex"
+
+
+# Weight calculation and persistent metadata
 WEIGHT_EDITOR_WINDOW = "curvenetWeightEditorWindow"
 CURVE_WEIGHT_EDITOR_WINDOW = "curvenetCurveWeightEditorWindow"
 
@@ -357,6 +367,9 @@ def _create_curvenet_weight_driver(nodes_group, deformer):
 
     cmds.setAttr(driver + ".visibility", False)
     return driver, nodes
+
+
+# Logical-node driver binding and node-weight editor
 
 
 def bind_curvenet_driver_to_joint_hierarchy(
@@ -1192,6 +1205,9 @@ def open_curvenet_weight_editor(mesh):
     return window
 
 
+# Weight transfer between corresponding Curvenets
+
+
 def copy_curvenet_driver_weights(source_mesh, target_mesh):
     """Copy painted logical-node weights to one transferred Curvenet."""
     source_prefix = source_mesh.rsplit("|", 1)[-1].rsplit(":", 1)[-1]
@@ -1388,6 +1404,9 @@ def copy_projected_curve_skin_weights(
     return source_count
 
 
+# Projected-curve skinning and rig lifecycle
+
+
 def _curve_endpoint_controls(curve):
     stored_controls = []
 
@@ -1457,6 +1476,8 @@ def _connected_curve_skin(curve):
 
 
 def _skin_projected_curves(curves, joints, nodes):
+    """Skin projected curve CVs and preserve endpoint control ownership."""
+
     node_by_name = {
         node.rsplit("|", 1)[-1]: node
         for node in nodes
@@ -1895,6 +1916,9 @@ def _infer_curve_endpoint_controls(curves, mesh):
         ]
 
     return controls_by_curve
+
+
+# Fine projected-curve weight editor
 
 
 def open_curvenet_curve_weight_editor(mesh):

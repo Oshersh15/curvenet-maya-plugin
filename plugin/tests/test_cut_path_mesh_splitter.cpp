@@ -1,3 +1,5 @@
+/* Tests CutPath insertion across boundary, internal, and invalid cases. */
+
 #include "CutPathMeshSplitter.h"
 
 #include <gtest/gtest.h>

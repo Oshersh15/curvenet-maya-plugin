@@ -2,17 +2,20 @@
 
 A Maya C++ plugin inspired by Pixar's *Character Articulation through Profile Curves* (De Goes et al., 2022).
 
-This project investigates curve-based representations for topology-independent articulation and deformation. The long-term goal is to explore whether a Curvenet representation can transfer articulation behaviour between different mesh topologies.
+This project implements and evaluates a curve-based representation for
+topology-independent articulation. An artist-authored Curvenet is embedded in
+a polygon mesh, bound to a joint hierarchy and transferred to corresponding
+meshes with different topology.
 
 ---
 
 ## Project Goals
 
-- Investigate profile-curve based representations.
-- Construct a Curvenet from profile curves.
-- Develop a cut-mesh representation.
-- Explore topology-independent articulation.
-- Test deformation transfer between different meshes.
+- Author profile-curve networks directly on polygon surfaces.
+- Construct a logical Curvenet and its mesh-specific cut embedding.
+- Drive mesh deformation through the Curvenet rather than direct mesh skinning.
+- Transfer the same logical Curvenet and articulation between different mesh
+  topologies.
 
 ---
 
@@ -20,15 +23,18 @@ This project investigates curve-based representations for topology-independent a
 
 One of the central research questions of this project is how profile curves can drive mesh deformation independently of topology.
 
-The original paper describes the concept of using profile curves for articulation but does not fully describe the underlying deformation implementation. As a result, this project investigates possible approaches for transferring articulation through a Curvenet representation.
+The original paper describes profile-curve articulation at a high level but
+does not provide a complete implementation. This project therefore develops
+and evaluates its own Maya workflow for Curvenet construction, binding,
+transfer and deformation.
 
-Current areas of investigation include:
+The implementation combines:
 
 - Cut-mesh representations.
 - Surface regions influenced by profile curves.
 - Curve-driven deformation methods.
 - Topology-independent articulation.
-- Potential subdivision-based deformation approaches.
+- Harmonic propagation over the embedded half-edge mesh.
 
 The current implementation constructs a Curvenet, embeds it into the mesh
 topology and uses the resulting CutChains as constraints for joint-driven
@@ -46,7 +52,7 @@ harmonic deformation.
 - Dense profile curve sampling.
 - Uniform arc-length polyline generation.
 - Adaptive curve sampling based on mesh resolution.
-- Initial curve–mesh crossing detection.
+- Curve–mesh crossing detection.
 
 ### Half-Edge Topology
 
@@ -91,7 +97,7 @@ harmonic deformation.
 - Shared Curvenet node tests.
 - Curvenet face construction tests.
 - Curvenet face-region mapping tests.
-- 150 automated tests currently passing.
+- 155 automated tests currently passing.
 
 ### Debug Visualisation
 
@@ -355,13 +361,9 @@ Global rigid motion is separated from local deformation. A best-fit rigid transf
 
 The joint hierarchy can be transferred into another mesh's local coordinate frame. Joint rotation and scale channels may be connected to the source hierarchy so both meshes receive the same pose while preserving their different polygon topology.
 
-The complete authoring and transfer workflow is exposed through:
-
-```python
-start_tube_a_curvenet()
-finish_tube_a_curvenet()
-setup_tube_a_and_tube_b() 
-```
+The complete authoring, binding and transfer workflow is available from the
+Curvenet Maya shelf and workflow window. The public controls operate on the
+selected meshes and joints; they are not tied to the original tube test scene.
 
 A complete fresh-scene workflow was manually validated on two geometrically identical tubes with different polygon topology.
 Both tubes recovered the same logical Curvenet:
@@ -414,12 +416,19 @@ Unmapped mesh faces: 0
 
 ---
 
+## Installation
+
+Build and installation instructions, including platform-specific Maya paths,
+are provided in [INSTALL.md](INSTALL.md).
+
 ## Building
 
 From the project root:
 
 ```bash
-cmake -S plugin -B plugin/build
+cmake -S plugin -B plugin/build \
+  -DMAYA_LOCATION=/Applications/Autodesk/maya2025 \
+  -DCMAKE_BUILD_TYPE=Release
 cmake --build plugin/build
 ```
 
@@ -470,13 +479,13 @@ ctest --test-dir plugin/build --output-on-failure
 - Preservation of embedded boundaries during near-zero-area region cleanup.
 - Graph-coloured previews that distinguish adjacent physical regions.
 
-### In Progress
+### Ongoing Evaluation
 
 - Validation on additional articulated meshes and topology variants.
 - Refinement of local deformation quality around articulated joints.
 - Interactive validation on additional operating systems and Maya installs.
 
-### Planned
+### Future Work
 
 - Improved deformation weighting and offset transport.
 - Evaluation on meshes with different resolutions and topology.

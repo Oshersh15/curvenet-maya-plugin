@@ -1,3 +1,5 @@
+/* Tests physical and authored endpoint grouping into logical nodes. */
+
 #include <gtest/gtest.h>
 
 #include "CurvenetSharedNodeDetector.h"

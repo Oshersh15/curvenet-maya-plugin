@@ -1,5 +1,7 @@
 #pragma once
 
+/* Types and detection entry point for explicit logical curve connections. */
+
 #include "GeometryUtils.h"
 
 #include <vector>

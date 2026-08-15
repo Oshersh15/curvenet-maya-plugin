@@ -1,3 +1,5 @@
+/* Tests multi-profile cutting, connections, failures, and evolving topology. */
+
 #include <gtest/gtest.h>
 #include <algorithm>
 

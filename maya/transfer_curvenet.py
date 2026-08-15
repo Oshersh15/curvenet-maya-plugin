@@ -1,3 +1,11 @@
+"""Transfer a Curvenet and joint hierarchy between corresponding Maya meshes.
+
+Authored logical nodes, projected curves, endpoint metadata, region references,
+and optional joint weights are recreated on the target surface. Projection is
+continuous across neighbouring faces so curves do not jump to a nearby but
+disconnected part of a complex mesh such as a hand.
+"""
+
 import re
 
 import maya.api.OpenMaya as om

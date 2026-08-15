@@ -1,5 +1,7 @@
 #pragma once
 
+/* Aggregates the topology, graph, regions, and diagnostics of one embedding. */
+
 #include <vector>
 #include <unordered_map>
 #include <unordered_set>

@@ -1,3 +1,5 @@
+/* Tests logical face tracing for regular, open, and ambiguous graphs. */
+
 #include <gtest/gtest.h>
 
 #include <set>

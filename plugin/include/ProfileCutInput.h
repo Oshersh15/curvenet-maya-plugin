@@ -1,5 +1,7 @@
 #pragma once
 
+/* Defines the sampled profile and connection metadata consumed by cutting. */
+
 #include <vector>
 
 #include "ProfileCurveSampler.h"

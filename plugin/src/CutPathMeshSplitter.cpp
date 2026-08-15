@@ -1,3 +1,5 @@
+/* Inserts one ordered CutPath into a mutable half-edge mesh. */
+
 #include "CutPathMeshSplitter.h"
 #include <algorithm>
 #include "GeometryUtils.h"

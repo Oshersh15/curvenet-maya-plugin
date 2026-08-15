@@ -1,5 +1,7 @@
 #pragma once
 
+/* Declares shared point, segment, projection, and interpolation operations. */
+
 #include "HalfEdge.h"
 #include "ProfileCurveSampler.h"
 

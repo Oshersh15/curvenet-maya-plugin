@@ -1,3 +1,5 @@
+/* Tests region flood fills, protected barriers, and sliver cleanup. */
+
 #include <gtest/gtest.h>
 #include <algorithm>
 

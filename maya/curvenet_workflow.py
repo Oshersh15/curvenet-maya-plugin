@@ -1,4 +1,9 @@
-"""Public Maya workflow for authoring and transferring a Curvenet."""
+"""Coordinate the public Maya workflow from drawing through rig transfer.
+
+This is the stable entry point used by the shelf and UI. It loads the plugin
+and supporting scripts, resolves the selected mesh, and sequences authoring,
+embedding, joint binding, and transfer without duplicating their core logic.
+"""
 
 import os
 import sys

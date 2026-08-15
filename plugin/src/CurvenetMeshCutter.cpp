@@ -1,3 +1,5 @@
+/* Embeds sampled profile curves into an evolving half-edge mesh. */
+
 #include "CurvenetMeshCutter.h"
 
 #include "CutPathMeshSplitter.h"

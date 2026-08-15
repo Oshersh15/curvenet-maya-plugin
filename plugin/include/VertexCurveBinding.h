@@ -1,5 +1,7 @@
 #pragma once
 
+/* Stores a mesh vertex's neutral attachment to a sampled profile segment. */
+
 #include "HalfEdge.h"
 
 struct VertexCurveBinding

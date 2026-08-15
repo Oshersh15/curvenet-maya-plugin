@@ -1,5 +1,7 @@
 #pragma once
 
+/* Stores one logical Curvenet face and its ordered curve boundaries. */
+
 #include <vector>
 
 struct CurvenetFaceBoundary

@@ -1,3 +1,5 @@
+/* Implements the Maya deformer node and coordinates the Curvenet pipeline. */
+
 #include "CurvenetNode.h"
 #include "CurvenetData.h"
 

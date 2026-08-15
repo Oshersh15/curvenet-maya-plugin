@@ -1,5 +1,7 @@
 #pragma once
 
+/* Declares smooth propagation of posed Curvenet motion into mesh vertices. */
+
 #include "CutChain.h"
 #include "HalfEdge.h"
 

@@ -1,5 +1,7 @@
 #pragma once
 
+/* Stores one logical node shared by connected profile endpoints. */
+
 #include <vector>
 #include "HalfEdge.h"
 

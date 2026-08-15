@@ -1,3 +1,5 @@
+/* Tests CutVertex defaults and stored embedding metadata. */
+
 #include "CutVertex.h"
 
 #include <gtest/gtest.h>

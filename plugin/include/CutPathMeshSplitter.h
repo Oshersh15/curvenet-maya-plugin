@@ -1,5 +1,7 @@
 #pragma once
 
+/* Declares ordered insertion of a CutPath into a half-edge mesh. */
+
 #include "CutPath.h"
 #include "HalfEdge.h"
 #include "CutChain.h"

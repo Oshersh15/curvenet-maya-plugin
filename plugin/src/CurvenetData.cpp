@@ -1,3 +1,5 @@
+/* Stores the sampled curves and explicit connections read from Maya inputs. */
+
 #include "CurvenetData.h"
 #include "GeometryUtils.h"
 #include "ProfileCurveSampler.h"

@@ -1,3 +1,5 @@
+/* Tests arc-length sampling, adaptive counts, and invalid inputs. */
+
 #include "ProfileCurveSampler.h"
 
 #include <gtest/gtest.h>

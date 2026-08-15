@@ -1,5 +1,7 @@
 #pragma once
 
+/* Declares conversion of cut chains into logical Curvenet edges. */
+
 #include "CurvenetCutResult.h"
 #include "ProfileCutInput.h"
 

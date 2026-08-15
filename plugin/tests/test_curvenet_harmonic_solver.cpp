@@ -1,3 +1,5 @@
+/* Tests smooth deformation, rigid motion, reset, and dense topology support. */
+
 #include "CurvenetHarmonicSolver.h"
 
 #include <gtest/gtest.h>
@@ -28,6 +30,14 @@ HalfEdgeMesh createLongStrip(int vertexCount)
 
     return mesh;
 }
+}
+
+TEST(CurvenetHarmonicSolver, ReturnsEmptyBeforeInitialization)
+{
+    CurvenetHarmonicSolver solver;
+
+    EXPECT_FALSE(solver.isInitialized());
+    EXPECT_TRUE(solver.solve({}, 30).empty());
 }
 
 TEST(CurvenetHarmonicSolver, SpreadsUniformBoundaryTranslationAcrossQuad)
@@ -181,4 +191,33 @@ TEST(CurvenetHarmonicSolver, InitializesDenseStripFromBothConstraintSides)
 
     ASSERT_EQ(result.size(), static_cast<std::size_t>(vertexCount));
     EXPECT_NEAR(result[vertexCount / 2].y, 4.0, 0.25);
+}
+
+TEST(CurvenetHarmonicSolver, IgnoresMissingCurrentCurveWithoutMovingMesh)
+{
+    HalfEdgeMesh mesh;
+    mesh.createTestQuad();
+
+    CutChain chain;
+    chain.curveId = 0;
+    chain.points = {
+        EmbeddedCurvePoint{0, 0, 0.0, mesh.vertices[0].position},
+        EmbeddedCurvePoint{1, 0, 1.0, mesh.vertices[1].position}
+    };
+    const std::vector<std::vector<Point3>> neutral = {{
+        mesh.vertices[0].position,
+        mesh.vertices[1].position
+    }};
+
+    CurvenetHarmonicSolver solver;
+    solver.initialize(mesh, {{0, chain}}, 4, neutral);
+    const std::vector<Point3> result = solver.solve({}, 30);
+
+    ASSERT_EQ(result.size(), 4u);
+    for (const Point3& displacement : result)
+    {
+        EXPECT_DOUBLE_EQ(displacement.x, 0.0);
+        EXPECT_DOUBLE_EQ(displacement.y, 0.0);
+        EXPECT_DOUBLE_EQ(displacement.z, 0.0);
+    }
 }

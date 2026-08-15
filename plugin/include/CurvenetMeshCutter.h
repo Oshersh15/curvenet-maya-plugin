@@ -1,5 +1,7 @@
 #pragma once
 
+/* Declares the complete sampled-profile embedding pipeline. */
+
 #include <vector>
 
 #include "CutPath.h"
