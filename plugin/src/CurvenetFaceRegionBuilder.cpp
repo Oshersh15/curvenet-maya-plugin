@@ -214,6 +214,156 @@ namespace
 
     return true;
 }
+
+Point3 subtractPoints(const Point3& first, const Point3& second)
+{
+    return {
+        first.x - second.x,
+        first.y - second.y,
+        first.z - second.z
+    };
+}
+
+Point3 addScaledPoint(
+    const Point3& point,
+    const Point3& direction,
+    double scale
+)
+{
+    return {
+        point.x + direction.x * scale,
+        point.y + direction.y * scale,
+        point.z + direction.z * scale
+    };
+}
+
+double dotPoints(const Point3& first, const Point3& second)
+{
+    return first.x * second.x +
+        first.y * second.y +
+        first.z * second.z;
+}
+
+double squaredDistance(const Point3& first, const Point3& second)
+{
+    const Point3 difference = subtractPoints(first, second);
+    return dotPoints(difference, difference);
+}
+
+Point3 closestPointOnTriangle(
+    const Point3& point,
+    const TransferredRegionTriangle& triangle
+)
+{
+    const Point3 firstSecond =
+        subtractPoints(triangle.second, triangle.first);
+    const Point3 firstThird =
+        subtractPoints(triangle.third, triangle.first);
+    const Point3 firstPoint =
+        subtractPoints(point, triangle.first);
+    const double d1 = dotPoints(firstSecond, firstPoint);
+    const double d2 = dotPoints(firstThird, firstPoint);
+
+    if (d1 <= 0.0 && d2 <= 0.0)
+    {
+        return triangle.first;
+    }
+
+    const Point3 secondPoint =
+        subtractPoints(point, triangle.second);
+    const double d3 = dotPoints(firstSecond, secondPoint);
+    const double d4 = dotPoints(firstThird, secondPoint);
+
+    if (d3 >= 0.0 && d4 <= d3)
+    {
+        return triangle.second;
+    }
+
+    const double vc = d1 * d4 - d3 * d2;
+
+    if (vc <= 0.0 && d1 >= 0.0 && d3 <= 0.0)
+    {
+        return addScaledPoint(
+            triangle.first,
+            firstSecond,
+            d1 / (d1 - d3)
+        );
+    }
+
+    const Point3 thirdPoint =
+        subtractPoints(point, triangle.third);
+    const double d5 = dotPoints(firstSecond, thirdPoint);
+    const double d6 = dotPoints(firstThird, thirdPoint);
+
+    if (d6 >= 0.0 && d5 <= d6)
+    {
+        return triangle.third;
+    }
+
+    const double vb = d5 * d2 - d1 * d6;
+
+    if (vb <= 0.0 && d2 >= 0.0 && d6 <= 0.0)
+    {
+        return addScaledPoint(
+            triangle.first,
+            firstThird,
+            d2 / (d2 - d6)
+        );
+    }
+
+    const double va = d3 * d6 - d5 * d4;
+
+    if (va <= 0.0 && (d4 - d3) >= 0.0 && (d5 - d6) >= 0.0)
+    {
+        const Point3 secondThird =
+            subtractPoints(triangle.third, triangle.second);
+        return addScaledPoint(
+            triangle.second,
+            secondThird,
+            (d4 - d3) / ((d4 - d3) + (d5 - d6))
+        );
+    }
+
+    const double denominator = 1.0 / (va + vb + vc);
+    Point3 result = addScaledPoint(
+        triangle.first,
+        firstSecond,
+        vb * denominator
+    );
+    return addScaledPoint(
+        result,
+        firstThird,
+        vc * denominator
+    );
+}
+
+Point3 meshFaceCentroid(const HalfEdgeMesh& mesh, int meshFaceId)
+{
+    const std::vector<int> halfEdgeIds = mesh.traverseFace(meshFaceId);
+    Point3 centroid;
+
+    if (halfEdgeIds.empty())
+    {
+        return centroid;
+    }
+
+    for (int halfEdgeId : halfEdgeIds)
+    {
+        const Point3& position = mesh.vertices[
+            mesh.halfEdges[halfEdgeId].startVertex
+        ].position;
+        centroid.x += position.x;
+        centroid.y += position.y;
+        centroid.z += position.z;
+    }
+
+    const double inverseCount =
+        1.0 / static_cast<double>(halfEdgeIds.size());
+    centroid.x *= inverseCount;
+    centroid.y *= inverseCount;
+    centroid.z *= inverseCount;
+    return centroid;
+}
 }
 
 void CurvenetFaceRegionBuilder::build(
@@ -1441,4 +1591,206 @@ void CurvenetFaceRegionBuilder::buildAuthoredSurfacePartitions(
     {
         cutResult.curvenetFaces[faceId].id = faceId;
     }
+}
+
+void CurvenetFaceRegionBuilder::buildTransferredLogicalPartitions(
+    CurvenetCutResult& cutResult,
+    const std::vector<TransferredRegionTriangle>& sourceTriangles,
+    int expectedFaceCount
+)
+{
+    if (sourceTriangles.empty())
+    {
+        buildFullSurfacePartitions(cutResult, expectedFaceCount);
+        return;
+    }
+
+    int sourceRegionCount = 0;
+
+    for (const TransferredRegionTriangle& triangle : sourceTriangles)
+    {
+        sourceRegionCount = std::max(
+            sourceRegionCount,
+            triangle.regionId + 1
+        );
+    }
+
+    const int regionCount = std::max(
+        sourceRegionCount,
+        expectedFaceCount
+    );
+
+    if (regionCount <= 0)
+    {
+        buildFullSurfacePartitions(cutResult, expectedFaceCount);
+        return;
+    }
+
+    cutResult.curvenetFaces.clear();
+    cutResult.curvenetFaces.resize(regionCount);
+
+    for (int regionId = 0; regionId < regionCount; ++regionId)
+    {
+        cutResult.curvenetFaces[regionId].id = regionId;
+    }
+
+    std::vector<Point3> meshFaceCentroids;
+    meshFaceCentroids.reserve(cutResult.mesh.faces.size());
+
+    for (int meshFaceId = 0;
+         meshFaceId < static_cast<int>(cutResult.mesh.faces.size());
+         ++meshFaceId)
+    {
+        meshFaceCentroids.push_back(
+            meshFaceCentroid(cutResult.mesh, meshFaceId)
+        );
+    }
+
+    for (int meshFaceId = 0;
+         meshFaceId < static_cast<int>(cutResult.mesh.faces.size());
+         ++meshFaceId)
+    {
+        const Point3& centroid = meshFaceCentroids[meshFaceId];
+        int closestRegionId = -1;
+        double closestSquaredDistance =
+            std::numeric_limits<double>::infinity();
+
+        for (const TransferredRegionTriangle& triangle : sourceTriangles)
+        {
+            if (triangle.regionId < 0 ||
+                triangle.regionId >= regionCount)
+            {
+                continue;
+            }
+
+            const Point3 closest =
+                closestPointOnTriangle(centroid, triangle);
+            const double distance =
+                squaredDistance(centroid, closest);
+
+            if (distance < closestSquaredDistance)
+            {
+                closestSquaredDistance = distance;
+                closestRegionId = triangle.regionId;
+            }
+        }
+
+        if (closestRegionId >= 0)
+        {
+            cutResult.curvenetFaces[closestRegionId]
+                .meshFaceIds.push_back(meshFaceId);
+        }
+    }
+
+    /*
+        A narrow source region may contain no target face centroid on a
+        coarser topology. Preserve every transferred logical region by
+        assigning its closest available target face.
+    */
+    std::unordered_set<int> recoveredMeshFaceIds;
+
+    for (int missingRegionId = 0;
+         missingRegionId < regionCount;
+         ++missingRegionId)
+    {
+        if (!cutResult.curvenetFaces[missingRegionId]
+                 .meshFaceIds.empty())
+        {
+            continue;
+        }
+
+        int closestMeshFaceId = -1;
+        int donorRegionId = -1;
+        double closestSquaredDistance =
+            std::numeric_limits<double>::infinity();
+
+        for (int candidateRegionId = 0;
+             candidateRegionId < regionCount;
+             ++candidateRegionId)
+        {
+            const std::vector<int>& candidateMeshFaceIds =
+                cutResult.curvenetFaces[candidateRegionId]
+                    .meshFaceIds;
+
+            if (candidateMeshFaceIds.size() <= 1)
+            {
+                continue;
+            }
+
+            for (int meshFaceId : candidateMeshFaceIds)
+            {
+                if (recoveredMeshFaceIds.count(meshFaceId) > 0)
+                {
+                    continue;
+                }
+
+                for (const TransferredRegionTriangle& triangle :
+                     sourceTriangles)
+                {
+                    if (triangle.regionId != missingRegionId)
+                    {
+                        continue;
+                    }
+
+                    const Point3 closest = closestPointOnTriangle(
+                        meshFaceCentroids[meshFaceId],
+                        triangle
+                    );
+                    const double distance = squaredDistance(
+                        meshFaceCentroids[meshFaceId],
+                        closest
+                    );
+
+                    if (distance < closestSquaredDistance)
+                    {
+                        closestSquaredDistance = distance;
+                        closestMeshFaceId = meshFaceId;
+                        donorRegionId = candidateRegionId;
+                    }
+                }
+            }
+        }
+
+        if (closestMeshFaceId < 0 || donorRegionId < 0)
+        {
+            continue;
+        }
+
+        std::vector<int>& donorMeshFaceIds =
+            cutResult.curvenetFaces[donorRegionId].meshFaceIds;
+        donorMeshFaceIds.erase(
+            std::find(
+                donorMeshFaceIds.begin(),
+                donorMeshFaceIds.end(),
+                closestMeshFaceId
+            )
+        );
+        cutResult.curvenetFaces[missingRegionId]
+            .meshFaceIds.push_back(closestMeshFaceId);
+        recoveredMeshFaceIds.insert(closestMeshFaceId);
+    }
+
+    cutResult.curvenetFaces.erase(
+        std::remove_if(
+            cutResult.curvenetFaces.begin(),
+            cutResult.curvenetFaces.end(),
+            [](const CurvenetFace& face)
+            {
+                return face.meshFaceIds.empty();
+            }
+        ),
+        cutResult.curvenetFaces.end()
+    );
+
+    for (int faceId = 0;
+         faceId < static_cast<int>(cutResult.curvenetFaces.size());
+         ++faceId)
+    {
+        cutResult.curvenetFaces[faceId].id = faceId;
+    }
+
+    cutResult.fullSurfaceRegionCountBeforeCleanup =
+        static_cast<int>(cutResult.curvenetFaces.size());
+    cutResult.mergedFullSurfaceRegionPolygonCounts.clear();
+    cutResult.mergedFullSurfaceRegionAreas.clear();
 }

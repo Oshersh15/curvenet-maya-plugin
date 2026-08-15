@@ -1,3 +1,4 @@
+import math
 import re
 
 import maya.cmds as cmds
@@ -1327,12 +1328,6 @@ def copy_projected_curve_skin_weights(
         source_count = cmds.getAttr(source_shape + ".controlPoints", size=True)
         target_count = cmds.getAttr(target_shape + ".controlPoints", size=True)
 
-        if source_count != target_count:
-            raise RuntimeError(
-                "Projected curve CV counts do not correspond at curve "
-                + str(curve_index)
-            )
-
         source_influences = [
             cmds.ls(joint, long=True)[0]
             for joint in (
@@ -1340,22 +1335,43 @@ def copy_projected_curve_skin_weights(
             )
         ]
 
-        for cv_index in range(source_count):
-            source_component = source_curve + f".cv[{cv_index}]"
+        source_weights = []
+
+        for source_cv_index in range(source_count):
+            source_component = source_curve + f".cv[{source_cv_index}]"
+            source_weights.append([
+                cmds.skinPercent(
+                    source_skin,
+                    source_component,
+                    query=True,
+                    transform=source_joint,
+                )
+                for source_joint in source_influences
+            ])
+
+        for cv_index in range(target_count):
             target_component = target_curve + f".cv[{cv_index}]"
             target_values = []
 
-            for source_joint in source_influences:
+            source_position = (
+                0.0
+                if target_count <= 1
+                else cv_index * (source_count - 1) / float(target_count - 1)
+            )
+            lower_index = int(math.floor(source_position))
+            upper_index = min(lower_index + 1, source_count - 1)
+            blend = source_position - lower_index
+
+            for influence_index, source_joint in enumerate(source_influences):
                 if source_joint not in joint_map:
                     raise RuntimeError(
                         "No duplicated target joint for influence: "
                         + source_joint
                     )
-                value = cmds.skinPercent(
-                    source_skin,
-                    source_component,
-                    query=True,
-                    transform=source_joint,
+                value = (
+                    source_weights[lower_index][influence_index]
+                    * (1.0 - blend)
+                    + source_weights[upper_index][influence_index] * blend
                 )
                 target_values.append((joint_map[source_joint], value))
 

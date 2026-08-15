@@ -312,6 +312,36 @@ def setup_curvenet_rigs(
     source_curves_group = source_prefix + "_drawnCurvenet_curves_GRP"
     source_deformer = source_prefix + "CurvenetNode"
 
+    def source_topology_is_full_surface():
+        node_degrees = {}
+
+        for curve in _authored_segments(source_curves_group):
+            controls = _endpoint_controls(curve)
+            if len(controls) != 2:
+                return False
+
+            for control in controls:
+                node_degrees[control] = node_degrees.get(control, 0) + 1
+
+        return bool(node_degrees) and min(node_degrees.values()) >= 3
+
+    def remove_incomplete_target_rig():
+        generated_targets = [
+            target_prefix + "CurvenetNode",
+            target_prefix + "CurvenetNode_curvenet_group",
+            target_prefix + "_transferredCurvenet_GRP",
+            target_prefix + "_transferredSkeleton_GRP",
+            target_prefix + "_skeleton_root",
+        ]
+
+        for generated_target in generated_targets:
+            if cmds.objExists(generated_target):
+                cmds.delete(generated_target)
+
+    # Retrying a failed transfer replaces only generated target-rig objects.
+    # The target mesh and the complete source rig are never touched.
+    remove_incomplete_target_rig()
+
     if full_surface is None:
         coverage_attribute = source_deformer + ".fullSurfaceCurvenet"
         full_surface = (
@@ -319,6 +349,16 @@ def setup_curvenet_rigs(
             if cmds.objExists(coverage_attribute)
             else False
         )
+
+    # A closed curve network covers the complete surface even when an older
+    # source deformer was created before coverage metadata was preserved.
+    if not full_surface and source_topology_is_full_surface():
+        full_surface = True
+
+    coverage_name = (
+        "FULL SURFACE" if full_surface else "AUTHORED FACES"
+    )
+    print("Transfer coverage: " + coverage_name)
 
     source_curves = _skinned_projected_curves_for_mesh(source_mesh)
     if not source_curves:
@@ -338,18 +378,24 @@ def setup_curvenet_rigs(
                 source_influences.append(joint)
 
     source_joints = _ordered_joint_hierarchy(source_root)
-    target_root, target_joints = transfer_joint_hierarchy_to_mesh(
-        source_root_joint=source_root,
-        source_mesh=source_mesh,
-        target_mesh=target_mesh,
-        connect_pose=True,
-    )
-    attach_existing_curvenet_to_mesh(
-        target_mesh,
-        source_mesh=source_mesh,
-        source_curve_group=source_curves_group,
-        full_surface=full_surface,
-    )
+
+    try:
+        target_root, target_joints = transfer_joint_hierarchy_to_mesh(
+            source_root_joint=source_root,
+            source_mesh=source_mesh,
+            target_mesh=target_mesh,
+            connect_pose=True,
+        )
+        attach_existing_curvenet_to_mesh(
+            target_mesh,
+            source_mesh=source_mesh,
+            source_curve_group=source_curves_group,
+            full_surface=full_surface,
+        )
+    except Exception:
+        remove_incomplete_target_rig()
+        cmds.select(source_root, replace=True)
+        raise
     hierarchy_map = dict(zip(source_joints, target_joints))
     missing_influences = [
         joint for joint in source_influences if joint not in hierarchy_map
@@ -414,6 +460,17 @@ def _rebuild_target_deformer_from_skinned_curves(mesh, full_surface):
         name=deformer_name,
     )[0]
     cmds.setAttr(deformer + ".fullSurfaceCurvenet", bool(full_surface))
+    transferred_group = prefix + "_transferredCurvenet_GRP"
+    transferred_regions = (
+        transferred_group + ".transferredRegionTriangles"
+    )
+
+    if cmds.objExists(transferred_regions):
+        cmds.setAttr(
+            deformer + ".transferredRegionTriangles",
+            cmds.getAttr(transferred_regions) or "",
+            type="string",
+        )
     source_mesh_shape = _deformer_source_mesh_shape(deformer)
     cmds.connectAttr(
         source_mesh_shape + ".outMesh",

@@ -1063,3 +1063,108 @@ TEST(
     EXPECT_EQ(cutResult.curvenetFaces[0].meshFaceIds.size(), 2);
     EXPECT_EQ(cutResult.curvenetFaces[1].meshFaceIds.size(), 2);
 }
+
+TEST(
+    CurvenetFaceRegionBuilder,
+    TransfersLogicalOwnershipAcrossConnectedTargetFaces
+)
+{
+    CurvenetCutResult cutResult;
+    cutResult.mesh.createFourQuadGrid();
+    std::vector<TransferredRegionTriangle> sourceTriangles;
+
+    for (int meshFaceId = 0; meshFaceId < 4; ++meshFaceId)
+    {
+        const std::vector<int> halfEdgeIds =
+            cutResult.mesh.traverseFace(meshFaceId);
+        ASSERT_EQ(halfEdgeIds.size(), 4);
+        std::vector<Point3> points;
+
+        for (int halfEdgeId : halfEdgeIds)
+        {
+            points.push_back(
+                cutResult.mesh.vertices[
+                    cutResult.mesh.halfEdges[halfEdgeId].startVertex
+                ].position
+            );
+        }
+
+        const int regionId = meshFaceId % 2;
+        sourceTriangles.push_back(
+            {regionId, points[0], points[1], points[2]}
+        );
+        sourceTriangles.push_back(
+            {regionId, points[0], points[2], points[3]}
+        );
+    }
+
+    /* No embedded barrier separates the left and right target faces. */
+    ASSERT_TRUE(cutResult.embeddedHalfEdgeIds.empty());
+
+    CurvenetFaceRegionBuilder::buildTransferredLogicalPartitions(
+        cutResult,
+        sourceTriangles,
+        2
+    );
+
+    ASSERT_EQ(cutResult.curvenetFaces.size(), 2);
+    EXPECT_EQ(
+        cutResult.curvenetFaces[0].meshFaceIds,
+        (std::vector<int>{0, 2})
+    );
+    EXPECT_EQ(
+        cutResult.curvenetFaces[1].meshFaceIds,
+        (std::vector<int>{1, 3})
+    );
+}
+
+TEST(
+    CurvenetFaceRegionBuilder,
+    PreservesNarrowTransferredRegionWithoutTargetCentroid
+)
+{
+    CurvenetCutResult cutResult;
+    cutResult.mesh.createFourQuadGrid();
+    std::vector<TransferredRegionTriangle> sourceTriangles;
+
+    for (int meshFaceId = 0; meshFaceId < 4; ++meshFaceId)
+    {
+        const std::vector<int> halfEdgeIds =
+            cutResult.mesh.traverseFace(meshFaceId);
+        ASSERT_EQ(halfEdgeIds.size(), 4);
+        std::vector<Point3> points;
+
+        for (int halfEdgeId : halfEdgeIds)
+        {
+            points.push_back(
+                cutResult.mesh.vertices[
+                    cutResult.mesh.halfEdges[halfEdgeId].startVertex
+                ].position
+            );
+        }
+
+        sourceTriangles.push_back(
+            {0, points[0], points[1], points[2]}
+        );
+        sourceTriangles.push_back(
+            {0, points[0], points[2], points[3]}
+        );
+    }
+
+    TransferredRegionTriangle narrowRegion = sourceTriangles.front();
+    narrowRegion.regionId = 1;
+    narrowRegion.first.y += 10.0;
+    narrowRegion.second.y += 10.0;
+    narrowRegion.third.y += 10.0;
+    sourceTriangles.push_back(narrowRegion);
+
+    CurvenetFaceRegionBuilder::buildTransferredLogicalPartitions(
+        cutResult,
+        sourceTriangles,
+        2
+    );
+
+    ASSERT_EQ(cutResult.curvenetFaces.size(), 2);
+    EXPECT_FALSE(cutResult.curvenetFaces[0].meshFaceIds.empty());
+    EXPECT_EQ(cutResult.curvenetFaces[1].meshFaceIds.size(), 1);
+}

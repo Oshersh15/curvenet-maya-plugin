@@ -17,6 +17,7 @@
 
 #include <vector>
 #include <array>
+#include <string>
 #include <unordered_map>
 
 /*
@@ -69,6 +70,7 @@ public:
     static MObject inputMesh;
     static MObject fullSurfaceCurvenet;
     static MObject showGeneratedCurvenet;
+    static MObject transferredRegionTriangles;
 
 private:
     CurvenetData curvenetData;
@@ -90,5 +92,6 @@ private:
     bool vertexBindingsCaptured = false;
     bool topologyCaptured = false;
     bool capturedFullSurfaceCurvenet = false;
+    std::string capturedTransferredRegionTriangles;
     bool scenePreviewBuilt = false;
 };

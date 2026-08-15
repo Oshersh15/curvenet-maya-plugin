@@ -3,11 +3,14 @@
 #include <maya/MColor.h>
 #include <maya/MColorArray.h>
 #include <maya/MFnMesh.h>
+#include <maya/MFnStringData.h>
 #include <maya/MFnTransform.h>
+#include <maya/MFnTypedAttribute.h>
 #include <maya/MGlobal.h>
 #include <maya/MIntArray.h>
 #include <maya/MObject.h>
 #include <maya/MPointArray.h>
+#include <maya/MPlug.h>
 #include <maya/MString.h>
 
 #include <cmath>
@@ -15,20 +18,31 @@
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
+#include <sstream>
 
 namespace
 {
+constexpr int kRegionColorCount = 16;
+
 MColor regionColor(int colorId)
 {
-    static const std::array<MColor, 8> colors = {
-        MColor(0.95f, 0.25f, 0.25f, 1.0f),
-        MColor(0.15f, 0.75f, 0.95f, 1.0f),
-        MColor(0.25f, 0.90f, 0.35f, 1.0f),
-        MColor(0.95f, 0.75f, 0.20f, 1.0f),
-        MColor(0.70f, 0.35f, 0.95f, 1.0f),
-        MColor(0.95f, 0.35f, 0.75f, 1.0f),
-        MColor(0.20f, 0.90f, 0.80f, 1.0f),
-        MColor(0.95f, 0.55f, 0.20f, 1.0f)
+    static const std::array<MColor, kRegionColorCount> colors = {
+        MColor(0.95f, 0.18f, 0.18f, 1.0f),
+        MColor(0.05f, 0.78f, 0.95f, 1.0f),
+        MColor(0.25f, 0.90f, 0.18f, 1.0f),
+        MColor(0.98f, 0.78f, 0.08f, 1.0f),
+        MColor(0.55f, 0.20f, 0.95f, 1.0f),
+        MColor(0.98f, 0.18f, 0.70f, 1.0f),
+        MColor(1.00f, 0.45f, 0.05f, 1.0f),
+        MColor(0.12f, 0.35f, 0.95f, 1.0f),
+        MColor(0.05f, 0.65f, 0.30f, 1.0f),
+        MColor(0.95f, 0.42f, 0.58f, 1.0f),
+        MColor(0.05f, 0.70f, 0.68f, 1.0f),
+        MColor(0.35f, 0.12f, 0.72f, 1.0f),
+        MColor(0.72f, 0.55f, 0.05f, 1.0f),
+        MColor(0.72f, 0.18f, 0.82f, 1.0f),
+        MColor(0.95f, 0.32f, 0.12f, 1.0f),
+        MColor(0.35f, 0.88f, 0.62f, 1.0f)
     };
 
     return colors[static_cast<std::size_t>(colorId) % colors.size()];
@@ -107,11 +121,20 @@ std::vector<int> buildRegionColorIds(
             }
         }
 
-        int colorId = 0;
+        const int preferredColorId =
+            (regionId * 7) % kRegionColorCount;
+        int colorId = preferredColorId;
 
-        while (unavailableColors.count(colorId) > 0)
+        for (int offset = 0; offset < kRegionColorCount; ++offset)
         {
-            ++colorId;
+            const int candidateColorId =
+                (preferredColorId + offset) % kRegionColorCount;
+
+            if (unavailableColors.count(candidateColorId) == 0)
+            {
+                colorId = candidateColorId;
+                break;
+            }
         }
 
         colorIds[regionId] = colorId;
@@ -289,6 +312,10 @@ void CurvenetRegionPreviewBuilder::build(
 
     const std::vector<int> regionColorIds =
         buildRegionColorIds(curvenetCutResult);
+    std::vector<int> regionByPreviewFace(
+        polygonCounts.length(),
+        -1
+    );
 
     for (int curvenetFaceId = 0;
          curvenetFaceId < static_cast<int>(
@@ -315,6 +342,7 @@ void CurvenetRegionPreviewBuilder::build(
                 if (previewFaceId >= 0)
                 {
                     faceColors[previewFaceId] = color;
+                    regionByPreviewFace[previewFaceId] = curvenetFaceId;
                 }
             }
         }
@@ -325,6 +353,36 @@ void CurvenetRegionPreviewBuilder::build(
         faceIds
     );
     meshFn.setDisplayColors(true);
+
+    std::ostringstream regionIds;
+
+    for (std::size_t faceId = 0;
+         faceId < regionByPreviewFace.size();
+         ++faceId)
+    {
+        if (faceId > 0)
+        {
+            regionIds << ',';
+        }
+
+        regionIds << regionByPreviewFace[faceId];
+    }
+
+    MFnStringData stringDataFn;
+    MObject defaultRegionIds = stringDataFn.create("");
+    MFnTypedAttribute typedAttributeFn;
+    MObject regionAttribute = typedAttributeFn.create(
+        "curvenetRegionByFace",
+        "cnrbf",
+        MFnData::kString,
+        defaultRegionIds
+    );
+    typedAttributeFn.setHidden(true);
+    typedAttributeFn.setStorable(true);
+    transformFn.addAttribute(regionAttribute);
+    transformFn.findPlug(regionAttribute, true).setString(
+        MString(regionIds.str().c_str())
+    );
 
     MGlobal::executeCommand(
         MString("parent -relative \"") + transformName +
