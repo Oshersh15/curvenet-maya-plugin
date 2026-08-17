@@ -20,6 +20,9 @@ FEATURE_ANGLE_DEGREES = 45.0
 FEATURE_SNAPPING_ENABLED = True
 FEATURE_EDGE_ATTRIBUTE = "curvenetFeatureEdgeId"
 FEATURE_EDGE_T_ATTRIBUTE = "curvenetFeatureEdgeT"
+PLANAR_SAMPLE_COUNT = 9
+PLANAR_DISTANCE_RATIO = 0.05
+PLANAR_MAXIMUM_STEP_RATIO = 2.5
 
 
 def _surface_distance(first, second):
@@ -27,6 +30,61 @@ def _surface_distance(first, second):
         (first[index] - second[index]) ** 2
         for index in range(3)
     ))
+
+
+def _surface_planar_direct_path(start, end):
+    """Return a direct path when its projection stays close and continuous.
+
+    The ordinary authoring fallback creates a cubic profile and projects its
+    samples independently. Near an otherwise flat patch that meets a bend,
+    closest-point projection can pull intermediate samples toward the bend.
+    A chord that cuts through curved anatomy or jumps to another surface fails
+    the distance or continuity checks and keeps the established cubic path.
+    """
+
+    chord_length = _surface_distance(start, end)
+
+    if chord_length <= 1.0e-8:
+        return None
+
+    projected_samples = []
+    for sample_index in range(PLANAR_SAMPLE_COUNT):
+        parameter = sample_index / float(PLANAR_SAMPLE_COUNT - 1)
+        sample = [
+            start[axis] + (end[axis] - start[axis]) * parameter
+            for axis in range(3)
+        ]
+        projected = project_world_point_to_mesh(sample)
+        projected_samples.append(projected)
+    maximum_projection_distance = max(
+        chord_length * PLANAR_DISTANCE_RATIO,
+        NODE_RADIUS * 0.2,
+    )
+    direct_sample_step = chord_length / float(PLANAR_SAMPLE_COUNT - 1)
+    maximum_projected_step = (
+        direct_sample_step * PLANAR_MAXIMUM_STEP_RATIO
+    )
+
+    for sample_index, projected in enumerate(projected_samples):
+        parameter = sample_index / float(PLANAR_SAMPLE_COUNT - 1)
+        direct_point = [
+            start[axis] + (end[axis] - start[axis]) * parameter
+            for axis in range(3)
+        ]
+
+        if _surface_distance(projected, direct_point) > maximum_projection_distance:
+            return None
+
+        if (
+            sample_index > 0
+            and _surface_distance(
+                projected_samples[sample_index - 1],
+                projected,
+            ) > maximum_projected_step
+        ):
+            return None
+
+    return [projected_samples[0], projected_samples[-1]]
 
 
 def _mesh_dag_path():
@@ -397,6 +455,31 @@ def _surface_create_curve_between_nodes(start_node, end_node):
     end_edge, end_parameter = _node_feature_location(end_node)
 
     if start_edge < 0 or end_edge < 0:
+        start = get_world_position(start_node)
+        end = get_world_position(end_node)
+        planar_points = _surface_planar_direct_path(start, end)
+
+        if planar_points is not None:
+            ensure_groups()
+            curve_id = next_index(CURVE_PREFIX)
+            curve = cmds.curve(
+                name=f"{CURVE_PREFIX}{curve_id}",
+                degree=1,
+                point=planar_points,
+            )
+            cmds.parent(curve, CURVE_GRP)
+            cmds.addAttr(
+                curve,
+                longName="curvenetSegment",
+                attributeType="bool",
+                defaultValue=True,
+            )
+            cmds.setAttr(curve + ".curvenetSegment", lock=True)
+            _surface_create_endpoint_expression(curve, start_node, end_node)
+            create_curve_display_proxy(curve)
+            print("Created planar Curvenet segment:", curve)
+            return curve
+
         return _surface_authoring_base_create_curve(start_node, end_node)
 
     points = _shortest_feature_path(
