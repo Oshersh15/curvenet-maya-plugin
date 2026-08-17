@@ -85,7 +85,7 @@ Change `MAYA_LOCATION` if Maya is installed elsewhere.
 
 The Linux commands above build the plugin and tests successfully in the
 currently tested environment. They do not yet imply support for the complete
-interactive Maya workflow; see **Platform Validation Status** below.
+interactive Maya workflow. See **Platform Validation Status** below.
 
 ### Windows
 
@@ -211,14 +211,14 @@ and harmonic deformation.
 | Platform | Status |
 |---|---|
 | macOS, Maya 2025 | Complete interactive workflow manually validated |
-| Linux, Maya 2025 | Builds successfully; 155 C++ tests and Maya standalone pipeline pass; interactive Maya evaluation unresolved on the tested workstation |
-| Windows, Maya 2025 | Build configuration provided; not yet validated |
+| Linux, Maya 2025 | Builds successfully. 155 C++ tests and Maya standalone pipeline pass. Interactive Maya evaluation unresolved on the tested workstation |
+| Windows, Maya 2025 | Build configuration provided. Not yet validated |
 
 On the tested Linux workstation, the plugin compiled and loaded and the
 automated standalone pipeline completed successfully. Interactive connection
 of an authored Curvenet caused Maya to become unresponsive or terminate during
 evaluation. This remains a known limitation. The currently supported
-demonstration platform is therefore macOS; Linux and Windows interactive
+demonstration platform is therefore macOS. Linux and Windows interactive
 support are future development work.
 
 ---

@@ -152,9 +152,9 @@ The complete operation is integrated into `CutPathMeshSplitter::apply()`, extend
 
 The face-splitting operation has been verified on several basic polygon configurations:
 
-- a quad crossed through opposite edges, producing two quads;
-- a quad crossed through adjacent edges, producing a triangle and a pentagon;
-- a triangle crossed through two edges, producing a triangle and a quadrilateral.
+- a quad crossed through opposite edges, producing two quads
+- a quad crossed through adjacent edges, producing a triangle and a pentagon
+- a triangle crossed through two edges, producing a triangle and a quadrilateral
 
 These cases use the same general boundary-loop splitting algorithm rather than specialised logic for individual polygon or crossing types.
 
@@ -168,9 +168,9 @@ This connects local face-splitting topology into complete profile-derived cut ch
 
 The ordered cut-chain representation has been verified on multiple profile configurations:
 
-- vertical open chains;
-- diagonal open chains crossing multiple faces and edge orientations;
-- circular closed chains on Tube A.
+- vertical open chains
+- diagonal open chains crossing multiple faces and edge orientations
+- circular closed chains on Tube A
 
 The Tube A circular profile successfully produced a closed chain with matching vertex and cut-half-edge counts, and the final cut edge returned from the last chain vertex to the first.
 
@@ -197,12 +197,12 @@ The complete mesh-specific Curvenet embedding is stored after multi-profile cutt
 
 The representation includes:
 
-- mesh vertex IDs belonging to the embedded Curvenet;
-- forward cut half-edge IDs for all profile-derived CutChains;
-- mesh faces adjacent to the generated cut topology;
-- direct profile-curve ID to CutChain mapping;
-- shared Curvenet nodes mapped to their embedded mesh vertices;
-- the profile curves connected through each shared node.
+- mesh vertex IDs belonging to the embedded Curvenet
+- forward cut half-edge IDs for all profile-derived CutChains
+- mesh faces adjacent to the generated cut topology
+- direct profile-curve ID to CutChain mapping
+- shared Curvenet nodes mapped to their embedded mesh vertices
+- the profile curves connected through each shared node
 
 This separates the logical Curvenet structure from the original mesh topology while retaining the mesh-specific embedding required for later correspondence and deformation.
 
@@ -224,11 +224,11 @@ Logical Curvenet faces are associated with the detailed polygon faces contained 
 
 The region builder:
 
-- resolves ordered Curvenet boundary sections to embedded cut half-edges;
-- uses profile-derived edges as flood-fill barriers;
-- traverses internal non-boundary mesh edges;
-- stores the polygon-face IDs contained within each Curvenet region;
-- preserves separation between neighbouring Curvenet faces sharing the same CutChain boundary.
+- resolves ordered Curvenet boundary sections to embedded cut half-edges
+- uses profile-derived edges as flood-fill barriers
+- traverses internal non-boundary mesh edges
+- stores the polygon-face IDs contained within each Curvenet region
+- preserves separation between neighbouring Curvenet faces sharing the same CutChain boundary
 
 This mapping connects the high-level Curvenet structure with the underlying cut-mesh geometry required for later correspondence and deformation.
 
@@ -261,13 +261,13 @@ Each open Curvenet cell is flood-filled from both sides of its cut boundary. The
 
 The mapping has automated coverage for:
 
-- physical two-way, three-way and four-way authored junctions;
-- valid incident half-edges at shared junction vertices;
-- three-cell authored grids;
-- exclusion of combined and exterior graph cycles;
-- non-empty mapped regions;
-- separation of neighbouring Curvenet faces;
-- absence of overlapping mapped polygon regions.
+- physical two-way, three-way and four-way authored junctions
+- valid incident half-edges at shared junction vertices
+- three-cell authored grids
+- exclusion of combined and exterior graph cycles
+- non-empty mapped regions
+- separation of neighbouring Curvenet faces
+- absence of overlapping mapped polygon regions
 
 ### Cut-Aware Region Preview
 
@@ -275,13 +275,13 @@ The plugin generates a separate cut-aware Maya preview mesh for validating Curve
 
 The preview:
 
-- is reconstructed from the plugin’s internal cut half-edge mesh;
-- displays each mapped Curvenet face with a distinct colour;
-- displays polygons outside the Curvenet regions in dark grey;
-- preserves visible boundaries along the physically embedded cut paths;
-- is grouped with the generated Curvenet controls and curves;
-- is automatically replaced when the Curvenet setup is rebuilt;
-- does not modify the original Maya mesh or feed back into the deformer.
+- is reconstructed from the plugin’s internal cut half-edge mesh
+- displays each mapped Curvenet face with a distinct colour
+- displays polygons outside the Curvenet regions in dark grey
+- preserves visible boundaries along the physically embedded cut paths
+- is grouped with the generated Curvenet controls and curves
+- is automatically replaced when the Curvenet setup is rebuilt
+- does not modify the original Maya mesh or feed back into the deformer
 
 A separate preview mesh is required because the original Maya mesh does not contain the additional vertices and edges generated by internal Curvenet cutting.
 
@@ -289,12 +289,12 @@ The same authored Curvenet has been manually validated on two geometrically iden
 
 The transfer workflow:
 
-- samples the authored profile curves from the source mesh;
-- maps their points through source-local coordinates into the target mesh space;
-- projects the transferred samples onto the target surface;
-- preserves shared authored endpoints;
-- connects the projected profiles to a new Curvenet deformer;
-- generates controls, preview curves and a cut-aware region preview over the target mesh.
+- samples the authored profile curves from the source mesh
+- maps their points through source-local coordinates into the target mesh space
+- projects the transferred samples onto the target surface
+- preserves shared authored endpoints
+- connects the projected profiles to a new Curvenet deformer
+- generates controls, preview curves and a cut-aware region preview over the target mesh
 
 Both meshes recover the same logical Curvenet structure:
 
@@ -310,13 +310,13 @@ Curves connecting feature-edge nodes follow the detected surface feature. This a
 
 For Curvenets intended to partition the complete mesh surface, the `fullSurfaceCurvenet` attribute is enabled by default. In this mode:
 
-- embedded Curvenet edges act as flood-fill barriers;
-- every connected surface region is recovered;
-- all original mesh faces are mapped to a Curvenet face;
-- authored endpoint connections define the logical Curvenet nodes;
-- incidental cut-mesh intersections are not promoted to authored nodes;
-- near-zero-area numerical regions are merged into an adjacent valid region;
-- preview regions receive distinct deterministic colours.
+- embedded Curvenet edges act as flood-fill barriers
+- every connected surface region is recovered
+- all original mesh faces are mapped to a Curvenet face
+- authored endpoint connections define the logical Curvenet nodes
+- incidental cut-mesh intersections are not promoted to authored nodes
+- near-zero-area numerical regions are merged into an adjacent valid region
+- preview regions receive distinct deterministic colours
 
 A complete Curvenet wrapping a capped tube was manually validated with:
 
@@ -339,12 +339,12 @@ Curvenet nodes can be bound to a Maya joint hierarchy, allowing a sparse rig to 
 
 The binding workflow:
 
-- collects the complete hierarchy below a selected root joint;
-- assigns joint weights to the authored Curvenet nodes using their position relative to the joint bones;
-- stores the sparse node weights on the Curvenet controls;
-- interpolates the endpoint weights along each projected profile curve;
-- skins the projected curve control points to the joint hierarchy;
-- transfers stored node weights to corresponding logical Curvenet nodes on another mesh.
+- collects the complete hierarchy below a selected root joint
+- assigns joint weights to the authored Curvenet nodes using their position relative to the joint bones
+- stores the sparse node weights on the Curvenet controls
+- interpolates the endpoint weights along each projected profile curve
+- skins the projected curve control points to the joint hierarchy
+- transfers stored node weights to corresponding logical Curvenet nodes on another mesh
 
 Joint weights can be refined directly from the existing logical-node spheres.
 The selected joint remains the active influence while different spheres are
@@ -363,7 +363,7 @@ The joint hierarchy can be transferred into another mesh's local coordinate fram
 
 The complete authoring, binding and transfer workflow is available from the
 Curvenet Maya shelf and workflow window. The public controls operate on the
-selected meshes and joints; they are not tied to the original tube test scene.
+selected meshes and joints, they are not tied to the original tube test scene.
 
 A complete fresh-scene workflow was manually validated on two geometrically identical tubes with different polygon topology.
 Both tubes recovered the same logical Curvenet:
@@ -373,10 +373,10 @@ Curvenet edges: 28
 Curvenet faces: 16
 
 The following deformation behaviour was verified on both meshes:
-- root-joint rotation produces matching rigid motion;
-- middle-joint rotation produces corresponding local bending;
-- resetting joint rotations returns both meshes to their neutral state;
-- all 14 logical Curvenet-node weights transfer from Tube A to Tube B.
+- root-joint rotation produces matching rigid motion
+- middle-joint rotation produces corresponding local bending
+- resetting joint rotations returns both meshes to their neutral state
+- all 14 logical Curvenet-node weights transfer from Tube A to Tube B
 
 ### Hand Curvenet Validation
 
