@@ -37,3 +37,6 @@ maya/*.mb
 # Keep thesis working files local while allowing the final report PDF.
 thesis/*
 !thesis/OsherS_Master_Report.pdf
+
+# Retired project documentation directory
+docs/
